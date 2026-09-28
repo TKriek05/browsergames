@@ -6,7 +6,8 @@ build-stap, geen database, geen accounts, geen tracking.
 
 - **Frontend:** vanilla JavaScript (ES modules), HTML, CSS, Canvas
 - **Backend:** Node.js (LTS, ≥ 22) met precies één dependency: [`ws`](https://github.com/websockets/ws)
-- **Status:** alle fases klaar: 23 spellen (bordspellen, realtime arcade en vier games in 3D), allemaal met bots.
+- **Status:** 29 spellen (bordspellen, kaartspel, quiz, realtime arcade en zes games in 3D), allemaal met bots,
+  plus een **party-lobby**: de host kiest de games, of laat de arcade kiezen, of speelt een toernooi.
 
 > **Nieuw hier of code nog niet op GitHub?** Volg eerst [docs/SETUP.md](docs/SETUP.md):
 > repo vullen, branches, automatische tests en de weg van repo naar server.
@@ -31,6 +32,7 @@ Open <http://localhost:3000>.
 2. **Telefoon op hetzelfde wifi-netwerk:** zoek het IP van je pc (`ip a` / `ipconfig`)
    en open `http://192.168.x.x:3000`. Scan de QR-code in de lobby.
 3. **Solo:** klik op *Solo* bij een game: je krijgt een kamer vol bots.
+   Of maak een **party-lobby** (knoppen bovenaan de startpagina) en vul hem met bots.
 4. **Reconnect testen:** ververs een tabblad tijdens het spel → je komt terug op je plek.
    Sluit een tabblad → na 60 s neemt een bot je plek over.
 
@@ -41,12 +43,30 @@ npm test                                   # node --test: regels (o.a. schaak-pe
 npm run bots                               # 6 nep-clients, 1 kamer, 20 s (server moet draaien)
 node tools/botclients.js --chaos           # + wegvallen/terugkomen, host vertrekt, rommel sturen, kamer overvol
 node tools/botclients.js --rooms 8 --duration 60
+node tools/botclients.js --party --clients 2 --duration 120   # party-lobby: wisselt steeds van game (rooktest voor álle games)
 ```
 
 Veel kamers vanaf één IP? Start de server dan met ruimere limieten:
 `MAX_CONN_PER_IP=500 MAX_ROOMS_PER_IP=100 ROOMS_PER_MINUTE=500 CONNECTS_PER_MINUTE=2000 npm start`.
 
 ---
+
+## Party-lobby
+
+Een kamer zit niet vast aan één game. In de lobby kiest de host de volgende game uit een raster met
+alle spellen (spellen die niet bij het aantal spelers passen staan grijs). Er zijn drie party-modi:
+
+| Modus | Hoe het werkt |
+|-------|---------------|
+| **Vrije keuze** | De host kiest elke keer zelf de game (of drukt op *Verras ons*). |
+| **Willekeurig** | Na elke game trekt de arcade een nieuwe game (met een korte roulette), uit de games die de host heeft aangevinkt en die bij de groep passen. |
+| **Toernooi** | Een reeks van 3, 5, 7 of 10 games. Elke gewonnen game telt; bij gelijke stand beslissen de plaatspunten. De volgende game kiest de host, of het toeval (zonder herhalingen). |
+
+- Bots die bij een kleinere game niet passen, gaan **op de bank** en komen terug bij een grotere game.
+- Wie geen plek heeft, kijkt mee en krijgt de eerstvolgende vrije plek.
+- Bordspellen gaan in een party vanzelf terug naar de lobby na één potje; instellingen per game worden onthouden.
+- Maak een party-lobby met de knoppen **Party-lobby**, **Willekeurig** of **Toernooi** bovenaan de startpagina.
+  *Maak kamer* bij een game kan ook: daarna kun je in de lobby gewoon van game wisselen.
 
 ## Spellen
 
@@ -75,6 +95,12 @@ Veel kamers vanaf één IP? Start de server dan met ruimere limieten:
 | Spookjesdoolhof | 1-4 | Samen stipjes eten en spoken ontwijken, krachtpillen maken ze bang |
 | Onthoud 'm | 2-6 | Memory: kaartjes omdraaien en paren zoeken (16, 24 of 36 kaarten) |
 | Mijnenveger | 1-6 | Samen tegelijk hetzelfde veld vegen, gedeelde levens |
+| Spetterveld | 2-6 | **3D first-person shooter** (paintball): muis via pointer lock + WASD, lag compensation, 3 velden (opblaasbunkers, bos, boerenerf), verf blijft plakken |
+| Pesten | 2-6 | Het Nederlandse kaartspel: 2 en joker (stapelen), 7 blijft kleven, 8 wacht, aas keert, boer vraagt een kleur |
+| Quizkoorts | 1-6 | Kennisquiz in een tv-studio: 186 eigen vragen in 9 onderwerpen, snel én goed = meeste punten |
+| Pinguïnbotsen | 2-6 | **3D.** Glibberen en duwen op een smeltende ijsschots; laatste pinguïn op het ijs wint de ronde |
+| Knalkanon | 2-6 | Artillerie om de beurt: hoek, kracht, wind, drie wapens en kraters in het landschap |
+| Hapvis | 1-6 | Onder water: eet plankton en kleinere vissen, vlucht voor grotere; punten gaan nooit omlaag |
 
 Bij alle bordspellen: beurtindicator, zet-animaties, **zet terugnemen alleen als de ander akkoord gaat**
 (tegen een bot mag het meteen), **nog een potje** (wie begint wisselt), score over alle potjes in de lobby,
@@ -87,12 +113,13 @@ server/            http (statische bestanden + /healthz) en WebSocket, kamers, p
   games/           server-kant per game (arcade.js = basis voor de kleinere realtime games)
   ai/              bots voor de bordspellen (zware zoekers in worker threads)
   lagcomp.js       terugspoelen voor schoten (lag compensation)
-shared/            code die client én server gebruiken (pure ES modules)
+shared/            code die client én server gebruiken (pure ES modules; party.js = party-regels en toernooipunten)
   physics/ maps/ rules/  fysica, levels als data, bordspelregels
 public/            alles wat de browser krijgt
   js/core/         net, session, input, touch, audio, storage, loop, canvas, interp, predict, qr, ui, pixelfont, fx
   js/gl/           eigen WebGL-mini-engine voor de 3D-games (mesh, renderer, mat4, particles)
   js/lobby.js      gedeelde lobby
+  js/party.js      party-deel van de lobby: gamekiezer, roulette, party-modus, toernooistand
   js/hub.js        startpagina + wisselen tussen hub/lobby/spel
   games/<id>/      client-kant per game (common/arcade.js = gedeelde client-basis)
 tools/botclients.js  stresstest

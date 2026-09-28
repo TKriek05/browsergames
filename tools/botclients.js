@@ -274,6 +274,9 @@ async function chaos(clients, code) {
     extra.send(C2S.JOIN, { code, name: 'Intruder' });
     const msg = await extra.waitFor((m) => m.t === S2C.JOINED || m.t === S2C.ERROR).catch(() => null);
     if (msg?.t === S2C.ERROR && msg.code === ERR.ROOM_FULL) stats.fullRejected++;
+    // Got in: leave properly, so no seat is kept for a reconnect that never comes.
+    if (msg?.t === S2C.JOINED) extra.send(C2S.LEAVE);
+    await sleep(50);
     extra.close();
   }
 }

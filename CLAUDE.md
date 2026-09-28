@@ -99,6 +99,21 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
   `createSharpLayer(view, draw)` voor vaste achtergronden en `createFx({ smooth: true })`.
 - 3D-deeltjes: `particles.draw(r, scale, additive)`; additief alleen voor vuur/vonken, rook en stof normaal.
 
+## Nieuwe games (fase 6)
+
+- **Spetterveld** (`paintball`): first person. Camera = `r.camera()` op ooghoogte; de eigen marker wordt na
+  `gl.clear(DEPTH_BUFFER_BIT)` getekend. Beweging gedeeld (`shared/physics/paintball.js`), schoten als JSON-actie
+  `{ a, t, x, y }` met lag compensation; de server vertrouwt de meegestuurde loop-positie tot `MAX_SHOT_OFFSET`.
+  Game-specifieke toetsen via `meta.keys` (→ `new Input(meta.keys)`, extra acties met `input.pressed('turnLeft')`).
+- **Quizkoorts** (`quiz`): eigen server-module (`realtime: false`); de vragenbank staat alleen op de server
+  (`server/games/quiz-questions.js`), het goede antwoord gaat pas mee bij de onthulling. Catalogus-soort `kind: 'quiz'`.
+- **Knalkanon** (`artillery`): beurtspel met eigen server-module; het terrein (720 hoogtes) gaat alleen in de
+  snapshot als het veranderd is (`sentRev` per speler, reset bij reconnect).
+- **Pinguïnbotsen** (`penguins`) en **Hapvis** (`fish`): voorspelde eigen beweging, botsen/opeten alleen op de server.
+  Hapvis-plankton staat op vaste plekken uit de seed; de snapshot stuurt alleen een bitmasker.
+- Pesten: `shared/rules/pesten.js` + `server/ai/pesten.js`; kaarten als vectorvormen in `public/games/pesten/cards.js`.
+- Input onthoudt korte tikken tussen twee ticks (`Input.tapped`), zodat een snelle spatie niet wegvalt.
+
 ## Game-module interface
 
 Server (`server/games/<id>.js`, registreren in `server/games/index.js`):
@@ -130,3 +145,5 @@ thumbnail in `public/js/thumbs.js`, server- en clientmodule, tests.
 4. Turbo Kart GP (3D-kartrace met eigen WebGL-engine) ✅
 5. Extra's: Slangenstrijd, Paddle Party, Stenenbreker, Boemstad (3D), Spookjesdoolhof, Blokval, Minigolf (3D),
    Onthoud 'm, Mijnenveger, Ruimtegolf, Rotsregen ✅
+6. Party-update: party-lobby (vrije keuze, willekeurig, toernooi), Spetterveld (3D-shooter), Pesten, Quizkoorts,
+   Pinguïnbotsen (3D), Knalkanon, Hapvis ✅
