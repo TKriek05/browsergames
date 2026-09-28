@@ -45,6 +45,10 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
   Schoten dragen hun kijktijd mee (`serverNow() - INTERP_DELAY_MS`); de server spoelt terug met
   `server/lagcomp.js` (max. `MAX_REWIND_MS`).
 - **Resultaten** voor de lobby: `{ title, columns, rows: [{ id, name, color, rank, values }] }`.
+- **Arcade-basis (fase 5):** `server/games/arcade.js` (`ArcadeGame`: fases COUNTDOWN/PLAY/ROUND_END/END,
+  `eachInput`, `endRound`, `finish`, `rows`) + client `public/games/common/arcade.js` (`createArcadeCore`).
+- **Zware bot-berekeningen in realtime games** (Minigolf): als generator met een tijdsbudget per tick,
+  nooit in één keer in `tick()`.
 
 ## Bordspellen (fase 1)
 
@@ -55,6 +59,7 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 - Bots: `server/ai/<id>.js` → `pick(state, seat, level, rng)`; `worker: true` = draait in `server/ai/pool.js`.
   Bots mogen alleen zien wat hun seat mag zien (gebruik `rules.view`).
 - Client: `createBoardModule(spec)` uit `public/games/board/kit.js`; houd lokale UI-state in `f.local`.
+- `simultaneous: true` in de regels = iedereen tegelijk (geen beurten, bv. Mijnenveger); `botPace` = seconden per botzet.
 - Merknamen vermijden: "Erger je niet!" i.p.v. het merk mens-erger-je-niet, "Reversi" i.p.v. Othello.
 
 ## 3D (WebGL)
@@ -94,4 +99,5 @@ thumbnail in `public/js/thumbs.js`, server- en clientmodule, tests.
 2. Kwek Kwek Knal (eenden schieten, lag compensation) ✅
 3. Tank Tumult (tanks in 3D) ✅
 4. Neon Kart GP (3D-kartrace met eigen WebGL-engine) ✅
-5. Extra's (snake, paddle, breakout, bomber, spoken, blokken, minigolf, memory, mijnenveger, invaders, rotsen)
+5. Extra's: Slangenstrijd, Paddle Party, Stenenbreker, Boemstad (3D), Spookjesdoolhof, Blokval, Minigolf (3D),
+   Onthoud 'm, Mijnenveger, Ruimtegolf, Rotsregen ✅

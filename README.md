@@ -6,7 +6,7 @@ build-stap, geen database, geen accounts, geen tracking.
 
 - **Frontend:** vanilla JavaScript (ES modules), HTML, CSS, Canvas
 - **Backend:** Node.js (LTS, ≥ 22) met precies één dependency: [`ws`](https://github.com/websockets/ws)
-- **Status:** Fase 0 en 1 klaar: netwerkfundament, lobby, *Neon Tikkertje* en acht bordspellen met bots.
+- **Status:** alle fases klaar: 23 spellen (bordspellen, realtime arcade en vier games in 3D), allemaal met bots.
 
 > **Nieuw hier of code nog niet op GitHub?** Volg eerst [docs/SETUP.md](docs/SETUP.md):
 > repo vullen, branches, automatische tests en de weg van repo naar server.
@@ -64,6 +64,17 @@ Veel kamers vanaf één IP? Start de server dan met ruimere limieten:
 | Neon Kart GP | 1-6 | 3D-racer met achtervolgcamera, drift + mini-turbo, boost-pads, items (turbo, neonbol, olievlek, schild), 3 circuits of een Grand Prix met punten |
 | Tank Tumult | 2-6 | 3D (eigen WebGL-engine), stuiterende kogels, kapotschietbare kratten, power-ups, op tijd of laatste tank |
 | Kwek Kwek Knal | 1-6 | Eenden schieten met muis, touch of toetsen. Lag compensation: de server spoelt terug naar wat jij zag. Tegen elkaar of samen (quotum per ronde) |
+| Boemstad | 2-6 | **3D.** Bommen leggen in een neon-stad, power-ups, kettingreacties; na 90 s krimpt de stad. Eerst N rondes |
+| Minigolf | 1-6 | **3D.** Negen holes (zand, water, bumpers, heuvel), iedereen tegelijk. Sleep terug en laat los, of pijltjes + spatie |
+| Slangenstrijd | 2-6 | Battle royale met slangen, laatste die overblijft wint de ronde |
+| Paddle Party | 2-4 | Pong met een batje aan elke kant, levens per speler |
+| Stenenbreker | 1-4 | Samen de muur kapot kaatsen, power-up capsules, drie levels |
+| Ruimtegolf | 1-6 | Samen de golven aanvallers tegenhouden, gedeelde levens |
+| Rotsregen | 1-6 | Ruimteschip met wrap-around; samen of tegen elkaar |
+| Blokval | 2-6 | Vallende blokken versus: rijen wegspelen stuurt rommelrijen naar de anderen |
+| Spookjesdoolhof | 1-4 | Samen stipjes eten en spoken ontwijken, krachtpillen maken ze bang |
+| Onthoud 'm | 2-6 | Memory: kaartjes omdraaien en paren zoeken (16, 24 of 36 kaarten) |
+| Mijnenveger | 1-6 | Samen tegelijk hetzelfde veld vegen, gedeelde levens |
 
 Bij alle bordspellen: beurtindicator, zet-animaties, **zet terugnemen alleen als de ander akkoord gaat**
 (tegen een bot mag het meteen), **nog een potje** (wie begint wisselt), score over alle potjes in de lobby,
@@ -73,14 +84,17 @@ toeschouwers, snelle reacties en volledige bediening met het toetsenbord (pijltj
 
 ```
 server/            http (statische bestanden + /healthz) en WebSocket, kamers, protocol, rate limiting
-  games/           server-kant per game (tag.js = Neon Tikkertje)
+  games/           server-kant per game (arcade.js = basis voor de kleinere realtime games)
+  ai/              bots voor de bordspellen (zware zoekers in worker threads)
+  lagcomp.js       terugspoelen voor schoten (lag compensation)
 shared/            code die client én server gebruiken (pure ES modules)
   physics/ maps/ rules/  fysica, levels als data, bordspelregels
 public/            alles wat de browser krijgt
-  js/core/         net, session, input, touch, audio, storage, loop, canvas, interp, predict, qr, ui, pixelfont
+  js/core/         net, session, input, touch, audio, storage, loop, canvas, interp, predict, qr, ui, pixelfont, fx
+  js/gl/           eigen WebGL-mini-engine voor de 3D-games (mesh, renderer, mat4, particles)
   js/lobby.js      gedeelde lobby
   js/hub.js        startpagina + wisselen tussen hub/lobby/spel
-  games/<id>/      client-kant per game
+  games/<id>/      client-kant per game (common/arcade.js = gedeelde client-basis)
 tools/botclients.js  stresstest
 deploy/            deploy.sh, pm2-config, nginx-snippet, systemd-voorbeeld
 test/              node --test
@@ -123,6 +137,9 @@ test/              node --test
    (zie de uitleg bovenin `server/games/index.js`) en registreer hem daar.
 3. Client: `public/games/<id>/client.js` met `meta` en `createGame()` → `mount`, `onSnapshot`, `render`, `unmount`
    (zie `public/js/core/gamehost.js`).
+4. Kleine realtime game? Erf van `ArcadeGame` (`server/games/arcade.js`: aftellen → spelen → ronde-einde → einde)
+   en gebruik `createArcadeCore` (`public/games/common/arcade.js`) op de client. Wil je 3D: `meta.gl = true`
+   en de engine in `public/js/gl/` (zie Boemstad of Minigolf als voorbeeld).
 
 ---
 
