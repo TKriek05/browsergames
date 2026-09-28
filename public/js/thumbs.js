@@ -214,6 +214,18 @@ const DRAW = {
     R(ctx, 21, 16, 1, 2, C.yellow);
     R(ctx, 3, 28, 1, 1, C.white); R(ctx, 44, 2, 1, 1, C.white); R(ctx, 26, 3, 1, 1, C.white);
   },
+  paintball(ctx) {
+    R(ctx, 0, 0, 48, 12, '#6fb3ea'); R(ctx, 0, 10, 48, 2, '#cfe8f7');
+    R(ctx, 0, 12, 48, 20, '#5fae45'); for (let x = 0; x < 48; x += 8) R(ctx, x, 12, 4, 20, '#56a33f');
+    R(ctx, 0, 11, 48, 1, '#2a342c');
+    R(ctx, 4, 9, 9, 8, '#e63946'); R(ctx, 4, 12, 9, 1, C.white);
+    R(ctx, 33, 7, 10, 10, '#1d6fd8'); R(ctx, 33, 11, 10, 1, C.white);
+    R(ctx, 20, 8, 5, 9, '#ffc21a'); R(ctx, 20, 11, 5, 1, C.white);
+    disc(ctx, 37, 10, 2, '#ff3ea5'); R(ctx, 35, 13, 1, 2, '#ff3ea5'); R(ctx, 40, 12, 1, 1, '#ff3ea5');
+    disc(ctx, 26, 12, 1, '#5dff8a');
+    R(ctx, 30, 24, 14, 4, '#34373f'); R(ctx, 40, 23, 8, 2, '#23252b'); R(ctx, 32, 28, 3, 4, '#23252b');
+    disc(ctx, 33, 21, 2, '#ff3ea5'); R(ctx, 29, 28, 4, 4, '#e8b894');
+  },
 };
 
 export function drawThumb(canvas, gameId) {

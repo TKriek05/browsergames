@@ -94,4 +94,6 @@ export const GAME_LIMITS = {
   mines: { min: 1, max: 6 },
   invaders: { min: 1, max: 6 },
   rocks: { min: 1, max: 6 },
+  // Party update
+  paintball: { min: 2, max: 6 },
 };

@@ -3,7 +3,7 @@
 //
 // ─── Game module interface (client) ────────────────────────────────────────
 // public/games/<id>/client.js exports:
-//   meta = { width, height, pixelated, step, touchButtons: [{ label, bit }],
+//   meta = { width, height, pixelated, step, touchButtons: [{ label, bit }], keys?,
 //            layout?: 'board' (adds a side panel), input?: false, touchControls?: false,
 //            gl?: true (3D: view.glCanvas for WebGL + view.canvas/ctx as a 2D HUD on top) }
 //   createGame() → {
@@ -99,7 +99,7 @@ export class GameHost {
       this.stage.append(h('div', { class: 'board-layout' }, canvasArea, side));
     }
     this.view = createGameCanvas(canvasArea, meta);
-    if (meta.input !== false) this.input = new Input();
+    if (meta.input !== false) this.input = new Input(meta.keys); // meta.keys: game-specific key map (optional)
     if (this.input && meta.touchControls !== false && isTouchDevice()) {
       this.touch = createTouchControls(this.root, this.input, { buttons: meta.touchButtons ?? [] });
     }

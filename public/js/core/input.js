@@ -4,7 +4,7 @@
 import { BTN } from '../../../shared/messages.js';
 
 // Default mapping (event.code = physical key, so it works on AZERTY too).
-const DEFAULT_KEYS = {
+export const DEFAULT_KEYS = {
   up: ['ArrowUp', 'KeyW'],
   down: ['ArrowDown', 'KeyS'],
   left: ['ArrowLeft', 'KeyA'],
@@ -21,6 +21,7 @@ export class Input {
   constructor(keys = DEFAULT_KEYS) {
     this.keys = keys;
     this.down = new Set();
+    this.tapped = new Set(); // keys pressed since the last sample (a quick tap between two ticks still counts)
     this.touch = { ax: 0, ay: 0, buttons: 0 };
     this.state = { ax: 0, ay: 0, buttons: 0, aim: 0, rx: 0, ry: 0 };
     this.lastSource = 'keyboard';
@@ -32,6 +33,7 @@ export class Input {
       if (this._handles(e.code)) {
         e.preventDefault(); // no page scrolling with arrows/space while playing
         this.down.add(e.code);
+        this.tapped.add(e.code);
         this.lastSource = 'keyboard';
       }
     };
@@ -47,10 +49,15 @@ export class Input {
     return false;
   }
 
+  // Is any key of this (possibly game-specific) action held?
+  pressed(action) {
+    return this._pressed(action);
+  }
+
   _pressed(action) {
     const list = this.keys[action];
     if (!list) return false;
-    for (let i = 0; i < list.length; i++) if (this.down.has(list[i])) return true;
+    for (let i = 0; i < list.length; i++) if (this.down.has(list[i]) || this.tapped.has(list[i])) return true;
     return false;
   }
 
@@ -118,6 +125,7 @@ export class Input {
       ax /= len;
       ay /= len;
     }
+    this.tapped.clear();
     const s = this.state;
     s.ax = ax;
     s.ay = ay;

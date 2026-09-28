@@ -310,6 +310,25 @@ const entries = [
       },
     ],
   },
+
+  // --- Party update ---------------------------------------------------------------
+  {
+    id: 'paintball', title: 'Spetterveld', tagline: 'Paintball in 3D: spetter je vrienden onder de verf.',
+    kind: 'realtime', phase: 6, available: true, bots: true,
+    controls: 'Klik om te richten met de muis, WASD lopen, klik = schieten, R = herladen. Toetsen: pijltjes draaien, spatie schiet',
+    settings: [
+      {
+        key: 'duration', label: 'Speelduur', type: 'select',
+        options: [{ value: 120, label: '2 minuten' }, { value: 180, label: '3 minuten' }, { value: 300, label: '5 minuten' }],
+        default: 180,
+      },
+      {
+        key: 'arena', label: 'Veld', type: 'select',
+        options: [{ value: 'opblaas', label: 'Opblaasveld' }, { value: 'bos', label: 'Bosveld' }, { value: 'erf', label: 'Boerenerf' }],
+        default: 'opblaas',
+      },
+    ],
+  },
 ];
 
 // Fill in limits + defaults so consumers can rely on every field existing.

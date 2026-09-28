@@ -120,6 +120,10 @@ const SOUNDS = {
   putt: () => { tone({ type: 'sine', freq: 1500, to: 900, dur: 0.05, vol: 0.25 }); noise({ dur: 0.03, vol: 0.15, filter: 7000, to: 3000 }); },
   plop: () => { tone({ type: 'sine', freq: 520, to: 180, dur: 0.12, vol: 0.3 }); tone({ type: 'sine', freq: 300, to: 120, dur: 0.1, vol: 0.2, delay: 0.1 }); },
   splash: () => noise({ dur: 0.45, vol: 0.35, filter: 1800, to: 400 }),
+  // Spetterveld
+  marker: () => { noise({ dur: 0.08, vol: 0.4, filter: 2600, to: 500 }); tone({ type: 'sine', freq: 300, to: 120, dur: 0.07, vol: 0.22 }); },
+  markerFar: () => noise({ dur: 0.06, vol: 0.14, filter: 1800, to: 400 }),
+  splat: () => { noise({ dur: 0.14, vol: 0.45, filter: 1400, to: 250 }); tone({ type: 'sine', freq: 180, to: 70, dur: 0.1, vol: 0.18 }); },
 };
 
 export function play(name) {
