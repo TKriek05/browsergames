@@ -342,6 +342,32 @@ const entries = [
       { key: 'jokers', label: 'Met jokers (+5)', type: 'toggle', default: true },
     ],
   },
+  {
+    id: 'quiz', title: 'Quizkoorts', tagline: 'Een snelle kennisquiz: goed én snel antwoorden levert de meeste punten.',
+    kind: 'quiz', phase: 6, available: true, bots: true,
+    controls: 'Klik of tik op een antwoord, of druk op 1 t/m 4 (of A t/m D)',
+    settings: [
+      {
+        key: 'count', label: 'Aantal vragen', type: 'select',
+        options: [{ value: 10, label: '10 vragen' }, { value: 15, label: '15 vragen' }, { value: 20, label: '20 vragen' }],
+        default: 10,
+      },
+      {
+        key: 'time', label: 'Tijd per vraag', type: 'select',
+        options: [{ value: 10, label: '10 seconden' }, { value: 15, label: '15 seconden' }, { value: 20, label: '20 seconden' }],
+        default: 15,
+      },
+      {
+        key: 'category', label: 'Onderwerp', type: 'select',
+        options: [
+          { value: 'alles', label: 'Van alles wat' },
+          ...['Nederland', 'Aardrijkskunde', 'Geschiedenis', 'Natuur', 'Wetenschap', 'Sport & spel', 'Taal & cultuur', 'Eten & drinken', 'Techniek']
+            .map((c) => ({ value: c, label: c })),
+        ],
+        default: 'alles',
+      },
+    ],
+  },
 ];
 
 // Fill in limits + defaults so consumers can rely on every field existing.

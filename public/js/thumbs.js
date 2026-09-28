@@ -235,6 +235,15 @@ const DRAW = {
     R(ctx, 36, 4, 9, 13, '#23508f'); R(ctx, 37, 5, 7, 11, '#fdfbf5'); R(ctx, 38, 6, 5, 9, '#23508f');
     R(ctx, 36, 21, 10, 6, '#d62839'); R(ctx, 38, 23, 1, 2, C.white); R(ctx, 37, 24, 3, 1, C.white); R(ctx, 41, 23, 3, 1, C.white); R(ctx, 43, 24, 1, 1, C.white); R(ctx, 41, 25, 3, 1, C.white);
   },
+  quiz(ctx) {
+    R(ctx, 0, 0, 48, 32, '#16204a'); R(ctx, 0, 26, 48, 6, '#0c1330');
+    for (let i = 0; i < 12; i++) R(ctx, 3 + i * 4, 2 + Math.abs(i - 5.5) * 0.6, 1, 1, '#ffd678');
+    R(ctx, 6, 5, 36, 9, '#22306a'); R(ctx, 6, 5, 36, 1, '#e8b84a'); R(ctx, 6, 13, 36, 1, '#e8b84a');
+    R(ctx, 12, 8, 24, 1, C.white); R(ctx, 16, 10, 16, 1, C.white);
+    R(ctx, 5, 16, 18, 4, '#1b2a5e'); R(ctx, 25, 16, 18, 4, '#2e9b4a'); R(ctx, 5, 21, 18, 4, '#1b2a5e'); R(ctx, 25, 21, 18, 4, '#1b2a5e');
+    for (const [x, y] of [[6, 17], [26, 17], [6, 22], [26, 22]]) R(ctx, x, y, 2, 2, '#e8b84a');
+    R(ctx, 39, 17, 2, 2, C.white);
+  },
 };
 
 export function drawThumb(canvas, gameId) {

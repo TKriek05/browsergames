@@ -49,6 +49,7 @@ import ghosts from './ghosts.js';
 import bomber from './bomber.js';
 import minigolf from './minigolf.js';
 import paintball from './paintball.js';
+import quiz from './quiz.js';
 import { boardGame } from './board.js';
 import tictactoe from '../../shared/rules/tictactoe.js';
 import connect4 from '../../shared/rules/connect4.js';
@@ -66,7 +67,7 @@ import pesten from '../../shared/rules/pesten.js';
 const BOARD_RULES = [tictactoe, connect4, reversi, checkers, chess, ludo, goose, battleship, memory, mines, pesten];
 
 // Custom modules (realtime or not) that are not generic board games.
-const REALTIME = [tag, duckshoot, tanks, kartrace, snake, paddle, breakout, invaders, rocks, blocks, ghosts, bomber, minigolf, paintball];
+const REALTIME = [tag, duckshoot, tanks, kartrace, snake, paddle, breakout, invaders, rocks, blocks, ghosts, bomber, minigolf, paintball, quiz];
 
 const MODULES = new Map([...REALTIME.map((m) => [m.id, m]), ...BOARD_RULES.map((rules) => [rules.id, boardGame(rules)])]);
 

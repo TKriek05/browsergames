@@ -15,6 +15,7 @@ const MODE_HELP = {
   tournament: 'Een reeks games: wie de meeste wint, wint het toernooi.',
 };
 const ORDER_LABELS = { random: 'Willekeurig', host: 'Host kiest' };
+const KIND_LABELS = { realtime: 'Actie', board: 'Bord- of kaartspel', quiz: 'Quiz' };
 
 const games = () => Object.values(CATALOG).filter((g) => g.available);
 // Shared place for equal wins and points.
@@ -110,7 +111,7 @@ export class PartyUi {
         h('p', { class: 'gamecard__tagline muted' }, game.tagline),
         h('ul', { class: 'card__meta' },
           h('li', {}, playersText(game)),
-          h('li', {}, game.kind === 'board' ? 'Bordspel' : 'Actie'),
+          h('li', {}, KIND_LABELS[game.kind] ?? 'Actie'),
           bots && game.bots ? h('li', {}, 'Met bots') : null),
         warn ? h('p', { class: 'gamecard__warn small' }, warn) : null));
   }
@@ -182,8 +183,8 @@ export class PartyUi {
     const picking = this.panel === 'pick';
     const { humans, bots } = headcount(room);
     const groups = [
-      ['Actiegames', games().filter((g) => g.kind !== 'board')],
-      ['Bord- en kaartspellen', games().filter((g) => g.kind === 'board')],
+      ['Actiegames', games().filter((g) => g.kind === 'realtime')],
+      ['Bord-, kaart- en quizspellen', games().filter((g) => g.kind !== 'realtime')],
     ];
     const card = (g) => {
       const fits = gameFits(g, humans, bots);
