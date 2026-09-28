@@ -18,6 +18,9 @@
 //   onInput(player, msg)       realtime: decoded input { seq, buttons, ax, ay, aim }
 //                              (object is reused: copy what you keep!)
 //                              board: validated JSON `data` from { t:'input' }
+//   onAction?(player, data)    realtime only: JSON `data` from { t:'input' } for
+//                              rare one-off actions (a shot with its view time).
+//                              Bounded in size by the protocol; validate the meaning.
 //   tick(dt)                   advance the simulation by dt seconds
 //   snapshot(arg)              realtime: arg is a ByteWriter with the header
 //                              already written; append your body.
@@ -33,6 +36,7 @@
 // results: { title, columns: [..], rows: [{ id, name, color, rank, values: [..] }] }
 // ─────────────────────────────────────────────────────────────────────────────
 import tag from './tag.js';
+import duckshoot from './duckshoot.js';
 import { boardGame } from './board.js';
 import tictactoe from '../../shared/rules/tictactoe.js';
 import connect4 from '../../shared/rules/connect4.js';
@@ -46,7 +50,9 @@ import battleship from '../../shared/rules/battleship.js';
 // Board games are pure rules modules wrapped by the generic adapter.
 const BOARD_RULES = [tictactoe, connect4, reversi, checkers, chess, ludo, goose, battleship];
 
-const MODULES = new Map([[tag.id, tag], ...BOARD_RULES.map((rules) => [rules.id, boardGame(rules)])]);
+const REALTIME = [tag, duckshoot];
+
+const MODULES = new Map([...REALTIME.map((m) => [m.id, m]), ...BOARD_RULES.map((rules) => [rules.id, boardGame(rules)])]);
 
 export const registry = {
   get: (id) => MODULES.get(id) ?? null,

@@ -31,6 +31,7 @@ export class ByteWriter {
   u16(v) { this._ensure(2); this.view.setUint16(this.pos, v, true); this.pos += 2; return this; }
   i16(v) { this._ensure(2); this.view.setInt16(this.pos, v, true); this.pos += 2; return this; }
   u32(v) { this._ensure(4); this.view.setUint32(this.pos, v >>> 0, true); this.pos += 4; return this; }
+  i32(v) { this._ensure(4); this.view.setInt32(this.pos, v | 0, true); this.pos += 4; return this; }
   f32(v) { this._ensure(4); this.view.setFloat32(this.pos, v, true); this.pos += 4; return this; }
   f64(v) { this._ensure(8); this.view.setFloat64(this.pos, v, true); this.pos += 8; return this; }
 
@@ -56,6 +57,7 @@ export class ByteReader {
   u16() { const v = this.view.getUint16(this.pos, true); this.pos += 2; return v; }
   i16() { const v = this.view.getInt16(this.pos, true); this.pos += 2; return v; }
   u32() { const v = this.view.getUint32(this.pos, true); this.pos += 4; return v; }
+  i32() { const v = this.view.getInt32(this.pos, true); this.pos += 4; return v; }
   f32() { const v = this.view.getFloat32(this.pos, true); this.pos += 4; return v; }
   f64() { const v = this.view.getFloat64(this.pos, true); this.pos += 8; return v; }
 }

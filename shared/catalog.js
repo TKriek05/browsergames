@@ -83,7 +83,39 @@ const entries = [
   },
 
   // --- Phase 2-4 ----------------------------------------------------------------
-  { id: 'duckshoot', title: 'Kwek Kwek Knal', tagline: 'Schiet eenden met z’n allen, samen of tegen elkaar.', kind: 'realtime', phase: 2 },
+  {
+    id: 'duckshoot',
+    title: 'Kwek Kwek Knal',
+    tagline: 'Schiet eenden met z’n allen, samen of tegen elkaar.',
+    kind: 'realtime',
+    phase: 2,
+    available: true,
+    bots: true,
+    controls: 'Muis of tik om te schieten, rechtsklik/R om te herladen. Toetsen: pijltjes + spatie',
+    settings: [
+      {
+        key: 'mode',
+        label: 'Spelvorm',
+        type: 'select',
+        options: [
+          { value: 'versus', label: 'Tegen elkaar' },
+          { value: 'coop', label: 'Samen (haal het quotum)' },
+        ],
+        default: 'versus',
+      },
+      {
+        key: 'rounds',
+        label: 'Rondes',
+        type: 'select',
+        options: [
+          { value: 3, label: '3 rondes' },
+          { value: 5, label: '5 rondes' },
+          { value: 7, label: '7 rondes' },
+        ],
+        default: 5,
+      },
+    ],
+  },
   { id: 'tanks', title: 'Tank Tumult', tagline: 'Top-down tankgevechten met stuiterende kogels.', kind: 'realtime', phase: 3 },
   { id: 'kartrace', title: 'Neon Kart GP', tagline: 'Retro kartracen met drift, items en een Grand Prix.', kind: 'realtime', phase: 4 },
 

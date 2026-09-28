@@ -41,6 +41,9 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
   (verborgen info!), `dirty = true` om een snapshot te pushen. Regels als pure modules in `shared/rules/`
   met `node --test`-tests. Zware AI (minimax) via `worker_threads` of strikt tijdsbudget.
 - **Bots** draaien altijd op de server (`player.isBot`, `player.botLevel`: easy/normal/hard).
+- **Eenmalige acties in realtime games** (een schot): JSON `{ t:'input', data }` → `onAction(player, data)`.
+  Schoten dragen hun kijktijd mee (`serverNow() - INTERP_DELAY_MS`); de server spoelt terug met
+  `server/lagcomp.js` (max. `MAX_REWIND_MS`).
 - **Resultaten** voor de lobby: `{ title, columns, rows: [{ id, name, color, rank, values }] }`.
 
 ## Bordspellen (fase 1)
@@ -80,7 +83,7 @@ thumbnail in `public/js/thumbs.js`, server- en clientmodule, tests.
 
 0. Fundament + lobby + Neon Tikkertje ✅
 1. Bordspellen: boter-kaas-en-eieren, vier op een rij, dammen, reversi, schaken, Erger je niet!, ganzenbord, zeeslag ✅
-2. Kwek Kwek Knal (eenden schieten, lag compensation)
+2. Kwek Kwek Knal (eenden schieten, lag compensation) ✅
 3. Tank Tumult (top-down tanks)
 4. Neon Kart GP (Mode 7 kartrace)
 5. Extra's (snake, paddle, breakout, bomber, spoken, blokken, minigolf, memory, mijnenveger, invaders, rotsen)

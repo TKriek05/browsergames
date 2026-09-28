@@ -1,5 +1,6 @@
 // Unified input: keyboard, gamepad and on-screen touch controls produce one
-// state object { ax, ay, buttons, aim } that games sample every fixed tick.
+// state object { ax, ay, buttons, aim, rx, ry } that games sample every fixed
+// tick. rx/ry is the gamepad's right stick (aiming); it is not sent as is.
 import { BTN } from '../../../shared/messages.js';
 
 // Default mapping (event.code = physical key, so it works on AZERTY too).
@@ -21,7 +22,7 @@ export class Input {
     this.keys = keys;
     this.down = new Set();
     this.touch = { ax: 0, ay: 0, buttons: 0 };
-    this.state = { ax: 0, ay: 0, buttons: 0, aim: 0 };
+    this.state = { ax: 0, ay: 0, buttons: 0, aim: 0, rx: 0, ry: 0 };
     this.lastSource = 'keyboard';
 
     this._keydown = (e) => {
@@ -66,6 +67,8 @@ export class Input {
     let ax = (this._pressed('right') ? 1 : 0) - (this._pressed('left') ? 1 : 0);
     let ay = (this._pressed('down') ? 1 : 0) - (this._pressed('up') ? 1 : 0);
     let buttons = 0;
+    let rx = 0;
+    let ry = 0;
     if (this._pressed('A')) buttons |= BTN.A;
     if (this._pressed('B')) buttons |= BTN.B;
     if (this._pressed('X')) buttons |= BTN.X;
@@ -84,6 +87,13 @@ export class Input {
       if (gx || gy || dx || dy) {
         ax = gx || dx;
         ay = gy || dy;
+        this.lastSource = 'gamepad';
+      }
+      const sx = pad.axes[2] ?? 0;
+      const sy = pad.axes[3] ?? 0;
+      if (Math.hypot(sx, sy) > DEADZONE * 1.5) {
+        rx = sx;
+        ry = sy;
         this.lastSource = 'gamepad';
       }
       if (b[0]?.pressed) buttons |= BTN.A;
@@ -112,6 +122,8 @@ export class Input {
     s.ax = ax;
     s.ay = ay;
     s.buttons = buttons;
+    s.rx = rx;
+    s.ry = ry;
     if (ax || ay) s.aim = Math.atan2(ay, ax);
     return s;
   }

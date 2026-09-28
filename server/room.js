@@ -326,7 +326,12 @@ export class Room {
         this.broadcast(S2C.REACT, { id: player.id, r: msg.r });
         return; // no room update needed
       case C2S.INPUT:
-        if (this.game && player.role === 'player' && !player.isBot) this.game.onInput?.(player, msg.data);
+        // Board games: a move. Realtime games: a one-off action (e.g. a shot
+        // with its view time); continuous input arrives as binary instead.
+        if (this.game && player.role === 'player' && !player.isBot) {
+          if (this.module.realtime) this.game.onAction?.(player, msg.data);
+          else this.game.onInput?.(player, msg.data);
+        }
         return;
       default:
         return;

@@ -101,6 +101,15 @@ const SOUNDS = {
   win: () => [523, 659, 784, 1047].forEach((f, i) => tone({ type: 'triangle', freq: f, dur: 0.18, vol: 0.25, delay: i * 0.11 })),
   lose: () => [392, 330, 262].forEach((f, i) => tone({ type: 'triangle', freq: f, dur: 0.22, vol: 0.22, delay: i * 0.15 })),
   error: () => tone({ type: 'square', freq: 160, dur: 0.18, vol: 0.2 }),
+  // Kwek Kwek Knal
+  gun: () => { noise({ dur: 0.22, vol: 0.55, filter: 5000, to: 300 }); tone({ type: 'square', freq: 180, to: 60, dur: 0.12, vol: 0.25 }); },
+  gunFar: () => noise({ dur: 0.14, vol: 0.18, filter: 2500, to: 300 }),
+  reload: () => { noise({ dur: 0.04, vol: 0.3, filter: 6000, to: 3000 }); noise({ dur: 0.05, vol: 0.3, filter: 4000, to: 2000, delay: 0.18 }); },
+  quack: () => { tone({ type: 'sawtooth', freq: 620, to: 420, dur: 0.1, vol: 0.12 }); tone({ type: 'sawtooth', freq: 600, to: 380, dur: 0.12, vol: 0.12, delay: 0.13 }); },
+  flap: () => [0, 0.07, 0.14].forEach((d) => noise({ dur: 0.05, vol: 0.12, filter: 1500, to: 600, delay: d })),
+  pop: () => { noise({ dur: 0.08, vol: 0.5, filter: 8000, to: 1000 }); tone({ type: 'square', freq: 200, to: 90, dur: 0.2, vol: 0.2 }); },
+  thud: () => tone({ type: 'sine', freq: 110, to: 50, dur: 0.15, vol: 0.3 }),
+  laugh: () => [0, 0.14, 0.28].forEach((d) => tone({ type: 'square', freq: 520 - d * 400, to: 330, dur: 0.1, vol: 0.14, delay: d })),
 };
 
 export function play(name) {
