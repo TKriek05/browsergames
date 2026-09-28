@@ -80,3 +80,5 @@
 .fleet-list li.is-current .btn { border-color: var(--yellow); }
 .fleet-list li.is-done .btn { color: var(--green); }
 .bp__row { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.art-range { margin: 0; }
+.art-range__input { width: 100%; accent-color: var(--pink); min-height: 32px; }

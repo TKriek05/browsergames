@@ -380,6 +380,26 @@ const entries = [
       },
     ],
   },
+  {
+    id: 'artillery', title: 'Knalkanon', tagline: 'Om de beurt schieten over de heuvels: let op de wind en blaas kraters.',
+    kind: 'board', phase: 6, available: true, bots: true,
+    controls: 'Sleep vanaf je kanon om te richten of gebruik ←/→ (hoek) en ↑/↓ (kracht). A/D rijden, 1-3 wapen, spatie = vuur',
+    settings: [
+      {
+        key: 'rounds', label: 'Winnen bij', type: 'select',
+        options: [{ value: 1, label: '1 ronde' }, { value: 2, label: '2 rondes' }, { value: 3, label: '3 rondes' }],
+        default: 1,
+      },
+      {
+        key: 'landscape', label: 'Landschap', type: 'select',
+        options: [
+          { value: 'mix', label: 'Afwisselend' }, { value: 'gras', label: 'Groene heuvels' },
+          { value: 'woestijn', label: 'Woestijn' }, { value: 'sneeuw', label: 'Sneeuwbergen' },
+        ],
+        default: 'mix',
+      },
+    ],
+  },
 ];
 
 // Fill in limits + defaults so consumers can rely on every field existing.

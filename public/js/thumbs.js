@@ -252,6 +252,16 @@ const DRAW = {
     peng(14, 14, '#ff4d6d'); peng(27, 16, '#3ec5ff'); peng(37, 21, '#ffd23e');
     R(ctx, 41, 26, 4, 2, C.white); R(ctx, 36, 28, 3, 1, C.white);
   },
+  artillery(ctx) {
+    R(ctx, 0, 0, 48, 32, '#86c9f5'); disc(ctx, 39, 6, 3, '#fff3c4');
+    for (let x = 0; x < 48; x++) { const h = Math.round(14 + Math.sin(x * 0.16) * 5 + Math.sin(x * 0.45) * 1.5); R(ctx, x, 32 - h, 1, h, '#94613a'); R(ctx, x, 32 - h, 1, 2, '#5aa83e'); }
+    disc(ctx, 30, 14, 3, '#94613a'); R(ctx, 27, 12, 7, 3, '#86c9f5');
+    R(ctx, 6, 11, 6, 3, '#ff4d6d'); R(ctx, 10, 9, 4, 1, '#2f3138'); R(ctx, 12, 8, 2, 1, '#2f3138');
+    R(ctx, 37, 12, 6, 3, '#3ec5ff'); R(ctx, 35, 10, 3, 1, '#2f3138');
+    for (let i = 0; i < 6; i++) R(ctx, 14 + i * 3, 7 - Math.round(Math.sin(i / 5 * Math.PI) * 4), 1, 1, C.white);
+    disc(ctx, 31, 12, 2, '#ffd23e'); R(ctx, 30, 11, 2, 2, '#ff9a3e');
+    R(ctx, 0, 30, 48, 2, '#3d8fd1');
+  },
 };
 
 export function drawThumb(canvas, gameId) {
