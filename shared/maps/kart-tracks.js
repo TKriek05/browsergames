@@ -19,7 +19,9 @@ const DEFS = {
       sky: ['#3d8ee0', '#cfe8fb'], fog: '#d5e8f5', sun: ['#fffbe6', '#fff1b0'], sunDir: [0.5, 0.35, -1],
       light: { color: '#eee4cc', ambient: '#6f7a8c' }, clouds: 13,
       ground: ['#55a044', '#4e973e'], edge: '#c9b98a', road: ['#5b5c64', '#606169'], kerb: ['#e63946', '#f4f4f4'],
-      wall: ['#f4f4f4', '#e63946'], hills: ['#4f9a4f', '#7fb97a'], trees: 'pine', leaves: ['#2f7a3b', '#3c8a45', '#28693a'],
+      wall: ['#f4f4f4', '#e63946'], trees: 'pine', leaves: ['#2f7a3b', '#3c8a45', '#28693a'],
+      high: '#4a7f3a', shore: '#c9b98a', water: '#3a7fc0', mountain: ['#6f7a86', '#f4f7fa'], hilly: 110,
+      buildings: 'farm', banners: ['#e63946', '#2a6fdb', '#ffb020', '#3c8a45'],
     },
   },
   park: {
@@ -34,7 +36,9 @@ const DEFS = {
       sky: ['#5a8fd0', '#f4dcb4'], fog: '#e8d8bc', sun: ['#fff0c8', '#ffcf80'], sunDir: [-0.6, 0.22, -1],
       light: { color: '#f0d8b4', ambient: '#76706a' }, clouds: 8,
       ground: ['#7d9a3e', '#76913a'], edge: '#a88a58', road: ['#57565a', '#5c5b5f'], kerb: ['#d9822b', '#f4efe4'],
-      wall: ['#9a6a3c', '#86592f'], hills: ['#8a7a3a', '#b0a060'], trees: 'round', leaves: ['#d9822b', '#c4452c', '#e8b23a', '#8a9a2e'],
+      wall: ['#9a6a3c', '#86592f'], trees: 'round', leaves: ['#d9822b', '#c4452c', '#e8b23a', '#8a9a2e'],
+      high: '#6f6a30', shore: '#a88a58', water: '#4a7a9a', mountain: ['#7a6a5c', '#f0f0ee'], hilly: 140,
+      buildings: 'forest', banners: ['#d9822b', '#6b4a2e', '#f4efe4', '#3c6a3a'],
     },
   },
   boulevard: {
@@ -48,9 +52,10 @@ const DEFS = {
     theme: {
       sky: ['#4a78c0', '#ffc98a'], fog: '#f2d2a8', sun: ['#fff4d0', '#ffb060'], sunDir: [0.2, 0.12, 1],
       light: { color: '#f2d6b0', ambient: '#7a7080' }, clouds: 9,
-      ground: ['#e6cf96', '#dfc68b'], edge: '#d4b878', road: ['#5a5a62', '#5f5f67'], kerb: ['#2a6fdb', '#f4f4f4'],
-      wall: ['#f4f4f4', '#2a6fdb'], hills: ['#b89a6a', '#d8bf90'], trees: 'palm', leaves: ['#3f8f3a', '#4fa046', '#35803a'],
-      sea: '#2f86c8',
+      ground: ['#dcc890', '#93b05a'], edge: '#d4b878', road: ['#5a5a62', '#5f5f67'], kerb: ['#2a6fdb', '#f4f4f4'],
+      wall: ['#f4f4f4', '#2a6fdb'], trees: 'palm', leaves: ['#3f8f3a', '#4fa046', '#35803a'],
+      high: '#7f9a4a', shore: '#eed9a4', water: '#2f86c8', mountain: ['#9a8a6a', null], hilly: 70,
+      buildings: 'beach', banners: ['#2a6fdb', '#f4f4f4', '#ffb020', '#e63946'], sea: true,
     },
   },
 };

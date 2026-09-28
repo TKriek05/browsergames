@@ -1,22 +1,26 @@
-// Turbo Kart GP scenery: everything static for one track in a single mesh,
-// styled by the track's theme (see shared/maps/kart-tracks.js): ground and
-// field patches, distant hills (and the sea), asphalt with kerbs and lines,
-// painted barriers, trees, a grandstand, the start gantry and boost pads.
-// Scenery positions come from a seeded generator: same track, same world.
+// Turbo Kart GP: the world around a track, in a single static mesh, styled
+// by the track's theme (shared/maps/kart-tracks.js). A height field of
+// rolling hills (flat near the track, so the physics stays 2D), a lake in
+// the infield or the sea, snowy mountains on the horizon, then the road
+// with kerbs, lines, barriers and boost pads. Buildings, trees and track-side
+// details come from scenery.js. Everything is seeded: same track, same world.
 import { MeshBuilder } from '../../js/gl/mesh.js';
-import { yawFromDir } from '../../js/gl/mat4.js';
-import { WALL_MARGIN, pointAt } from '../../../shared/maps/kart-tracks.js';
+import { WALL_MARGIN } from '../../../shared/maps/kart-tracks.js';
+import { addScenery } from './scenery.js';
 
 export const ROAD_Y = 0.25;
+export const WATER_Y = -3;
 const BARRIER_H = 4.5;
-const TREE_STEP = 70; // grid spacing of tree candidates
-const TREE_BAND = 620; // trees up to this far from the centre line
-const TREE_CHANCE = 0.55;
+const CELL = 80; // terrain grid size
+const FLAT = 1.5 * CELL; // terrain stays flat this far beyond the barriers (no hills over the road)
+const RAMP = 460; // then rises to full hill height over this distance
 
 function seeded(seed) {
   let s = seed % 2147483647 || 1;
   return () => ((s = (s * 16807) % 2147483647) / 2147483647);
 }
+
+const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
 export function buildWorld(t) {
   const b = new MeshBuilder();
@@ -29,11 +33,10 @@ export function buildWorld(t) {
   }
   const cx = (minX + maxX) / 2;
   const cy = (minY + maxY) / 2;
-  const size = Math.max(maxX - minX, maxY - minY) + 3200;
+  const size = Math.max(maxX - minX, maxY - minY) + 3400;
   const lim = t.half + WALL_MARGIN;
-  const seaY = th.sea ? maxY + 330 : Infinity; // the sea starts south of the track
+  const seaY = th.sea ? maxY + 230 : Infinity; // the sea starts south of the track
 
-  // Distance from a point to the centre line (every 2nd sample is plenty here).
   const distToTrack = (x, y) => {
     let best = Infinity;
     for (let i = 0; i < t.count; i += 2) {
@@ -45,66 +48,120 @@ export function buildWorld(t) {
     return Math.sqrt(best);
   };
 
-  // Ground with a few patches in the second tone, then the sea.
-  b.color(th.ground[0]).box(cx, -1, cy, size, 1, size);
-  b.color(th.ground[1]);
-  for (let i = 0; i < 70; i++) {
-    const x = cx + (rnd() - 0.5) * size * 0.7;
-    const y = cy + (rnd() - 0.5) * size * 0.7;
-    const w = 120 + rnd() * 320;
-    const h = 120 + rnd() * 320;
-    if (y + h / 2 > seaY) continue;
-    b.face([[x - w / 2, 0.02, y - h / 2], [x - w / 2, 0.02, y + h / 2], [x + w / 2, 0.02, y + h / 2], [x + w / 2, 0.02, y - h / 2]], [0, 1, 0]);
-  }
-  if (th.sea) {
-    const far = cy + size / 2;
-    b.color(th.sea).face([[cx - size / 2, 0.1, seaY], [cx - size / 2, 0.1, far], [cx + size / 2, 0.1, far], [cx + size / 2, 0.1, seaY]], [0, 1, 0]);
-    b.color('#f4f4f4');
-    for (let x = cx - size / 2; x < cx + size / 2; x += 60) {
-      const y = seaY + 8 + rnd() * 20;
-      b.face([[x, 0.15, y], [x, 0.15, y + 2], [x + 26, 0.15, y + 2], [x + 26, 0.15, y]], [0, 1, 0]);
-    }
-  }
-
-  // Rolling hills on the horizon (two rings; none over the sea).
-  for (const [ring, hMin, hVar, color] of [[size / 2 - 250, 90, 160, th.hills[1]], [size / 2 - 520, 50, 90, th.hills[0]]]) {
-    const n = 40;
-    for (let i = 0; i < n; i++) {
-      const a0 = (i / n) * Math.PI * 2;
-      const a1 = ((i + 1) / n) * Math.PI * 2;
-      const am = (a0 + a1) / 2;
-      const px = (a) => cx + Math.cos(a) * ring;
-      const pz = (a) => cy + Math.sin(a) * ring;
-      if (pz(am) > seaY - 100) continue;
-      const h = hMin + rnd() * hVar;
-      const inward = [-Math.cos(am), 0, -Math.sin(am)];
-      const spread = 0.09;
-      // A rounded hill: a fan of triangles over a low arc.
-      const steps = 4;
-      for (let k = 0; k < steps; k++) {
-        const u0 = k / steps;
-        const u1 = (k + 1) / steps;
-        const ang = (u) => a0 - spread + (a1 - a0 + spread * 2) * u;
-        const hu = (u) => h * Math.sin(Math.PI * u);
-        b.color(color).face([[px(ang(u0)), 0, pz(ang(u0))], [px(ang(u1)), 0, pz(ang(u1))], [px(ang(u1)), hu(u1), pz(ang(u1))], [px(ang(u0)), hu(u0), pz(ang(u0))]], inward);
+  // A lake in the infield: the spot inside the bounding box farthest from the track.
+  let lake = null;
+  if (!th.sea) {
+    let best = { d: 0 };
+    for (let y = minY; y <= maxY; y += 40) {
+      for (let x = minX; x <= maxX; x += 40) {
+        const d = distToTrack(x, y);
+        if (d > best.d) best = { x, y, d };
       }
     }
+    const r = best.d - lim - 50;
+    if (r > 60) lake = { x: best.x, y: best.y, r: Math.min(r, 230) };
   }
 
-  // Road: asphalt, white edge lines, kerbs, centre dashes.
+  const p = [rnd() * 6, rnd() * 6, rnd() * 6, rnd() * 6];
+  const noise = (x, z) => 0.5 + 0.25 * Math.sin(x * 0.0031 + p[0]) * Math.cos(z * 0.0027 + p[1])
+    + 0.15 * Math.sin((x + z) * 0.0071 + p[2]) + 0.1 * Math.cos((x - z) * 0.013 + p[3]);
+
+  const heightAt = (x, z) => {
+    const d = distToTrack(x, z);
+    let h = smooth((d - lim - FLAT) / RAMP) * (8 + th.hilly * noise(x, z));
+    if (lake) {
+      const r = Math.hypot(x - lake.x, z - lake.y);
+      h = h * smooth((r - lake.r * 0.6) / 80) - 14 * (1 - smooth((r - lake.r * 0.4) / (lake.r * 0.7)));
+    }
+    if (z > seaY - 120) h = Math.min(h, (seaY - z) * 0.08); // the beach slopes into the sea
+    return h;
+  };
+
+  // --- Terrain ---------------------------------------------------------------------------
+  const n = Math.ceil(size / CELL);
+  const gx0 = cx - (n * CELL) / 2;
+  const gz0 = cy - (n * CELL) / 2;
+  const H = new Float32Array((n + 1) * (n + 1));
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) H[j * (n + 1) + i] = heightAt(gx0 + i * CELL, gz0 + j * CELL);
+  const V = (i, j) => [gx0 + i * CELL, H[j * (n + 1) + i], gz0 + j * CELL];
+  const shade = (h, x, z) => {
+    if (h < WATER_Y + 3) return th.shore;
+    if (h > th.hilly * 0.75) return th.high;
+    return noise(x * 1.7, z * 1.7) > 0.52 ? th.ground[0] : th.ground[1];
+  };
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const a = V(i, j), bb = V(i + 1, j), c = V(i + 1, j + 1), d = V(i, j + 1);
+      const x = a[0] + CELL / 2;
+      const z = a[2] + CELL / 2;
+      b.color(shade((a[1] + bb[1] + c[1]) / 3, x, z)).face([a, bb, c], [0, 1, 0]);
+      b.color(shade((a[1] + c[1] + d[1]) / 3, x - 20, z + 20)).face([a, c, d], [0, 1, 0]);
+    }
+  }
+  // Water everywhere below the terrain: shows up in the lake and the sea.
+  const half = (n * CELL) / 2;
+  b.color(th.water, { emissive: 0.08 }).face([[cx - half, WATER_Y, cy - half], [cx - half, WATER_Y, cy + half], [cx + half, WATER_Y, cy + half], [cx + half, WATER_Y, cy - half]], [0, 1, 0]);
+  if (th.sea) {
+    b.color('#f4f4f4');
+    for (let x = cx - half; x < cx + half; x += 70) {
+      const z = seaY + 40 + rnd() * 30;
+      b.face([[x, WATER_Y + 0.3, z], [x, WATER_Y + 0.3, z + 2], [x + 30, WATER_Y + 0.3, z + 2], [x + 30, WATER_Y + 0.3, z]], [0, 1, 0]);
+    }
+  }
+
+  // --- Mountains on the horizon (snowy peaks, or dunes/cliffs at the coast) -----------------
+  const ring = half - 120;
+  const peaks = 34;
+  for (let k = 0; k < peaks; k++) {
+    const a = (k / peaks) * Math.PI * 2 + rnd() * 0.05;
+    const mx = cx + Math.cos(a) * ring;
+    const mz = cy + Math.sin(a) * ring;
+    if (mz > seaY - 200) continue;
+    const w = ((Math.PI * 2 * ring) / peaks) * (0.8 + rnd() * 0.6);
+    const h = th.hilly * 1.4 + 120 + rnd() * 260;
+    const tx = -Math.sin(a);
+    const tz = Math.cos(a);
+    const inward = [-Math.cos(a), 0.3, -Math.sin(a)];
+    const L = [mx - tx * w / 2, -5, mz - tz * w / 2];
+    const R = [mx + tx * w / 2, -5, mz + tz * w / 2];
+    const top = [mx - Math.cos(a) * 30, h, mz - Math.sin(a) * 30];
+    const [rock, snow] = th.mountain;
+    if (!snow) {
+      // Coast: low rounded cliffs instead of peaks.
+      const steps = 5;
+      const hh = h * 0.45;
+      for (let s = 0; s < steps; s++) {
+        const u0 = s / steps;
+        const u1 = (s + 1) / steps;
+        const P = (u, y) => [L[0] + (R[0] - L[0]) * u - Math.cos(a) * 30 * Math.sin(Math.PI * u), y, L[2] + (R[2] - L[2]) * u - Math.sin(a) * 30 * Math.sin(Math.PI * u)];
+        b.color(rock).face([P(u0, -5), P(u1, -5), P(u1, hh * Math.sin(Math.PI * u1) ** 0.6), P(u0, hh * Math.sin(Math.PI * u0) ** 0.6)], inward);
+      }
+    } else if (h > 300) {
+      const k2 = 0.72;
+      const lerp3 = (u, v) => [u[0] + (v[0] - u[0]) * k2, u[1] + (v[1] - u[1]) * k2, u[2] + (v[2] - u[2]) * k2];
+      const sl = lerp3(L, top);
+      const sr = lerp3(R, top);
+      b.color(rock).face([L, R, sr, sl], inward);
+      b.color(snow).face([sl, sr, top], inward);
+    } else {
+      b.color(rock).face([L, R, top], inward);
+    }
+  }
+
+  // --- Road: asphalt, white edge lines, kerbs, gravel, centre dashes -------------------------
   const edge = (off, y) => {
     const pts = [];
     for (let i = 0; i < t.count; i++) pts.push([t.px[i] - t.ty[i] * off, y, t.py[i] + t.tx[i] * off]);
     return pts;
   };
-  const L = edge(-t.half, ROAD_Y);
-  const R = edge(t.half, ROAD_Y);
-  b.color(th.road[0]).ribbon(L, R, (i) => ((i >> 2) % 2 ? th.road[0] : th.road[1]), true);
+  const Lr = edge(-t.half, ROAD_Y);
+  const Rr = edge(t.half, ROAD_Y);
+  b.color(th.road[0]).ribbon(Lr, Rr, (i) => ((i >> 2) % 2 ? th.road[0] : th.road[1]), true);
   b.color('#f4f4f4');
   b.ribbon(edge(-t.half + 3.5, ROAD_Y + 0.02), edge(-t.half + 2, ROAD_Y + 0.02), null, true);
   b.ribbon(edge(t.half - 2, ROAD_Y + 0.02), edge(t.half - 3.5, ROAD_Y + 0.02), null, true);
-  b.ribbon(edge(-t.half - 7, ROAD_Y), L, (i) => ((i >> 1) % 2 ? th.kerb[0] : th.kerb[1]), true);
-  b.ribbon(R, edge(t.half + 7, ROAD_Y), (i) => ((i >> 1) % 2 ? th.kerb[0] : th.kerb[1]), true);
+  b.ribbon(edge(-t.half - 7, ROAD_Y), Lr, (i) => ((i >> 1) % 2 ? th.kerb[0] : th.kerb[1]), true);
+  b.ribbon(Rr, edge(t.half + 7, ROAD_Y), (i) => ((i >> 1) % 2 ? th.kerb[0] : th.kerb[1]), true);
   b.color(th.edge);
   b.ribbon(edge(-t.half - 13, 0.12), edge(-t.half - 7, 0.12), null, true);
   b.ribbon(edge(t.half + 7, 0.12), edge(t.half + 13, 0.12), null, true);
@@ -126,25 +183,6 @@ export function buildWorld(t) {
     b.ribbon(side < 0 ? outer : inner, side < 0 ? inner : outer, null, true);
   }
 
-  // Trees (or palms) around the circuit, never on the track or in the sea.
-  const x0 = minX - TREE_BAND;
-  const y0 = minY - TREE_BAND;
-  for (let gy = y0; gy <= maxY + TREE_BAND; gy += TREE_STEP) {
-    for (let gx = x0; gx <= maxX + TREE_BAND; gx += TREE_STEP) {
-      const x = gx + (rnd() - 0.5) * TREE_STEP * 0.8;
-      const y = gy + (rnd() - 0.5) * TREE_STEP * 0.8;
-      const pick = rnd();
-      const scale = 0.8 + rnd() * 0.6;
-      if (pick > TREE_CHANCE || y > seaY - 60) continue;
-      const d = distToTrack(x, y);
-      if (d < lim + 24 || d > TREE_BAND) continue;
-      tree(b, th, x, y, scale, rnd);
-    }
-  }
-
-  grandstand(b, t, th, lim, rnd);
-  startGantry(b, t, th);
-
   // Boost pads: painted chevrons pointing along the track.
   for (const pad of t.pads) {
     const fx = pad.dx;
@@ -157,96 +195,10 @@ export function buildWorld(t) {
       const l = [pad.x + fx * (d - 3) + nx * 9, ROAD_Y + 0.05, pad.y + fy * (d - 3) + ny * 9];
       const rr = [pad.x + fx * (d - 3) - nx * 9, ROAD_Y + 0.05, pad.y + fy * (d - 3) - ny * 9];
       const mid = [pad.x + fx * d, ROAD_Y + 0.05, pad.y + fy * d];
-      b.color(k === 1 ? '#ff7a1a' : '#ffb020', { emissive: 0.5 }).face([tip, l, mid], [0, 1, 0]).face([tip, mid, rr], [0, 1, 0]);
+      b.color(k === 1 ? '#ff7a1a' : '#ffb020', { emissive: 0.35 }).face([tip, l, mid], [0, 1, 0]).face([tip, mid, rr], [0, 1, 0]);
     }
   }
+
+  addScenery(b, { t, th, rnd, lim, lake, seaY, heightAt, distToTrack, ROAD_Y, bounds: { minX, maxX, minY, maxY } });
   return b.build();
-}
-
-function tree(b, th, x, y, s, rnd) {
-  const leaf = th.leaves[Math.floor(rnd() * th.leaves.length)];
-  if (th.trees === 'pine') {
-    b.color('#6b4a2e').box(x, 0, y, 2.4 * s, 6 * s, 2.4 * s, { bottom: false });
-    b.color(leaf);
-    b.cone(x, 5 * s, y, 10 * s, 15 * s, 6).cone(x, 13 * s, y, 7 * s, 12 * s, 6);
-  } else if (th.trees === 'round') {
-    b.color('#5e412a').box(x, 0, y, 2.6 * s, 9 * s, 2.6 * s, { bottom: false });
-    b.color(leaf).sphere(x, 15 * s, y, 8.5 * s, 6, 4);
-  } else {
-    // Palm: a slightly bent trunk and drooping leaves.
-    b.color('#8a6a44');
-    for (let k = 0; k < 4; k++) b.box(x + k * 0.9 * s, k * 6 * s, y, 2.4 * s, 6.2 * s, 2.4 * s, { bottom: false });
-    const tx = x + 3.6 * s;
-    const ty = 24 * s;
-    b.color(leaf);
-    for (let k = 0; k < 6; k++) {
-      const a = (k / 6) * Math.PI * 2 + rnd() * 0.4;
-      const ex = tx + Math.cos(a) * 13 * s;
-      const ez = y + Math.sin(a) * 13 * s;
-      const px = -Math.sin(a) * 2.2 * s;
-      const pz = Math.cos(a) * 2.2 * s;
-      const blade = [[tx + px, ty + 1, y + pz], [tx - px, ty + 1, y - pz], [ex, ty - 6 * s, ez]];
-      b.face(blade, [0, 1, 0]).face(blade, [0, -1, 0]);
-    }
-  }
-}
-
-// Grandstand with a crowd along the start straight (outside the barrier).
-function grandstand(b, t, th, lim, rnd) {
-  const f0 = pointAt(t, t.length * 0.02);
-  const yaw = yawFromDir(f0.tx, f0.ty);
-  const at = (lat, along = 0) => [f0.x - f0.ty * lat + f0.tx * along, f0.y + f0.tx * lat + f0.ty * along];
-  const len = 170;
-  const crowd = ['#e63946', '#f4f4f4', '#2a6fdb', '#ffb020', '#3c8a45', '#8a4fb8', '#1c1c28'];
-  for (let k = 0; k < 5; k++) {
-    const lat = -(lim + 14 + k * 8);
-    const [x, z] = at(lat);
-    const h = 4 + k * 4;
-    b.color(k % 2 ? '#b8b8c0' : '#c4c4cc').orientedBox(x, 0, z, len, h, 8, yaw);
-    for (let i = 0; i < 28; i++) {
-      if (rnd() < 0.2) continue;
-      const [px, pz] = at(lat + 1.5, -len / 2 + 4 + i * ((len - 8) / 27));
-      b.color(crowd[Math.floor(rnd() * crowd.length)]).orientedBox(px, h, pz, 2.6, 3.4 + rnd(), 2.6, yaw);
-    }
-  }
-  // Roof on posts
-  for (const along of [-len / 2 + 3, 0, len / 2 - 3]) {
-    const [x, z] = at(-(lim + 50), along);
-    b.color('#8a8a92').orientedBox(x, 0, z, 2, 36, 2, yaw);
-  }
-  const [rx, rz] = at(-(lim + 32));
-  b.color(th.wall[1]).orientedBox(rx, 36, rz, len + 6, 1.5, 44, yaw);
-}
-
-// Start/finish: checkered line and a gantry with start lights.
-function startGantry(b, t, th) {
-  const f0 = pointAt(t, 0);
-  const cells = 10;
-  for (let row = 0; row < 2; row++) {
-    for (let col = 0; col < cells; col++) {
-      const a = -t.half + (col / cells) * t.half * 2;
-      const bb = a + (t.half * 2) / cells;
-      const d0 = row * 5;
-      const d1 = d0 + 5;
-      const P = (lat, d) => [f0.x + f0.tx * d - f0.ty * lat, ROAD_Y + 0.06, f0.y + f0.ty * d + f0.tx * lat];
-      b.color((row + col) % 2 ? '#f4f4f4' : '#15151c').face([P(a, d0), P(bb, d0), P(bb, d1), P(a, d1)], [0, 1, 0]);
-    }
-  }
-  const post = (lat) => [f0.x - f0.ty * lat, f0.y + f0.tx * lat];
-  for (const lat of [-(t.half + 12), t.half + 12]) {
-    const [x, z] = post(lat);
-    b.color('#9a9aa4').box(x, 0, z, 3.5, 30, 3.5);
-  }
-  const [gx, gz] = post(0);
-  const yaw = yawFromDir(f0.tx, f0.ty);
-  const span = (t.half + 12) * 2;
-  b.color('#9a9aa4').orientedBox(gx, 30, gz, 3, 5, span, yaw);
-  // Banner in the circuit's colours + five start lights
-  b.color(th.wall[1]).orientedBox(gx - f0.tx * 1.8, 25, gz - f0.ty * 1.8, 0.5, 5, span * 0.7, yaw);
-  for (let k = 0; k < 5; k++) {
-    const lat = (k - 2) * 7;
-    const [lx, lz] = post(lat);
-    b.color('#1c1c24').orientedBox(lx, 35, lz, 3, 5, 5, yaw);
-    b.color('#ff3b30', { emissive: 0.8 }).orientedBox(lx - f0.tx * 1.6, 36, lz - f0.ty * 1.6, 0.4, 3, 3, yaw);
-  }
 }

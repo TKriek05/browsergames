@@ -16,7 +16,7 @@ import { createKartHud, createFallback2D } from './hud.js';
 export const meta = {
   width: 480,
   height: 270,
-  pixelated: true,
+  pixelated: false, // smooth 3D at screen resolution
   gl: true,
   step: KART_PHYS.DT,
   touchButtons: [{ label: 'GAS', bit: BTN.A }, { label: 'DRIFT', bit: BTN.B }, { label: 'ITEM', bit: BTN.X }],

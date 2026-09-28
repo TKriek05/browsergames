@@ -1,8 +1,9 @@
 // A tiny WebGL renderer for our low-poly 3D games (no libraries):
 // flat-shaded vertex-colour meshes with one directional light, fog, emissive
 // (glowing) parts, a gradient sky with an optional sun (plain or retro
-// striped) and puffy clouds, and point particles. WebGL 1 + GLSL ES 1.00, so it runs on practically every device.
-// Rendered at a low resolution and scaled up pixelated for a retro look.
+// striped) and puffy clouds, and round point particles. WebGL 1 + GLSL ES 1.00, so it runs on practically every device.
+// Rendered at screen resolution (smooth) or at a low resolution scaled up
+// pixelated, see core/canvas.js.
 import { create, perspective, lookAt, multiply, transform4, invert } from './mat4.js';
 import { FLOATS_PER_VERTEX, rgb } from './mesh.js';
 
@@ -120,11 +121,14 @@ const POINTS_FS = `
 precision mediump float;
 varying vec4 vColor;
 void main() {
-  gl_FragColor = vColor;
+  // Round, soft-edged dots instead of squares.
+  float r = length(gl_PointCoord - vec2(0.5));
+  if (r > 0.5) discard;
+  gl_FragColor = vec4(vColor.rgb, vColor.a * (1.0 - smoothstep(0.32, 0.5, r)));
 }`;
 
 export function createRenderer3D(canvas) {
-  const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: true, powerPreference: 'high-performance' });
+  const gl = canvas.getContext('webgl', { antialias: !!canvas.smooth, alpha: false, depth: true, powerPreference: 'high-performance' });
   if (!gl) return null;
 
   const meshes = new Set();
@@ -360,8 +364,9 @@ export function createRenderer3D(canvas) {
       }
     },
 
-    // Additive glowing points. data: Float32Array of [x, y, z, r, g, b, a, size] × count.
-    points(data, count, scale = 1) {
+    // Round points. data: Float32Array of [x, y, z, r, g, b, a, size] × count.
+    // additive: glowing (sparks, fire); otherwise normal alpha blending (dust, smoke).
+    points(data, count, scale = 1, additive = false) {
       if (lost || !count) return;
       const pp = progs.points;
       use(pp);
@@ -381,28 +386,33 @@ export function createRenderer3D(canvas) {
       gl.enableVertexAttribArray(pp.a.aSize);
       gl.vertexAttribPointer(pp.a.aSize, 1, gl.FLOAT, false, stride, 28);
       gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+      gl.blendFunc(gl.SRC_ALPHA, additive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
       gl.depthMask(false);
       gl.drawArrays(gl.POINTS, 0, count);
       gl.depthMask(true);
       gl.disable(gl.BLEND);
     },
 
-    // World position → canvas pixel coordinates (null when behind the camera).
+    // World position → logical canvas coordinates (null when behind the camera).
+    // Logical = the game's HUD units, also when the canvas renders at screen resolution.
     project(x, y, z, out) {
       transform4(tmp4, viewProj, x, y, z);
       if (tmp4[3] <= 0.01) return null;
-      out.x = (tmp4[0] / tmp4[3] * 0.5 + 0.5) * canvas.width;
-      out.y = (1 - (tmp4[1] / tmp4[3] * 0.5 + 0.5)) * canvas.height;
+      const lw = canvas.logicalWidth || canvas.width;
+      const lh = lw * (canvas.height / canvas.width);
+      out.x = (tmp4[0] / tmp4[3] * 0.5 + 0.5) * lw;
+      out.y = (1 - (tmp4[1] / tmp4[3] * 0.5 + 0.5)) * lh;
       out.depth = tmp4[3];
       return out;
     },
 
-    // Canvas pixel → point on the horizontal plane y = planeY (for mouse aiming).
+    // Logical canvas point → point on the horizontal plane y = planeY (for mouse aiming).
     groundPoint(px, py, planeY, out) {
       if (!invert(invViewProj, viewProj)) return null;
-      const nx = (px / canvas.width) * 2 - 1;
-      const ny = 1 - (py / canvas.height) * 2;
+      const lw = canvas.logicalWidth || canvas.width;
+      const lh = lw * (canvas.height / canvas.width);
+      const nx = (px / lw) * 2 - 1;
+      const ny = 1 - (py / lh) * 2;
       transform4(tmp4, invViewProj, nx, ny, -1);
       transform4(tmpB, invViewProj, nx, ny, 1);
       const ax = tmp4[0] / tmp4[3], ay = tmp4[1] / tmp4[3], az = tmp4[2] / tmp4[3];

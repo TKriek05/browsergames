@@ -6,8 +6,15 @@
 //                    game pixel is equally big and crisp on any devicePixelRatio.
 // pixelated: false → the backing store follows the CSS size × devicePixelRatio
 //                    for sharp vector drawing (board games); draw in logical units.
-// gl: true         → 3D games: a WebGL canvas (view.glCanvas) at the logical
-//                    resolution with a transparent 2D HUD canvas (view.canvas) on top.
+// gl: true         → 3D games: a WebGL canvas (view.glCanvas) with a transparent
+//                    2D HUD canvas (view.canvas) on top. With pixelated: true the
+//                    3D image is rendered at the logical resolution and scaled up
+//                    blocky; with pixelated: false it follows the screen resolution
+//                    (smooth, capped for speed). Draw the HUD in logical units.
+
+// Most device pixels a smooth WebGL canvas may have (≈ 1920 × 1080).
+const MAX_GL_PIXELS = 2_100_000;
+const MAX_GL_DPR = 2;
 
 export function createGameCanvas(container, { width, height, pixelated = true, gl = false }) {
   const canvas = document.createElement('canvas');
@@ -20,9 +27,12 @@ export function createGameCanvas(container, { width, height, pixelated = true, g
     root = document.createElement('div');
     root.className = 'game-stack';
     glCanvas = document.createElement('canvas');
-    glCanvas.className = 'game-canvas game-canvas--pixel game-canvas--gl';
+    glCanvas.className = pixelated ? 'game-canvas game-canvas--pixel game-canvas--gl' : 'game-canvas game-canvas--gl';
     glCanvas.width = width;
     glCanvas.height = height;
+    // Read by the renderer: logical size (for project/groundPoint) and antialiasing.
+    glCanvas.logicalWidth = width;
+    glCanvas.smooth = !pixelated;
     canvas.classList.add('game-canvas--hud');
     root.append(glCanvas, canvas);
   }
@@ -61,6 +71,16 @@ export function createGameCanvas(container, { width, height, pixelated = true, g
       }
       ctx.setTransform(bw / width, 0, 0, bh / height, 0, 0);
       ctx.imageSmoothingEnabled = true;
+      if (glCanvas) {
+        const k = Math.min(1, Math.sqrt(MAX_GL_PIXELS / (cssW * cssH * dpr * dpr)));
+        const d = Math.min(dpr, MAX_GL_DPR) * k;
+        const gw = Math.max(width, Math.round(cssW * d));
+        const gh = Math.max(height, Math.round(cssH * d));
+        if (glCanvas.width !== gw || glCanvas.height !== gh) {
+          glCanvas.width = gw;
+          glCanvas.height = gh;
+        }
+      }
     }
   }
 

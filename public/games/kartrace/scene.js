@@ -16,13 +16,14 @@ export function createKartScene(canvas, { reducedMotion }) {
   if (!r) return null;
   const m = create();
   const kart = r.mesh(buildKart());
-  const box = r.mesh(new MeshBuilder().color('#ffffff', { emissive: 0.3, tint: 1 }).box(0, -4, 0, 8, 8, 8, { top: '#ffffff' })
-    .color('#ffffff', { emissive: 0.6 }).box(0, 4, 0, 3, 0.4, 3).build());
+  // Item box: a wooden crate with a painted question-mark band in the hue.
+  const box = r.mesh(new MeshBuilder().color('#c8945a').box(0, -4, 0, 8, 8, 8, { top: '#d8a468' })
+    .color('#ffffff', { tint: 1, emissive: 0.15 }).box(0, -1.5, 0, 8.3, 3, 8.3, { top: '#d8a468' }).build());
   const orb = r.mesh(new MeshBuilder().color('#ff5a36', { emissive: 0.25 }).sphere(0, 0, 0, 3.6, 8, 5)
     .color('#fff4e0').box(0, -0.4, 0, 7.4, 0.8, 1.2).build());
   const oil = r.mesh(buildOil());
   const shadow = r.mesh(buildShadow());
-  const shield = r.mesh(new MeshBuilder().color('#7de0ff', { emissive: 0.6 }).sphere(0, 0, 0, 10, 8, 5).build());
+  const shield = r.mesh(new MeshBuilder().color('#bfe8ff', { emissive: 0.3 }).sphere(0, 0, 0, 10, 10, 6).build());
   const particles = createParticles3D(700, { reducedMotion });
   let world = null;
   let track = null;
@@ -43,7 +44,7 @@ export function createKartScene(canvas, { reducedMotion }) {
       const [sx, sy, sz] = th.sunDir;
       r.setColors({
         sky: th.sky,
-        fog: [th.fog, 1100, 3000],
+        fog: [th.fog, 1500, 4200],
         light: { dir: [-sx, -1.2, -sz], color: th.light.color, ambient: th.light.ambient },
         sun: { dir: th.sunDir, radius: 0.07, top: th.sun[0], bottom: th.sun[1] },
         clouds: { count: th.clouds, color: '#ffffff', shade: th.fog, seed: t.count },
@@ -85,7 +86,7 @@ export function createKartScene(canvas, { reducedMotion }) {
       const fov = 1.02 + speed01 * 0.1 + (boost ? 0.12 : 0);
       cam.fov += (fov - cam.fov) * (1 - Math.exp(-dt * 4));
       cam.ready = true;
-      r.camera(cam.x, cam.y, cam.z, cam.lx, cam.ly, cam.lz, cam.fov, 2, 3200);
+      r.camera(cam.x, cam.y, cam.z, cam.lx, cam.ly, cam.lz, cam.fov, 2, 4600);
     },
 
     begin() {
@@ -99,10 +100,12 @@ export function createKartScene(canvas, { reducedMotion }) {
 
     // drift: -1/0/1 (the body swings into the slide), steer banks it a little.
     kart(x, y, hx, hy, color, { drift = 0, steer = 0, spin = 0, flash = 0 } = {}) {
+      // A kart right at the camera would fill the screen: leave it out.
+      if ((x - cam.x) ** 2 + (y - cam.z) ** 2 < 14 * 14) return;
       const yaw = yawFromDir(hx, hy) - drift * 0.38 + (spin > 0 ? time * 14 : 0);
       const bank = drift * 0.1 + steer * 0.05;
       compose(m, x, 0.3, y, yaw, bank, 0, 1);
-      r.draw(kart, m, color, 1, flash);
+      r.draw(kart, m, paint(color), 1, flash);
     },
 
     itemBox(x, y, hue) {
@@ -156,7 +159,7 @@ export function createKartScene(canvas, { reducedMotion }) {
     },
 
     endParticles() {
-      particles.draw(r, 1);
+      particles.draw(r, 1, false);
     },
 
     project(x, y, h, out) {
@@ -170,21 +173,43 @@ export function createKartScene(canvas, { reducedMotion }) {
 }
 
 // --- Meshes ------------------------------------------------------------------------
+// The player's colour as paint: a bit softer than the bright UI colours.
+const paintCache = new Map();
+function paint(c) {
+  const key = c.join();
+  let p = paintCache.get(key);
+  if (!p) {
+    const g = (c[0] + c[1] + c[2]) / 3;
+    p = c.map((v) => (v * 0.8 + g * 0.2) * 0.88);
+    paintCache.set(key, p);
+  }
+  return p;
+}
+
+// A kart facing +x: chassis, painted body and nose (tint = player colour),
+// side pods, a number plate, a driver with a helmet, big tyres.
 function buildKart() {
   const b = new MeshBuilder();
-  b.color('#26263a').box(0, 0.8, 0, 13.5, 1.4, 8.4);
-  b.color('#ffffff', { tint: 1 }).box(-1.2, 2.2, 0, 8.5, 2.3, 6.4, { top: '#ffffff' });
-  b.color('#e0e0e0', { tint: 1 }).wedge(5.2, 1.6, 0, 5.4, 2, 6, 1.5);
-  b.color('#f4f4f4').box(-1.2, 3.2, 3.25, 7.6, 0.6, 0.2).box(-1.2, 3.2, -3.25, 7.6, 0.6, 0.2);
-  // Spoiler
-  b.color('#2c2c40').box(-6.2, 3.5, 2.4, 0.8, 2.4, 0.6).box(-6.2, 3.5, -2.4, 0.8, 2.4, 0.6);
-  b.color('#ffffff', { tint: 1 }).box(-6.4, 5.8, 0, 2.4, 0.6, 9);
-  // Wheels
-  b.color('#15151f');
-  for (const [wx, wz] of [[4.3, 4.7], [4.3, -4.7], [-4.4, 4.9], [-4.4, -4.9]]) b.wheel(wx, 2.2, wz, 2.2, 2.2, 8, '#8a8fb8');
-  // Driver: helmet + visor
-  b.color('#f4f4ff').sphere(-1.8, 6.3, 0, 2.2, 8, 5);
-  b.color('#1d2b3c').box(-0.2, 5.9, 0, 0.8, 1, 3);
+  b.color('#2a2a30').box(0, 0.8, 0, 13.5, 1.2, 8.6);
+  b.color('#ffffff', { tint: 1 }).box(-1.5, 2, 0, 8, 2.2, 5.6, { top: '#ffffff' });
+  b.color('#e8e8e8', { tint: 1 }).wedge(4.8, 1.4, 0, 5.2, 2.2, 5.8, 1.6);
+  b.color('#ffffff', { tint: 1 }).box(-0.5, 1.2, 3.9, 6.5, 1.8, 1.6).box(-0.5, 1.2, -3.9, 6.5, 1.8, 1.6);
+  b.color('#f4f4f4').box(7.1, 1.6, 0, 0.4, 2.2, 3.6);
+  b.color('#1c1c22').box(7.35, 2.2, 0, 0.1, 1, 1.2);
+  // Seat, steering wheel
+  b.color('#1c1c22').box(-3.4, 3.2, 0, 2.6, 3.4, 3.6);
+  b.color('#3a3a42').box(1.6, 4.2, 0, 0.6, 0.6, 3);
+  // Driver: suit in the player colour, gloves, helmet with a dark visor
+  b.color('#ffffff', { tint: 1 }).box(-1.9, 4.2, 0, 2.6, 3.4, 3.4);
+  b.color('#2a2a30').box(0.4, 4.4, 1.3, 2.2, 0.8, 0.8).box(0.4, 4.4, -1.3, 2.2, 0.8, 0.8);
+  b.color('#f4f4f4').sphere(-1.8, 8.8, 0, 2.3, 10, 6);
+  b.color('#1d2b3c').box(-0.1, 8.5, 0, 0.9, 1.1, 3.2);
+  // Rear spoiler
+  b.color('#2a2a30').box(-6.2, 3.2, 2.4, 0.8, 2.6, 0.6).box(-6.2, 3.2, -2.4, 0.8, 2.6, 0.6);
+  b.color('#ffffff', { tint: 1 }).box(-6.4, 5.6, 0, 2.6, 0.6, 9.4);
+  // Tyres with light rims
+  b.color('#17171c');
+  for (const [wx, wz, r] of [[4.3, 4.9, 2.1], [4.3, -4.9, 2.1], [-4.4, 5.1, 2.5], [-4.4, -5.1, 2.5]]) b.wheel(wx, r, wz, r, 2.4, 10, '#b8b8c0');
   // Exhausts
   b.color('#8a8a92').box(-6.9, 2.1, 1.8, 0.8, 1, 1).box(-6.9, 2.1, -1.8, 0.8, 1, 1);
   return b.build();

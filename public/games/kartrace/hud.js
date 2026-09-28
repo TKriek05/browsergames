@@ -1,8 +1,7 @@
 // Turbo Kart GP HUD on the 2D canvas above the 3D view: place, lap, time,
 // item slot (with a short roulette), minimap, speed, start lights, banners
 // and the Grand Prix standings. Plus a top-down view when WebGL is missing.
-import { drawText } from '../../js/core/pixelfont.js';
-import { createLayer } from '../../js/core/canvas.js';
+import { drawText } from '../../js/core/hudtext.js';
 import { ITEM, ITEMS } from '../../../shared/games/kartrace.js';
 
 const SHADOW = '#0b0b1e';
@@ -13,35 +12,23 @@ export function createKartHud(view) {
   const { ctx, width: W, height: H } = view;
   let map = null; // { canvas, track, sx(x), sy(y) }
 
+  // Minimap as a vector path (sharp at any screen size).
   function buildMap(track) {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (let i = 0; i < track.count; i++) {
       minX = Math.min(minX, track.px[i]); maxX = Math.max(maxX, track.px[i]);
       minY = Math.min(minY, track.py[i]); maxY = Math.max(maxY, track.py[i]);
     }
-    const scale = Math.min((MAP_W - 8) / (maxX - minX), (MAP_H - 8) / (maxY - minY));
+    const scale = Math.min((MAP_W - 10) / (maxX - minX), (MAP_H - 10) / (maxY - minY));
     const ox = (MAP_W - (maxX - minX) * scale) / 2 - minX * scale;
     const oy = (MAP_H - (maxY - minY) * scale) / 2 - minY * scale;
-    const { canvas, ctx: c } = createLayer(MAP_W, MAP_H);
-    c.fillStyle = 'rgba(28, 52, 30, 0.8)';
-    c.fillRect(0, 0, MAP_W, MAP_H);
-    c.lineJoin = 'round';
-    for (const [width, color] of [[5, '#1c1c24'], [3, '#c8c8d0']]) {
-      c.strokeStyle = color;
-      c.lineWidth = width;
-      c.beginPath();
-      for (let i = 0; i <= track.count; i++) {
-        const k = i % track.count;
-        const x = track.px[k] * scale + ox;
-        const y = track.py[k] * scale + oy;
-        if (i) c.lineTo(x, y);
-        else c.moveTo(x, y);
-      }
-      c.stroke();
+    const path = new Path2D();
+    for (let i = 0; i <= track.count; i++) {
+      const k = i % track.count;
+      if (i) path.lineTo(track.px[k] * scale + ox, track.py[k] * scale + oy);
+      else path.moveTo(track.px[k] * scale + ox, track.py[k] * scale + oy);
     }
-    c.fillStyle = '#ffffff';
-    c.fillRect(Math.round(track.px[0] * scale + ox) - 1, Math.round(track.py[0] * scale + oy) - 1, 3, 3);
-    map = { canvas, track, sx: (x) => x * scale + ox, sy: (y) => y * scale + oy };
+    map = { path, track, sx: (x) => x * scale + ox, sy: (y) => y * scale + oy, start: [track.px[0] * scale + ox, track.py[0] * scale + oy] };
   }
 
   return {
@@ -72,11 +59,12 @@ export function createKartHud(view) {
     item(item, roll) {
       const x = W / 2 - 13;
       const y = 5;
-      ctx.fillStyle = 'rgba(20,20,28,0.65)';
-      ctx.fillRect(x, y, 26, 26);
-      ctx.strokeStyle = '#f4f4f4';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x + 0.5, y + 0.5, 25, 25);
+      ctx.fillStyle = 'rgba(20,20,28,0.6)';
+      roundRect(ctx, x, y, 26, 26, 5);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
       const shown = roll > 0 ? 1 + (Math.floor(performance.now() / 70) % 4) : item;
       if (shown) icon(ctx, shown, x + 13, y + 13);
     },
@@ -90,15 +78,31 @@ export function createKartHud(view) {
       if (!map) return;
       const x0 = 5;
       const y0 = H - MAP_H - 5;
-      ctx.drawImage(map.canvas, x0, y0);
+      ctx.save();
+      ctx.translate(x0, y0);
+      ctx.fillStyle = 'rgba(20, 30, 22, 0.55)';
+      roundRect(ctx, 0, 0, MAP_W, MAP_H, 5);
+      ctx.fill();
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.lineWidth = 5;
+      ctx.stroke(map.path);
+      ctx.strokeStyle = '#d8d8de';
+      ctx.lineWidth = 3;
+      ctx.stroke(map.path);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(map.start[0] - 1.5, map.start[1] - 1.5, 3, 3);
       for (const d of dots) {
-        const x = Math.round(x0 + map.sx(d.x));
-        const y = Math.round(y0 + map.sy(d.y));
-        ctx.fillStyle = SHADOW;
-        ctx.fillRect(x - 2, y - 2, d.me ? 5 : 4, d.me ? 5 : 4);
+        const r = d.me ? 3 : 2.3;
+        ctx.beginPath();
+        ctx.arc(map.sx(d.x), map.sy(d.y), r, 0, Math.PI * 2);
         ctx.fillStyle = d.color;
-        ctx.fillRect(x - 1, y - 1, d.me ? 3 : 2, d.me ? 3 : 2);
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = d.me ? '#ffffff' : 'rgba(0,0,0,0.6)';
+        ctx.stroke();
       }
+      ctx.restore();
     },
 
     // Start lights: three red lamps, then green.
@@ -106,13 +110,16 @@ export function createKartHud(view) {
       const lit = Math.min(3, Math.max(0, 4 - Math.ceil(left)));
       const go = left <= 1;
       const x0 = W / 2 - 33;
-      ctx.fillStyle = 'rgba(11,11,30,0.85)';
-      ctx.fillRect(x0 - 4, 44, 74, 26);
+      ctx.fillStyle = 'rgba(20,20,26,0.9)';
+      roundRect(ctx, x0 - 5, 43, 76, 28, 6);
+      ctx.fill();
       for (let i = 0; i < 3; i++) {
-        ctx.fillStyle = go ? '#5dff8a' : i < lit ? '#ff4d6d' : '#2a2a4a';
-        ctx.fillRect(x0 + i * 24, 48, 18, 18);
+        ctx.beginPath();
+        ctx.arc(x0 + 9 + i * 24, 57, 9, 0, Math.PI * 2);
+        ctx.fillStyle = go ? '#3ad26a' : i < lit ? '#ff3b30' : '#3a3a44';
+        ctx.fill();
       }
-      if (go) drawText(ctx, 'GO!', W / 2, 80, { color: '#5dff8a', scale: 4, align: 'center', shadow: SHADOW });
+      if (go) drawText(ctx, 'GO!', W / 2, 80, { color: '#3ad26a', scale: 4, align: 'center', shadow: SHADOW });
     },
 
     banner(text, sub = '', color = '#ffe14d') {
@@ -129,8 +136,9 @@ export function createKartHud(view) {
       const w = 220;
       const x = (W - w) / 2;
       const y = 50;
-      ctx.fillStyle = 'rgba(11,11,30,0.85)';
-      ctx.fillRect(x, y, w, 24 + rows.length * 13);
+      ctx.fillStyle = 'rgba(20,20,26,0.88)';
+      roundRect(ctx, x, y, w, 24 + rows.length * 13, 8);
+      ctx.fill();
       drawText(ctx, title, W / 2, y + 6, { color: '#ffe14d', align: 'center' });
       rows.forEach((r, i) => {
         const ry = y + 22 + i * 13;
@@ -145,39 +153,71 @@ export function createKartHud(view) {
 
 function icon(ctx, item, cx, cy) {
   const color = ITEMS[item]?.color ?? '#ffffff';
+  ctx.save();
   ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   switch (item) {
     case ITEM.TURBO: // double chevron
-      for (let k = 0; k < 2; k++) {
-        for (let i = 0; i < 5; i++) {
-          ctx.fillRect(cx - 7 + k * 6 + i, cy - 5 + i, 2, 1);
-          ctx.fillRect(cx - 7 + k * 6 + i, cy + 5 - i, 2, 1);
-        }
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      for (const dx of [-4, 2]) {
+        ctx.moveTo(cx + dx - 2, cy - 5);
+        ctx.lineTo(cx + dx + 3, cy);
+        ctx.lineTo(cx + dx - 2, cy + 5);
       }
+      ctx.stroke();
       break;
-    case ITEM.ORB:
-      for (let y = -6; y <= 6; y++) for (let x = -6; x <= 6; x++) if (x * x + y * y <= 36) ctx.fillRect(cx + x, cy + y, 1, 1);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(cx - 3, cy - 3, 2, 2);
+    case ITEM.ORB: {
+      const g = ctx.createRadialGradient(cx - 2, cy - 2, 1, cx, cy, 7);
+      g.addColorStop(0, '#ffd0b8');
+      g.addColorStop(1, color);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff4e0';
+      ctx.fillRect(cx - 7, cy - 0.8, 14, 1.6);
       break;
+    }
     case ITEM.OIL:
-      for (let y = -6; y <= 6; y++) {
-        const w = y < 0 ? Math.round((y + 7) / 2) : Math.round(Math.sqrt(36 - y * y));
-        ctx.fillRect(cx - w, cy + y, w * 2 + 1, 1);
-      }
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 7);
+      ctx.bezierCurveTo(cx + 6, cy - 1, cx + 6, cy + 6, cx, cy + 6);
+      ctx.bezierCurveTo(cx - 6, cy + 6, cx - 6, cy - 1, cx, cy - 7);
+      ctx.fill();
       break;
     case ITEM.SHIELD:
-      for (let y = -6; y <= 6; y++) {
-        const w = y < 2 ? 6 : 6 - (y - 1) * 1.2;
-        ctx.fillRect(cx - Math.round(w), cy + y, Math.round(w) * 2 + 1, 1);
-      }
-      ctx.fillStyle = '#0b0b1e';
-      ctx.fillRect(cx, cy - 4, 1, 8);
-      ctx.fillRect(cx - 3, cy - 1, 7, 1);
+      ctx.beginPath();
+      ctx.moveTo(cx - 6, cy - 6);
+      ctx.lineTo(cx + 6, cy - 6);
+      ctx.lineTo(cx + 6, cy);
+      ctx.quadraticCurveTo(cx + 5, cy + 5, cx, cy + 7);
+      ctx.quadraticCurveTo(cx - 5, cy + 5, cx - 6, cy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 4); ctx.lineTo(cx, cy + 4);
+      ctx.moveTo(cx - 3, cy - 1); ctx.lineTo(cx + 3, cy - 1);
+      ctx.stroke();
       break;
     default:
       break;
   }
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 // Top-down fallback when WebGL is not available: follows your kart.

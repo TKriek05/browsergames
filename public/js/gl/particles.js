@@ -55,8 +55,9 @@ export function createParticles3D(max = 400, { reducedMotion = false } = {}) {
       }
     },
 
-    draw(renderer, scale = 1) {
-      renderer.points(data, count, scale);
+    // additive: glowing sparks/fire; false: dust, smoke, splashes (normal blending).
+    draw(renderer, scale = 1, additive = false) {
+      renderer.points(data, count, scale, additive);
     },
 
     clear() {
