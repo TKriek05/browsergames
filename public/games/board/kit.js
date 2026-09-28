@@ -19,6 +19,7 @@
 // }
 import { h, clear, preserveFocus } from '../../js/core/ui.js';
 import { REACTIONS, C2S } from '../../../shared/messages.js';
+import { PLAYER_COLORS } from '../../../shared/constants.js';
 import { getGame } from '../../../shared/catalog.js';
 import { colorHex, clamp01 } from './draw.js';
 
@@ -150,6 +151,7 @@ class BoardClient {
       local: this.local,
       reduced: this.reduced,
       colorOf: (seat) => this._colorOf(seat),
+      colorNameOf: (seat) => this._colorNameOf(seat),
       nameOf: (seat) => this._nameOfSeat(seat),
     };
   }
@@ -166,6 +168,11 @@ class BoardClient {
   _colorOf(seat) {
     const p = this._player(this.snap?.seats[seat]);
     return colorHex(p ? p.color : seat);
+  }
+  _colorNameOf(seat) {
+    const p = this._player(this.snap?.seats[seat]);
+    const name = PLAYER_COLORS[(p ? p.color : seat) % PLAYER_COLORS.length].name;
+    return name[0].toUpperCase() + name.slice(1);
   }
 
   // --- Loop ------------------------------------------------------------------------------------

@@ -48,9 +48,15 @@ const entries = [
     id: 'tictactoe', title: 'Boter-kaas-en-eieren', tagline: 'Drie op een rij, de snelste klassieker.',
     kind: 'board', phase: 1, available: true, bots: true, controls: 'Klik of tik op een vak, of pijltjes + Enter',
   },
-  { id: 'connect4', title: 'Vier op een rij', tagline: 'Laat schijven vallen en maak er vier op een rij.', kind: 'board', phase: 1 },
+  {
+    id: 'connect4', title: 'Vier op een rij', tagline: 'Laat schijven vallen en maak er vier op een rij.',
+    kind: 'board', phase: 1, available: true, bots: true, controls: 'Klik of tik op een kolom, of pijltjes + Enter',
+  },
   { id: 'checkers', title: 'Dammen', tagline: 'Nederlandse regels op een 10×10 bord.', kind: 'board', phase: 1 },
-  { id: 'reversi', title: 'Reversi', tagline: 'Sluit stenen in en draai ze om.', kind: 'board', phase: 1 },
+  {
+    id: 'reversi', title: 'Reversi', tagline: 'Sluit stenen in en draai ze om.',
+    kind: 'board', phase: 1, available: true, bots: true, controls: 'Klik of tik op een vak met een stip, of pijltjes + Enter',
+  },
   { id: 'chess', title: 'Schaken', tagline: 'Volledige regels, met bots in drie niveaus.', kind: 'board', phase: 1 },
   { id: 'ludo', title: 'Mens-erger-je-niet', tagline: 'Gooi, loop en sla elkaar terug naar start.', kind: 'board', phase: 1 },
   { id: 'goose', title: 'Ganzenbord', tagline: 'Het oer-Hollandse dobbelspel voor de hele groep.', kind: 'board', phase: 1 },

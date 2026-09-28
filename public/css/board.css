@@ -61,3 +61,5 @@
   .board-layout__side { max-height: 40vh; max-height: 40dvh; padding: 12px; }
   .bp__reactions { display: none; }
 }
+
+.bp__score-line { margin: 0; font-family: var(--mono); font-weight: 700; font-size: 1.05rem; text-align: center; }
