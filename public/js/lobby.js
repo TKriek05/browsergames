@@ -111,7 +111,14 @@ export class Lobby {
     if (!game.settings.length) settingsPanel.append(h('p', { class: 'muted' }, 'Dit spel heeft geen instellingen.'));
     for (const s of game.settings) {
       const id = `setting-${s.key}`;
-      if (isHost) {
+      if (isHost && s.type === 'toggle') {
+        settingsPanel.append(h('div', { class: 'field field--toggle' },
+          h('input', {
+            id, type: 'checkbox', class: 'checkbox', 'data-key': id, checked: room.settings[s.key] === true,
+            onchange: (e) => this.send(C2S.SETTINGS, { settings: { [s.key]: e.target.checked } }),
+          }),
+          h('label', { for: id }, s.label)));
+      } else if (isHost) {
         const select = h('select', {
           id, class: 'select', 'data-key': id,
           onchange: (e) => {

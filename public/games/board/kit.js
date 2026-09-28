@@ -16,6 +16,7 @@
 //   panel?(el, f, api)             extra controls in the side panel (dice, …)
 //   initLocal?() → {}              per-client UI state (selection, …)
 //   turnText?(f) → string          override "Jouw beurt!"
+//   onKey?(key, api, f) → true      handle a key on the focused board
 // }
 import { h, clear, preserveFocus } from '../../js/core/ui.js';
 import { REACTIONS, C2S } from '../../../shared/messages.js';
@@ -223,8 +224,14 @@ class BoardClient {
       if (target !== null && target !== undefined) this._pick(target);
     });
     on('keydown', (e) => {
+      if (!this.snap) return;
+      // Game-specific keys first (space = roll, R = rotate, …).
+      if (this.spec.onKey?.(e.key, this.api, this.frame())) {
+        e.preventDefault();
+        return;
+      }
       const cur = this.spec.cursor;
-      if (!cur || !this.snap) return;
+      if (!cur) return;
       if (ARROWS[e.key]) {
         e.preventDefault();
         this.keyboard = true;

@@ -65,9 +65,22 @@ const entries = [
     id: 'chess', title: 'Schaken', tagline: 'Volledige regels, met bots in drie niveaus.',
     kind: 'board', phase: 1, available: true, bots: true, controls: 'Klik een stuk en daarna het doelveld, of pijltjes + Enter',
   },
-  { id: 'ludo', title: 'Mens-erger-je-niet', tagline: 'Gooi, loop en sla elkaar terug naar start.', kind: 'board', phase: 1 },
-  { id: 'goose', title: 'Ganzenbord', tagline: 'Het oer-Hollandse dobbelspel voor de hele groep.', kind: 'board', phase: 1 },
-  { id: 'battleship', title: 'Zeeslag', tagline: 'Verstop je vloot en jaag op die van de ander.', kind: 'board', phase: 1 },
+  {
+    id: 'ludo', title: 'Erger je niet!', tagline: 'Gooi, loop en sla elkaar terug naar start.',
+    kind: 'board', phase: 1, available: true, bots: true, controls: 'Gooi met de knop of spatie, klik daarna een pion',
+  },
+  {
+    id: 'goose', title: 'Ganzenbord', tagline: 'Het oer-Hollandse dobbelspel voor de hele groep.',
+    kind: 'board', phase: 1, available: true, bots: true, controls: 'Gooi met de knop of spatie',
+  },
+  {
+    id: 'battleship', title: 'Zeeslag', tagline: 'Verstop je vloot en jaag op die van de ander.',
+    kind: 'board', phase: 1, available: true, bots: true, controls: 'Plaats je schepen, klik daarna op het water van de tegenstander',
+    settings: [
+      { key: 'touching', label: 'Schepen mogen elkaar raken', type: 'toggle', default: false },
+      { key: 'extraShot', label: 'Nog een keer schieten bij raak', type: 'toggle', default: true },
+    ],
+  },
 
   // --- Phase 2-4 ----------------------------------------------------------------
   { id: 'duckshoot', title: 'Kwek Kwek Knal', tagline: 'Schiet eenden met z’n allen, samen of tegen elkaar.', kind: 'realtime', phase: 2 },

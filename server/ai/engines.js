@@ -5,6 +5,8 @@ import connect4 from './connect4.js';
 import reversi from './reversi.js';
 import checkers from './checkers.js';
 import chess from './chess.js';
+import ludo from './ludo.js';
+import battleship from './battleship.js';
 
 export const ENGINES = {
   tictactoe,
@@ -12,4 +14,6 @@ export const ENGINES = {
   reversi,
   checkers,
   chess,
+  ludo,
+  battleship,
 };

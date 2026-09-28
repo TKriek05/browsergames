@@ -72,3 +72,10 @@
 }
 .movelist li { white-space: pre; }
 .promo { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Zeeslag: fleet overview */
+.fleet-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.9rem; }
+.fleet-list li { color: var(--text); }
+.fleet-list li.is-sunk { color: var(--red); text-decoration: line-through; }
+.fleet-list li.is-current .btn { border-color: var(--yellow); }
+.fleet-list li.is-done .btn { color: var(--green); }
