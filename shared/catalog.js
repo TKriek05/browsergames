@@ -44,7 +44,10 @@ const entries = [
   },
 
   // --- Phase 1: board games -------------------------------------------------
-  { id: 'tictactoe', title: 'Boter-kaas-en-eieren', tagline: 'Drie op een rij, de snelste klassieker.', kind: 'board', phase: 1 },
+  {
+    id: 'tictactoe', title: 'Boter-kaas-en-eieren', tagline: 'Drie op een rij, de snelste klassieker.',
+    kind: 'board', phase: 1, available: true, bots: true, controls: 'Klik of tik op een vak, of pijltjes + Enter',
+  },
   { id: 'connect4', title: 'Vier op een rij', tagline: 'Laat schijven vallen en maak er vier op een rij.', kind: 'board', phase: 1 },
   { id: 'checkers', title: 'Dammen', tagline: 'Nederlandse regels op een 10×10 bord.', kind: 'board', phase: 1 },
   { id: 'reversi', title: 'Reversi', tagline: 'Sluit stenen in en draai ze om.', kind: 'board', phase: 1 },

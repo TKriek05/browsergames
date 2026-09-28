@@ -33,8 +33,13 @@
 // results: { title, columns: [..], rows: [{ id, name, color, rank, values: [..] }] }
 // ─────────────────────────────────────────────────────────────────────────────
 import tag from './tag.js';
+import { boardGame } from './board.js';
+import tictactoe from '../../shared/rules/tictactoe.js';
 
-const MODULES = new Map([[tag.id, tag]]);
+// Board games are pure rules modules wrapped by the generic adapter.
+const BOARD_RULES = [tictactoe];
+
+const MODULES = new Map([[tag.id, tag], ...BOARD_RULES.map((rules) => [rules.id, boardGame(rules)])]);
 
 export const registry = {
   get: (id) => MODULES.get(id) ?? null,

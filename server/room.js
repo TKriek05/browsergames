@@ -316,7 +316,11 @@ export class Room {
         if (hostOnly()) this.start(player);
         break;
       case C2S.TO_LOBBY:
-        if (hostOnly() && this.state === 'playing') this.endGame(null, 'aborted');
+        if (hostOnly() && this.state === 'playing') {
+          // Board games keep a score across rematches; show it in the lobby.
+          const results = this.game.finalResults?.() ?? null;
+          this.endGame(results, results ? 'finished' : 'aborted');
+        }
         break;
       case C2S.REACT:
         this.broadcast(S2C.REACT, { id: player.id, r: msg.r });

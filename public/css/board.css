@@ -1,0 +1,63 @@
+/* Board games: canvas + side panel with turns, status and buttons. */
+.board-layout {
+  width: 100%; height: 100%; min-height: 0;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 12px;
+  padding: 12px;
+}
+.board-layout__canvas { min-width: 0; min-height: 0; display: grid; place-items: center; }
+.board-layout__canvas .game-canvas:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+.board-layout__side {
+  min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  padding: 16px; border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--panel), var(--bg-2)); border: 1px solid var(--line);
+}
+.board-layout__side > * { flex-shrink: 0; } /* scroll instead of squashing text */
+
+.bp__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.bp__title { font-size: 1.1rem; margin: 0; }
+.bp__round { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+
+.bp__seats { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.bp__seat {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--bg-2);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.bp__seat.is-turn { border-color: var(--yellow); box-shadow: 0 0 12px rgba(255, 225, 77, 0.25); }
+.bp__seat.is-me strong { color: var(--cyan); }
+.player__chip--seat { grid-area: auto; width: 30px; height: 30px; border-radius: 8px; font-size: 1rem; }
+.bp__seat-text { display: grid; line-height: 1.2; min-width: 0; }
+.bp__seat-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bp__seat-text small { color: var(--muted); }
+.bp__seat-score { font-family: var(--mono); font-weight: 800; min-width: 2ch; text-align: right; }
+
+.bp__status { margin: 0; font-weight: 650; font-size: 1.05rem; min-height: 1.5em; }
+.bp__flash { margin: -6px 0 0; color: var(--yellow); font-size: 0.9rem; min-height: 0; }
+.bp__flash:empty { display: none; }
+.bp__extra:empty { display: none; }
+.bp__extra { display: grid; gap: 8px; }
+.bp__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bp__actions:empty { display: none; }
+.bp__ask { width: 100%; margin: 0; }
+.bp__reactions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; }
+.reactions__btn--small { width: 36px; height: 36px; font-size: 1.05rem; border-radius: 10px; }
+
+/* Dice (ludo, goose) */
+.dice-row { display: flex; align-items: center; gap: 12px; }
+.die {
+  width: 56px; height: 56px; border-radius: 12px; display: grid; place-items: center;
+  font-size: 2rem; font-weight: 800; background: var(--text); color: #14142e;
+  box-shadow: 0 4px 0 #9da3d6;
+}
+.die.is-rolling { animation: die-shake 0.35s ease-in-out; }
+@keyframes die-shake {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-18deg) scale(1.05); }
+  75% { transform: rotate(14deg) scale(0.97); }
+}
+
+@media (max-width: 820px), (orientation: portrait) {
+  .board-layout { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; padding: 8px; gap: 8px; }
+  .board-layout__side { max-height: 40vh; max-height: 40dvh; padding: 12px; }
+  .bp__reactions { display: none; }
+}

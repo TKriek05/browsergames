@@ -3,10 +3,11 @@
 //
 // ─── Game module interface (client) ────────────────────────────────────────
 // public/games/<id>/client.js exports:
-//   meta = { width, height, pixelated, step, touchButtons: [{ label, bit }] }
+//   meta = { width, height, pixelated, step, touchButtons: [{ label, bit }],
+//            layout?: 'board' (adds a side panel), input?: false, touchControls?: false }
 //   createGame() → {
 //     mount(view, net, ctx)   view = { canvas, ctx, width, height, toLogical }
-//                             ctx  = { session, input, sfx, start, reducedMotion }
+//                             ctx  = { session, input, sfx, start, side, reducedMotion }
 //     onSnapshot(snap)        binary: { tick, time, reader }  JSON: { tick, time, state }
 //     onEvent?(msg)           { e: 'name', ...data }
 //     onRoom?(room)           lobby/room state changed (names, colours)
@@ -88,9 +89,19 @@ export class GameHost {
     if (token !== this.currentMount) return; // unmounted meanwhile
 
     const meta = mod.meta;
-    this.view = createGameCanvas(this.stage, meta);
-    this.input = new Input();
-    if (isTouchDevice()) this.touch = createTouchControls(this.root, this.input, { buttons: meta.touchButtons ?? [] });
+    // Board games: canvas + side panel (turns, buttons). Realtime games: canvas only.
+    let side = null;
+    let canvasArea = this.stage;
+    if (meta.layout === 'board') {
+      canvasArea = h('div', { class: 'board-layout__canvas' });
+      side = h('aside', { class: 'board-layout__side', 'aria-label': 'Spelinformatie' });
+      this.stage.append(h('div', { class: 'board-layout' }, canvasArea, side));
+    }
+    this.view = createGameCanvas(canvasArea, meta);
+    if (meta.input !== false) this.input = new Input();
+    if (this.input && meta.touchControls !== false && isTouchDevice()) {
+      this.touch = createTouchControls(this.root, this.input, { buttons: meta.touchButtons ?? [] });
+    }
 
     this.game = mod.createGame();
     this.game.mount(this.view, net, {
@@ -98,6 +109,7 @@ export class GameHost {
       input: this.input,
       sfx,
       start,
+      side,
       reducedMotion: prefersReducedMotion(),
     });
     this.mounted = true;
@@ -154,7 +166,10 @@ export class GameHost {
     }, 'Verlaat'));
 
     this.stage = h('div', { class: 'game__stage' });
-    this.root.append(hud, this.stage, h('p', { class: 'game__rotate-hint', 'aria-hidden': 'true' }, 'Tip: draai je telefoon voor een groter beeld'));
+    this.root.append(hud, this.stage);
+    if (game?.kind === 'realtime') {
+      this.root.append(h('p', { class: 'game__rotate-hint', 'aria-hidden': 'true' }, 'Tip: draai je telefoon voor een groter beeld'));
+    }
 
     const tickPing = () => {
       const rtt = this.session.net?.rtt ?? 0;

@@ -8,6 +8,7 @@ import { RoomManager } from './rooms.js';
 import { IpLimiter } from './ratelimit.js';
 import { registry } from './games/index.js';
 import { S2C } from '../shared/messages.js';
+import { shutdownAi } from './ai/index.js';
 
 export async function startServer(config) {
   const log = config.log ?? createLogger(config.logLevel);
@@ -44,6 +45,7 @@ export async function startServer(config) {
       for (const conn of ws.connections) conn.send(S2C.NOTICE, { text: 'De server wordt herstart…', restart: true });
       ws.close();
       rooms.shutdown('server restart');
+      shutdownAi();
       server.close(() => resolve());
       server.closeAllConnections?.();
     });
