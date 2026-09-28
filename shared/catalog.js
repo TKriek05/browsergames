@@ -225,7 +225,10 @@ const entries = [
     kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Pijltjes, muis of joystick. Spatie/klik = bal afschieten',
   },
   { id: 'bomber', title: 'Boemstad', tagline: 'Leg bommen, blaas muren op, blijf overeind.', kind: 'realtime', phase: 5 },
-  { id: 'ghosts', title: 'Spookjesdoolhof', tagline: 'Eet stipjes en ontloop de spoken, samen.', kind: 'realtime', phase: 5 },
+  {
+    id: 'ghosts', title: 'Spookjesdoolhof', tagline: 'Eet stipjes en ontloop de spoken, samen.',
+    kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Pijltjes/WASD, gamepad of joystick',
+  },
   {
     id: 'blocks', title: 'Blokval', tagline: 'Vallende blokken, versus met rommelrijen.',
     kind: 'realtime', phase: 5, available: true, bots: true,
