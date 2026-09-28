@@ -224,7 +224,17 @@ const entries = [
     id: 'breakout', title: 'Stenenbreker', tagline: 'Samen de muur kapot kaatsen, drie levels.',
     kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Pijltjes, muis of joystick. Spatie/klik = bal afschieten',
   },
-  { id: 'bomber', title: 'Boemstad', tagline: 'Leg bommen, blaas muren op, blijf overeind.', kind: 'realtime', phase: 5 },
+  {
+    id: 'bomber', title: 'Boemstad', tagline: 'Leg bommen, blaas muren op, blijf overeind. In 3D.',
+    kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Pijltjes/WASD lopen, spatie of BOM om een bom te leggen',
+    settings: [
+      {
+        key: 'wins', label: 'Winnen bij', type: 'select',
+        options: [{ value: 1, label: '1 ronde' }, { value: 2, label: '2 rondes' }, { value: 3, label: '3 rondes' }],
+        default: 2,
+      },
+    ],
+  },
   {
     id: 'ghosts', title: 'Spookjesdoolhof', tagline: 'Eet stipjes en ontloop de spoken, samen.',
     kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Pijltjes/WASD, gamepad of joystick',
