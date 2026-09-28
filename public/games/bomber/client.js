@@ -162,13 +162,13 @@ export function createGame() {
     fx: (x) => 60 + x * 1.2,
     fy: (y) => 8 + y * 1.2,
     flat(s) {
-      ctx.fillStyle = '#120a2a';
+      ctx.fillStyle = '#5f9a45';
       ctx.fillRect(0, 0, view.width, view.height);
       const t = BTILE * 1.2;
       for (let i = 0; i < N; i++) {
         const x = i % BOMB_COLS;
         const y = Math.floor(i / BOMB_COLS);
-        ctx.fillStyle = s.tiles[i] === BT.WALL ? '#3a3486' : s.tiles[i] === BT.BLOCK ? '#b8742a' : (x + y) % 2 ? '#1d1b3a' : '#222046';
+        ctx.fillStyle = s.tiles[i] === BT.WALL ? '#8a8a92' : s.tiles[i] === BT.BLOCK ? '#b5553c' : (x + y) % 2 ? '#78b556' : '#70ad4f';
         ctx.fillRect(60 + x * t, 8 + y * t, Math.ceil(t), Math.ceil(t));
       }
       for (const f of s.flames) { ctx.fillStyle = '#ff8a2a'; ctx.fillRect(60 + f.x * t + 2, 8 + f.y * t + 2, t - 4, t - 4); }

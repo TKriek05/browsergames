@@ -112,7 +112,7 @@ const SOUNDS = {
   laugh: () => [0, 0.14, 0.28].forEach((d) => tone({ type: 'square', freq: 520 - d * 400, to: 330, dur: 0.1, vol: 0.14, delay: d })),
   // Ruimtegolf: the formation's marching beat
   beat: () => tone({ type: 'square', freq: 82, dur: 0.07, vol: 0.16 }),
-  // Neon Kart GP
+  // Turbo Kart GP
   boost: () => { noise({ dur: 0.5, vol: 0.35, filter: 900, to: 4000 }); tone({ type: 'sawtooth', freq: 180, to: 520, dur: 0.4, vol: 0.12 }); },
   spin: () => tone({ type: 'triangle', freq: 900, to: 150, dur: 0.6, vol: 0.22 }),
   item: () => [0, 0.06, 0.12, 0.18].forEach((d, i) => tone({ type: 'square', freq: 700 + i * 120, dur: 0.05, vol: 0.1, delay: d })),

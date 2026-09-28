@@ -1,4 +1,4 @@
-// Neon Kart GP: tracks, deterministic kart physics, laps, items and races.
+// Turbo Kart GP: tracks, deterministic kart physics, laps, items and races.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import kartrace from '../server/games/kartrace.js';
@@ -35,7 +35,7 @@ function run(game, room, seconds) {
 // Open field: the same track data without grass or barriers in reach.
 const open = { ...ring, pads: [], half: 5000 };
 function onStraight(d = 10) {
-  const p = pointAt(ring, d); // Neon Ring starts with a long straight
+  const p = pointAt(ring, d); // Groene Vallei starts with a long straight
   return Object.assign(createKartState(), { x: p.x, y: p.y, hx: p.tx, hy: p.ty });
 }
 function onGrid(slot = 0, track = ring) {

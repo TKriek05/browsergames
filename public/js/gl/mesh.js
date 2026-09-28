@@ -156,6 +156,18 @@ export class MeshBuilder {
     return this;
   }
 
+  // Cone / pyramid with `seg` sides standing on y (trees, spikes). No base.
+  cone(x, y, z, r, h, seg = 6) {
+    for (let i = 0; i < seg; i++) {
+      const a0 = (i / seg) * Math.PI * 2;
+      const a1 = ((i + 1) / seg) * Math.PI * 2;
+      const am = (a0 + a1) / 2;
+      this.face([[x + Math.cos(a0) * r, y, z + Math.sin(a0) * r], [x + Math.cos(a1) * r, y, z + Math.sin(a1) * r], [x, y + h, z]],
+        [Math.cos(am), r / h, Math.sin(am)]);
+    }
+    return this;
+  }
+
   // Low-poly sphere-ish blob (UV sphere with few segments).
   sphere(x, y, z, r, seg = 6, rings = 4) {
     for (let j = 0; j < rings; j++) {

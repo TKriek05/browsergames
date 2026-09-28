@@ -1,5 +1,6 @@
-// Boemstad in 3D: a little neon city. Blocks are houses with lit windows,
-// bombs glow at the fuse, flames burn along the streets.
+// Boemstad in 3D: a sunny Dutch village on a green. Blocks are brick houses
+// with gabled roofs, the fixed walls are stone posts and a brick town wall,
+// bombs sizzle at the fuse, flames burn along the lanes.
 // World mapping: game (x, y) → 3D (x, 0, y), like Tank Tumult.
 import { createRenderer3D } from '../../js/gl/renderer.js';
 import { MeshBuilder, rgb } from '../../js/gl/mesh.js';
@@ -15,9 +16,9 @@ export function createBomberScene(canvas, { reducedMotion }) {
   const r = createRenderer3D(canvas);
   if (!r) return null;
   r.setColors({
-    sky: ['#0b0620', '#2a1050'],
-    fog: ['#120a2a', 380, 800],
-    light: { dir: [-0.4, -1, -0.5], color: '#e8e4ff', ambient: '#4c4674' },
+    sky: ['#4a93d8', '#d8ecf8'],
+    fog: ['#cfe0c8', 520, 1100],
+    light: { dir: [-0.4, -1, -0.5], color: '#ece2c8', ambient: '#6a7066' },
     sun: null,
   });
   const floor = r.mesh(buildFloor());
@@ -25,7 +26,7 @@ export function createBomberScene(canvas, { reducedMotion }) {
   const houses = r.mesh(new Float32Array(0));
   const bomb = r.mesh(buildBomb());
   const flame = r.mesh(new MeshBuilder().color('#ff8a2a', { emissive: 1 }).box(0, 0, 0, 13, 7, 13).color('#ffe14d', { emissive: 1 }).box(0, 7, 0, 8, 3, 8).build());
-  const item = r.mesh(new MeshBuilder().color('#ffffff', { emissive: 0.9, tint: 1 }).octa(0, 0, 0, 4, 5).build());
+  const item = r.mesh(new MeshBuilder().color('#ffffff', { emissive: 0.5, tint: 1 }).octa(0, 0, 0, 4, 5).build());
   const person = r.mesh(buildPerson());
   const shadow = r.mesh(buildShadow());
   const particles = createParticles3D(500, { reducedMotion });
@@ -125,11 +126,36 @@ export function createBomberScene(canvas, { reducedMotion }) {
 
 function buildFloor() {
   const b = new MeshBuilder();
-  b.color('#0d0a24').box(CX, -2, CZ, BOMB_WORLD.width + 300, 2, BOMB_WORLD.height + 300);
+  let seed = 4242;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  b.color('#5f9a45').box(CX, -2, CZ, BOMB_WORLD.width + 600, 2, BOMB_WORLD.height + 500);
   for (let y = 0; y < BOMB_ROWS; y++) {
     for (let x = 0; x < BOMB_COLS; x++) {
-      b.color((x + y) % 2 ? '#1d1b3a' : '#222046');
+      b.color((x + y) % 2 ? '#78b556' : '#70ad4f');
       b.face([[x * BTILE, 0, y * BTILE], [x * BTILE, 0, y * BTILE + BTILE], [x * BTILE + BTILE, 0, y * BTILE + BTILE], [x * BTILE + BTILE, 0, y * BTILE]], [0, 1, 0]);
+    }
+  }
+  // A brick road around the town wall, then trees and tulip fields.
+  const W = BOMB_WORLD.width;
+  const H = BOMB_WORLD.height;
+  b.color('#b8a58a');
+  for (const [x, z, w, d] of [[CX, -14, W + 56, 20], [CX, H + 14, W + 56, 20], [-14, CZ, 20, H + 8], [W + 14, CZ, 20, H + 8]]) {
+    b.face([[x - w / 2, 0.05, z - d / 2], [x - w / 2, 0.05, z + d / 2], [x + w / 2, 0.05, z + d / 2], [x + w / 2, 0.05, z - d / 2]], [0, 1, 0]);
+  }
+  const tulips = ['#e63946', '#ffb020', '#f4f4f4', '#d94f9a'];
+  for (let i = 0; i < 70; i++) {
+    const side = i % 4;
+    const along = rnd();
+    const out = 40 + rnd() * 110;
+    const x = side === 0 ? -out : side === 1 ? W + out : along * (W + 240) - 120;
+    const z = side === 2 ? -out : side === 3 ? H + out : along * (H + 200) - 100;
+    const s = 0.8 + rnd() * 0.5;
+    if (rnd() < 0.6) {
+      b.color('#6b4a2e').box(x, 0, z, 2.4 * s, 8 * s, 2.4 * s, { bottom: false });
+      b.color(['#3c8a45', '#4a9a4a', '#2f7a3b'][i % 3]).sphere(x, 13 * s, z, 7.5 * s, 6, 4);
+    } else {
+      b.color(tulips[i % tulips.length]);
+      for (let k = 0; k < 4; k++) b.box(x + (k - 1.5) * 5, 0, z, 3, 1.2, 14, { bottom: false });
     }
   }
   return b.build();
@@ -142,33 +168,59 @@ function buildWalls(tiles) {
       if (tiles[y * BOMB_COLS + x] !== BT.WALL) continue;
       const border = x === 0 || y === 0 || x === BOMB_COLS - 1 || y === BOMB_ROWS - 1;
       const dropped = !isFixedWall(x, y);
-      const h = border ? 14 : 16;
+      const h = border ? 12 : 14;
       const cx = (x + 0.5) * BTILE;
       const cz = (y + 0.5) * BTILE;
-      b.color(dropped ? '#4a2440' : border ? '#241f55' : '#2c2766').box(cx, 0, cz, BTILE, h, BTILE, { top: '#3a3486', bottom: false });
-      b.color(dropped ? '#ff4d6d' : border ? '#ff3ea5' : '#3ef0ff', { emissive: 1 }).box(cx, h, cz, BTILE - 4, 0.6, BTILE - 4, { bottom: false });
+      if (border) {
+        // Town wall in red brick with a stone coping.
+        b.color('#9a4a36').box(cx, 0, cz, BTILE, h, BTILE, { top: '#a8503a', bottom: false });
+        b.color('#c8bcaa').box(cx, h, cz, BTILE - 6, 0.6, BTILE - 6, { bottom: false });
+        b.color('#7e3a2a').box(cx, h * 0.5, cz, BTILE + 0.3, 0.8, BTILE + 0.3, { bottom: false });
+      } else if (dropped) {
+        // Sudden death: heavy crates dropped into the streets.
+        b.color('#5a4a3a').box(cx, 0, cz, BTILE, h, BTILE, { top: '#6a5846', bottom: false });
+        b.color('#e6b422').box(cx, h, cz, BTILE - 5, 0.5, 2, { bottom: false }).box(cx, h, cz, 2, 0.5, BTILE - 5, { bottom: false });
+      } else {
+        // Stone posts.
+        b.color('#8a8a92').box(cx, 0, cz, BTILE, h, BTILE, { top: '#a2a2aa', bottom: false });
+        b.color('#74747c').box(cx, h * 0.33, cz, BTILE + 0.3, 0.8, BTILE + 0.3, { bottom: false }).box(cx, h * 0.66, cz, BTILE + 0.3, 0.8, BTILE + 0.3, { bottom: false });
+      }
     }
   }
   return b.build();
 }
 
-// Destructible blocks: little houses with a roof and lit windows.
+// Destructible blocks: little Dutch houses with a gabled roof and windows.
 function buildHouses(tiles) {
   const b = new MeshBuilder();
-  const roofs = ['#b8742a', '#8a4fb8', '#2f8a8a', '#b84f6a'];
+  const bricks = ['#b5553c', '#a0472f', '#c9784e', '#d8c8a8'];
+  const roofs = ['#6a2a22', '#3a3a44', '#8a3a2a'];
   for (let y = 0; y < BOMB_ROWS; y++) {
     for (let x = 0; x < BOMB_COLS; x++) {
       if (tiles[y * BOMB_COLS + x] !== BT.BLOCK) continue;
       const cx = (x + 0.5) * BTILE;
       const cz = (y + 0.5) * BTILE;
-      b.color('#d8c8a8').box(cx, 0, cz, 13, 10, 13, { top: roofs[(x * 7 + y * 3) % roofs.length], bottom: false });
-      b.color('#ffd76a', { emissive: 1 });
-      b.box(cx - 3, 4, cz + 6.6, 2.4, 2.6, 0.3, { bottom: false }).box(cx + 3, 4, cz + 6.6, 2.4, 2.6, 0.3, { bottom: false });
-      b.box(cx + 6.6, 4, cz, 0.3, 2.6, 2.4, { bottom: false });
-      b.color('#5a3a2a').box(cx, 10, cz, 9, 2.5, 9, { bottom: false });
+      const k = x * 7 + y * 3;
+      b.color(bricks[k % bricks.length]).box(cx, 0, cz, 13, 8, 13, { bottom: false });
+      gable(b, cx, 8, cz, 14, 14, 6, roofs[k % roofs.length], bricks[k % bricks.length]);
+      // White window frames with blue glass, a door
+      b.color('#f4f4f4').box(cx - 3, 3.6, cz + 6.55, 3.2, 3.2, 0.3, { bottom: false }).box(cx + 3, 3.6, cz + 6.55, 3.2, 3.2, 0.3, { bottom: false });
+      b.color('#7fb0d8').box(cx - 3, 4, cz + 6.75, 2.2, 2.4, 0.2, { bottom: false }).box(cx + 3, 4, cz + 6.75, 2.2, 2.4, 0.2, { bottom: false });
+      b.color('#2f5a3a').box(cx + 6.55, 0, cz, 0.3, 5.5, 3, { bottom: false });
     }
   }
   return b.build();
+}
+
+// Gabled roof with its ridge along x: two slopes and two triangular ends.
+function gable(b, x, y, z, w, d, h, roof, wall) {
+  const x0 = x - w / 2, x1 = x + w / 2, z0 = z - d / 2, z1 = z + d / 2;
+  b.color(roof);
+  b.face([[x0, y, z1], [x1, y, z1], [x1, y + h, z], [x0, y + h, z]], [0, 1, 1]);
+  b.face([[x0, y, z0], [x0, y + h, z], [x1, y + h, z], [x1, y, z0]], [0, 1, -1]);
+  b.color(wall);
+  b.face([[x1 - 0.5, y, z0 + 0.5], [x1 - 0.5, y + h - 0.4, z], [x1 - 0.5, y, z1 - 0.5]], [1, 0, 0]);
+  b.face([[x0 + 0.5, y, z0 + 0.5], [x0 + 0.5, y, z1 - 0.5], [x0 + 0.5, y + h - 0.4, z]], [-1, 0, 0]);
 }
 
 function buildBomb() {
@@ -186,9 +238,9 @@ function buildPerson() {
   b.color('#ffffff', { tint: 1 }).box(0, 1.6, 0, 6.5, 6, 7, { top: '#ffffff' });
   b.color('#f4f4ff').sphere(0, 11, 0, 4.2, 8, 5);
   b.color('#10101a').box(3.4, 10.4, 0, 1.2, 2.2, 4.6);
-  b.color('#3ef0ff', { emissive: 1 }).box(4.05, 10.8, 0, 0.3, 0.8, 3.4);
+  b.color('#f4f4ff').box(4.05, 10.8, -1, 0.3, 0.9, 0.9).box(4.05, 10.8, 1, 0.3, 0.9, 0.9);
   b.color('#8a8fb8').box(0, 15, 0, 0.6, 2.4, 0.6);
-  b.color('#ffffff', { emissive: 0.8, tint: 1 }).octa(0, 18, 0, 1.4, 1.4);
+  b.color('#ffffff', { emissive: 0.3, tint: 1 }).octa(0, 18, 0, 1.4, 1.4);
   return b.build();
 }
 

@@ -1,6 +1,6 @@
-// Minigolf in 3D: a neon mini-golf course at night. The green is built from
-// cells (mown stripes), sand and water are flat patches on top, the walls
-// are rails with glowing tops and bumpers light up when they are hit.
+// Minigolf in 3D: a mini-golf course in a sunny park. The green is built
+// from cells (mown stripes), sand and water are flat patches on top, the
+// walls are wooden rails, bumpers are red-and-white posts that flash when hit.
 // World mapping: game (x, y) → 3D (x, 0, y), like Tank Tumult.
 import { createRenderer3D } from '../../js/gl/renderer.js';
 import { MeshBuilder } from '../../js/gl/mesh.js';
@@ -12,25 +12,26 @@ const CELL = 5;
 const WALL_T = 4;
 const WALL_H = 5;
 const BASE_Y = -4; // the course is a raised platform
-const ACCENTS = ['#3ef0ff', '#ff3ea5', '#ffe14d', '#7cff6b', '#b26bff'];
+const RAILS = [['#9a6234', '#b87a44'], ['#8a5530', '#a86e3c'], ['#7e4f2c', '#9c683a']]; // wood: side, top
 const FLAG_H = 24;
 
 export function createGolfScene(canvas, { reducedMotion }) {
   const r = createRenderer3D(canvas);
   if (!r) return null;
   r.setColors({
-    sky: ['#060314', '#2a0f4a'],
-    fog: ['#120a2a', 520, 1100],
-    light: { dir: [-0.35, -1, -0.5], color: '#f0ecff', ambient: '#565482' },
-    sun: { dir: [0, 0.14, -1], radius: 0.22, top: '#ffd23e', bottom: '#ff3ea5' },
+    sky: ['#3d8ee0', '#cfe8fb'],
+    fog: ['#d5e8f0', 600, 1300],
+    light: { dir: [-0.35, -1, -0.5], color: '#ece2c8', ambient: '#6c7468' },
+    sun: { dir: [0.4, 0.25, -1], radius: 0.06, top: '#fffbe6', bottom: '#fff1b0' },
+    clouds: { count: 10, color: '#ffffff', shade: '#d5e8f0', seed: 3 },
   });
   const ground = r.mesh(buildGround());
   const course = r.mesh(new Float32Array(0));
   const ballR = BALL_R * 1.2; // a bit bigger than the physics ball, easier to see
-  const ball = r.mesh(new MeshBuilder().color('#ffffff', { tint: 1, emissive: 0.25 }).sphere(0, ballR, 0, ballR, 10, 6).build());
+  const ball = r.mesh(new MeshBuilder().color('#ffffff', { tint: 1, emissive: 0.15 }).sphere(0, ballR, 0, ballR, 10, 6).build());
   const shadow = r.mesh(buildDisc(BALL_R * 1.1, '#000000', 10));
   const flag = [[0, FLAG_H, 0], [0, FLAG_H - 9, 0], [14, FLAG_H - 4.5, 0]];
-  const cloth = r.mesh(new MeshBuilder().color('#ff3ea5', { emissive: 0.9 }).face(flag, [0, 0, 1]).face(flag, [0, 0, -1]).build());
+  const cloth = r.mesh(new MeshBuilder().color('#e63946', { emissive: 0.2 }).face(flag, [0, 0, 1]).face(flag, [0, 0, -1]).build());
   const particles = createParticles3D(400, { reducedMotion });
   const m = create();
   const cam = { x: 0, y: 0, z: 0, tx: 0, tz: 0 };
@@ -45,8 +46,7 @@ export function createGolfScene(canvas, { reducedMotion }) {
       if (index === holeIndex) return;
       holeIndex = index;
       hole = HOLES[index];
-      const accent = ACCENTS[index % ACCENTS.length];
-      r.update(course, buildCourse(hole, accent));
+      r.update(course, buildCourse(hole, RAILS[index % RAILS.length]));
       for (const b of bumpers) r.free(b.mesh);
       bumpers = hole.bumpers.map((b) => ({ mesh: r.mesh(buildBumper(b.r)), x: b.x, y: b.y, r: b.r, flash: 0 }));
       fitCamera(hole, cam);
@@ -95,7 +95,7 @@ export function createGolfScene(canvas, { reducedMotion }) {
       }
       if (best && bestD < 6) {
         best.flash = 0.8;
-        particles.burst(x, 3, y, '#ff8ad0', 8, { speed: 30, life: 0.35, size: 1.4, gravity: -30, up: 0.6 });
+        particles.burst(x, 3, y, '#ffffff', 8, { speed: 30, life: 0.35, size: 1.4, gravity: -30, up: 0.6 });
       }
     },
 
@@ -149,19 +149,26 @@ function fitCamera(hole, cam) {
   cam.z = cam.tz + dist * 0.6;
 }
 
+// Park lawn with trees and flower beds around (never between camera and course).
 function buildGround() {
   const b = new MeshBuilder();
-  b.color('#0c0922').box(140, BASE_Y - 2, 80, 1400, 1, 1000);
-  // A few glowing posts around the course.
-  b.color('#1e1850');
-  for (let i = 0; i < 10; i++) {
-    const x = -60 + i * 45;
-    b.box(x, BASE_Y - 1, -40, 3, 30, 3).box(x, BASE_Y - 1, 200, 3, 30, 3);
-  }
-  b.color('#3ef0ff', { emissive: 1 });
-  for (let i = 0; i < 10; i++) {
-    const x = -60 + i * 45;
-    b.box(x, BASE_Y + 29, -40, 4, 2, 4).box(x, BASE_Y + 29, 200, 4, 2, 4);
+  let seed = 99;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  b.color('#4a8a3a').box(140, BASE_Y - 2, 80, 1400, 1, 1000);
+  const flowers = ['#e63946', '#ffb020', '#f4f4f4', '#d94f9a'];
+  for (let i = 0; i < 60; i++) {
+    const zone = i % 3; // 0: behind the course, 1: left, 2: right
+    const x = zone === 0 ? -80 + rnd() * 440 : zone === 1 ? -30 - rnd() * 120 : 300 + rnd() * 120;
+    const z = zone === 0 ? -20 - rnd() * 160 : -40 + rnd() * 200;
+    const s = 0.8 + rnd() * 0.6;
+    if (rnd() < 0.7) {
+      b.color('#6b4a2e').box(x, BASE_Y - 1, z, 3 * s, 12 * s, 3 * s, { bottom: false });
+      b.color(['#3c8a45', '#4a9a4a', '#2f7a3b'][i % 3]).sphere(x, BASE_Y - 1 + 19 * s, z, 10 * s, 6, 4);
+    } else {
+      b.color('#6a4a32').box(x, BASE_Y - 1, z, 22, 2, 10, { bottom: false });
+      b.color(flowers[i % flowers.length]);
+      for (let k = 0; k < 5; k++) b.box(x - 8 + k * 4, BASE_Y + 1, z + (k % 2 ? 2 : -2), 2.4, 1.4, 2.4, { bottom: false });
+    }
   }
   return b.build();
 }
@@ -182,13 +189,19 @@ function disc(b, x, y, z, radius, seg) {
   b.face(pts, [0, 1, 0]);
 }
 
-function buildCourse(hole, accent) {
+function buildCourse(hole, rail) {
   const b = new MeshBuilder();
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const [x, y] of hole.outline) {
     x0 = Math.min(x0, x); x1 = Math.max(x1, x);
     y0 = Math.min(y0, y); y1 = Math.max(y1, y);
   }
+  // Stone terrace around the course.
+  const PAD = 14;
+  b.color('#c4b9a6').box((x0 + x1) / 2, BASE_Y - 1.5, (y0 + y1) / 2, x1 - x0 + PAD * 2, 0.5, y1 - y0 + PAD * 2, { bottom: false });
+  b.color('#aea38f');
+  for (let x = x0 - PAD + 12; x < x1 + PAD; x += 12) b.box(x, BASE_Y - 1, (y0 + y1) / 2, 0.6, 0.1, y1 - y0 + PAD * 2, { bottom: false });
+  for (let y = y0 - PAD + 12; y < y1 + PAD; y += 12) b.box((x0 + x1) / 2, BASE_Y - 1, y, x1 - x0 + PAD * 2, 0.1, 0.6, { bottom: false });
   // Green: mown stripes; slopes a lighter shade.
   for (let y = y0; y < y1; y += CELL) {
     for (let x = x0; x < x1; x += CELL) {
@@ -206,7 +219,7 @@ function buildCourse(hole, accent) {
     const len = Math.hypot(s.gx, s.gy) || 1;
     const dx = s.gx / len;
     const dy = s.gy / len;
-    b.color('#b9ff8a', { emissive: 0.5 });
+    b.color('#8fc86a');
     for (let ay = s.y + 12; ay < s.y + s.h - 6; ay += 22) {
       for (let ax = s.x + 14; ax < s.x + s.w - 6; ax += 26) {
         chevron(b, ax, ay, dx, dy);
@@ -215,9 +228,9 @@ function buildCourse(hole, accent) {
   }
   b.color('#e6cf8e');
   for (const s of hole.sand) b.face([[s.x, 0.15, s.y], [s.x, 0.15, s.y + s.h], [s.x + s.w, 0.15, s.y + s.h], [s.x + s.w, 0.15, s.y]], [0, 1, 0]);
-  b.color('#1f7ae0', { emissive: 0.45 });
+  b.color('#2f86c8', { emissive: 0.1 });
   for (const w of hole.water) b.face([[w.x, 0.2, w.y], [w.x, 0.2, w.y + w.h], [w.x + w.w, 0.2, w.y + w.h], [w.x + w.w, 0.2, w.y]], [0, 1, 0]);
-  b.color('#7cc8ff', { emissive: 0.7 });
+  b.color('#bfe4ff');
   for (const w of hole.water) {
     for (let k = 0; k < 3; k++) {
       const wx = w.x + w.w * (0.25 + k * 0.25);
@@ -227,7 +240,7 @@ function buildCourse(hole, accent) {
   }
   // Tee mat and cup.
   b.color('#1d6b3c').box(hole.tee[0], 0, hole.tee[1], 12, 0.25, 10, { bottom: false });
-  b.color('#ffffff', { emissive: 0.6 }).box(hole.tee[0] - 5, 0.25, hole.tee[1] - 4, 1.2, 0.6, 1.2).box(hole.tee[0] - 5, 0.25, hole.tee[1] + 4, 1.2, 0.6, 1.2);
+  b.color('#f4f4f4').box(hole.tee[0] - 5, 0.25, hole.tee[1] - 4, 1.2, 0.6, 1.2).box(hole.tee[0] - 5, 0.25, hole.tee[1] + 4, 1.2, 0.6, 1.2);
   b.color('#f4f4ff');
   disc(b, hole.cup[0], 0.22, hole.cup[1], CUP_R + 0.9, 12);
   b.color('#04040a');
@@ -236,16 +249,16 @@ function buildCourse(hole, accent) {
 
   // Walls along the outline, on the outside of each edge.
   const o = hole.outline;
-  for (let i = 0; i < o.length; i++) wallAlong(b, hole, o[i], o[(i + 1) % o.length], accent);
-  // Blocks: solid neon crates.
+  for (let i = 0; i < o.length; i++) wallAlong(b, hole, o[i], o[(i + 1) % o.length], rail);
   for (const k of hole.blocks) {
-    b.color('#2c2470').box(k.x + k.w / 2, BASE_Y, k.y + k.h / 2, k.w, WALL_H - BASE_Y + 1, k.h, { top: '#3a3190' });
-    b.color(accent, { emissive: 1 }).box(k.x + k.w / 2, WALL_H + 1, k.y + k.h / 2, k.w - 3, 0.5, k.h - 3, { bottom: false });
+    // Stone obstacles with a lighter coping.
+    b.color('#8f8578').box(k.x + k.w / 2, BASE_Y, k.y + k.h / 2, k.w, WALL_H - BASE_Y + 1, k.h, { top: '#a89e90' });
+    b.color('#b8ae9f').box(k.x + k.w / 2, WALL_H + 1, k.y + k.h / 2, k.w - 3, 0.5, k.h - 3, { bottom: false });
   }
   return b.build();
 }
 
-function wallAlong(b, hole, [ax, ay], [bx, by], accent) {
+function wallAlong(b, hole, [ax, ay], [bx, by], rail) {
   const len = Math.hypot(bx - ax, by - ay);
   const dx = (bx - ax) / len;
   const dy = (by - ay) / len;
@@ -264,8 +277,8 @@ function wallAlong(b, hole, [ax, ay], [bx, by], accent) {
   const cx = ax + dx * (start + end) / 2 + nx * WALL_T / 2;
   const cy = ay + dy * (start + end) / 2 + ny * WALL_T / 2;
   const yaw = Math.atan2(-dy, dx);
-  b.color('#2a2066').orientedBox(cx, BASE_Y, cy, end - start, WALL_H - BASE_Y, WALL_T, yaw);
-  b.color(accent, { emissive: 1 }).orientedBox(cx, WALL_H, cy, end - start, 0.6, WALL_T * 0.55, yaw);
+  b.color(rail[0]).orientedBox(cx, BASE_Y, cy, end - start, WALL_H - BASE_Y, WALL_T, yaw);
+  b.color(rail[1]).orientedBox(cx, WALL_H, cy, end - start, 0.6, WALL_T, yaw);
 }
 
 function chevron(b, x, y, dx, dy) {
@@ -282,7 +295,9 @@ function chevron(b, x, y, dx, dy) {
 
 function buildBumper(radius) {
   const b = new MeshBuilder();
-  b.color('#8a1f5e').cylinder(0, -0.5, 0, radius, 6, 14, { top: '#ff3ea5' });
-  b.color('#ff8ad0', { emissive: 1 }).cylinder(0, 3, 0, radius * 0.55, 3.4, 10);
+  b.color('#d62828').cylinder(0, -0.5, 0, radius, 2.4, 14);
+  b.color('#f4f4f4').cylinder(0, 1.9, 0, radius, 2, 14);
+  b.color('#d62828').cylinder(0, 3.9, 0, radius, 1.6, 14, { top: '#f4f4f4' });
+  b.color('#f4f4f4').cylinder(0, 5.5, 0, radius * 0.45, 1, 10);
   return b.build();
 }

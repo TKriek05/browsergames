@@ -1,4 +1,4 @@
-// Neon Kart GP (client side): your kart is predicted with the shared
+// Turbo Kart GP (client side): your kart is predicted with the shared
 // physics (including drift, boosts and item use), the others are
 // interpolated. Chase camera in 3D, HUD on top.
 import { PLAYER_COLORS } from '../../../shared/constants.js';
@@ -157,11 +157,11 @@ export function createGame() {
           else if (msg.item === ITEM.SHIELD) sfx.play('ready');
           break;
         case 'spin':
-          scene?.burst(msg.x, msg.y, '#ff3ea5', 26);
+          scene?.burst(msg.x, msg.y, '#ff5a36', 26);
           sfx.play(msg.s === slot ? 'spin' : 'hit');
           if (msg.s === slot) banner = { text: 'OEPS!', sub: msg.by !== slot ? `geraakt door ${playerBySlot(msg.by)?.name ?? '?'}` : '', color: '#ff4d6d', until: now + 1200 };
           break;
-        case 'block': scene?.burst(msg.x, msg.y, '#5dff8a', 16); sfx.play('react'); break;
+        case 'block': scene?.burst(msg.x, msg.y, '#7de0ff', 16); sfx.play('react'); break;
         case 'bump': sfx.play('thud'); break;
         case 'scrape': if (msg.s === slot) sfx.play('hit'); break;
         default: break;

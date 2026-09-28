@@ -4,6 +4,7 @@ import { drawText } from '../../js/core/pixelfont.js';
 import { TANK_TILE, TANK_COLS, TANK_ROWS, TANK_WORLD, TILE } from '../../../shared/maps/tank-arenas.js';
 import { TANK_RULES, POWERUPS } from '../../../shared/games/tanks.js';
 import { TANK_PHYS } from '../../../shared/physics/tanks.js';
+import { tankTheme } from './theme.js';
 
 const SHADOW = '#0b0b1e';
 
@@ -90,6 +91,7 @@ export function createTankHud(view) {
 // Top-down fallback (no WebGL): same state, drawn flat on the HUD canvas.
 export function createFallback2D(view, arena) {
   const { ctx, width: W, height: H } = view;
+  const th = tankTheme(arena.key);
   const scale = Math.min(W / TANK_WORLD.width, H / TANK_WORLD.height);
   const ox = (W - TANK_WORLD.width * scale) / 2;
   const oy = (H - TANK_WORLD.height * scale) / 2;
@@ -109,13 +111,13 @@ export function createFallback2D(view, arena) {
       return out;
     },
     begin(tiles) {
-      ctx.fillStyle = '#0b0620';
+      ctx.fillStyle = th.outside;
       ctx.fillRect(0, 0, W, H);
       const T = TANK_TILE * scale;
       for (let ty = 0; ty < TANK_ROWS; ty++) {
         for (let tx = 0; tx < TANK_COLS; tx++) {
           const t = tiles[ty * TANK_COLS + tx];
-          ctx.fillStyle = t === TILE.WALL ? '#3a3486' : t === TILE.CRATE ? '#b8742a' : (tx + ty) % 2 ? '#1b1a44' : '#1f1e4c';
+          ctx.fillStyle = t === TILE.WALL ? th.wall : t === TILE.CRATE ? '#b8742a' : th.floor[(tx + ty) % 2];
           ctx.fillRect(Math.floor(sx(tx * TANK_TILE)), Math.floor(sy(ty * TANK_TILE)), Math.ceil(T), Math.ceil(T));
         }
       }

@@ -152,9 +152,9 @@ const entries = [
         label: 'Arena',
         type: 'select',
         options: [
-          { value: 'kruispunt', label: 'Kruispunt' },
-          { value: 'doolhof', label: 'Doolhof' },
-          { value: 'fort', label: 'Fort' },
+          { value: 'kruispunt', label: 'Woestijnkamp' },
+          { value: 'doolhof', label: 'Bosdoolhof' },
+          { value: 'fort', label: 'Winterfort' },
         ],
         default: 'kruispunt',
       },
@@ -162,7 +162,7 @@ const entries = [
   },
   {
     id: 'kartrace',
-    title: 'Neon Kart GP',
+    title: 'Turbo Kart GP',
     tagline: 'Kartracen in 3D met drift, items en een Grand Prix.',
     kind: 'realtime',
     phase: 4,
@@ -175,9 +175,9 @@ const entries = [
         label: 'Circuit',
         type: 'select',
         options: [
-          { value: 'ring', label: 'Neon Ring' },
-          { value: 'park', label: 'Pixel Park' },
-          { value: 'boulevard', label: 'Zonsondergang Boulevard' },
+          { value: 'ring', label: 'Groene Vallei' },
+          { value: 'park', label: 'Herfstbos' },
+          { value: 'boulevard', label: 'Strandboulevard' },
           { value: 'gp', label: 'Grand Prix (alle drie)' },
         ],
         default: 'ring',
@@ -245,7 +245,7 @@ const entries = [
     controls: 'Links/rechts, omhoog = draaien, omlaag = sneller, spatie = laten vallen',
   },
   {
-    id: 'minigolf', title: 'Minigolf', tagline: 'Negen neon-holes in 3D, iedereen tegelijk.',
+    id: 'minigolf', title: 'Minigolf', tagline: 'Negen holes in een zonnig park, in 3D.',
     kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Sleep terug en laat los om te slaan, of pijltjes + spatie',
     settings: [
       {

@@ -1,4 +1,4 @@
-// Kart physics for Neon Kart GP. Runs on the server and on the client
+// Kart physics for Turbo Kart GP. Runs on the server and on the client
 // (prediction), so it is deterministic: only + - * / and Math.sqrt at
 // runtime (rotations use a short Taylor series; the spin step is a literal)
 // and every stored value is rounded to float32.

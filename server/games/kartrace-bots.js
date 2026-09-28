@@ -1,4 +1,4 @@
-// Neon Kart GP bots: aim at a point further along the track (with their
+// Turbo Kart GP bots: aim at a point further along the track (with their
 // own lane offset), lift off before sharp corners, drift through long bends
 // (hard bots) and use items sensibly. They drive with the same stick and
 // button input as humans, through the same physics.

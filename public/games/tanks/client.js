@@ -202,7 +202,7 @@ export function createGame() {
             sfx.play('gunFar');
           }
           break;
-        case 'bounce': scene?.sparks(msg.x, msg.y, '#3ef0ff', 5); sfx.play('click'); break;
+        case 'bounce': scene?.sparks(msg.x, msg.y, '#ffe8a0', 5); sfx.play('click'); break;
         case 'spark': scene?.sparks(msg.x, msg.y); break;
         case 'hit':
           scene?.sparks(msg.x, msg.y, '#ff9a3e', 14);

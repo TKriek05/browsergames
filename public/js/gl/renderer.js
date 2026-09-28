@@ -1,7 +1,7 @@
 // A tiny WebGL renderer for our low-poly 3D games (no libraries):
 // flat-shaded vertex-colour meshes with one directional light, fog, emissive
-// "neon" parts, a gradient sky with an optional retro sun, and point
-// particles. WebGL 1 + GLSL ES 1.00, so it runs on practically every device.
+// (glowing) parts, a gradient sky with an optional sun (plain or retro
+// striped) and puffy clouds, and point particles. WebGL 1 + GLSL ES 1.00, so it runs on practically every device.
 // Rendered at a low resolution and scaled up pixelated for a retro look.
 import { create, perspective, lookAt, multiply, transform4, invert } from './mat4.js';
 import { FLOATS_PER_VERTEX, rgb } from './mesh.js';
@@ -67,9 +67,16 @@ uniform vec3 uTop;
 uniform vec3 uBottom;
 uniform float uHorizon;
 uniform vec4 uSun; // ndc x, ndc y, radius (in ndc y units), enabled
+uniform float uSunRetro;
 uniform float uAspect;
 uniform vec3 uSunTop;
 uniform vec3 uSunBottom;
+uniform vec4 uClouds[16]; // heading (rad), elevation (tan), width (rad), unused
+uniform float uCloudCount;
+uniform vec3 uCloudColor;
+uniform vec3 uCloudShade;
+uniform float uYaw;
+uniform float uTanHalf;
 void main() {
   float t = clamp((vPos.y - uHorizon) / max(0.001, 1.0 - uHorizon), 0.0, 1.0);
   vec3 c = mix(uBottom, uTop, sqrt(t));
@@ -77,9 +84,21 @@ void main() {
     vec2 d = vec2((vPos.x - uSun.x) * uAspect, vPos.y - uSun.y);
     float r = length(d) / uSun.z;
     float k = (vPos.y - (uSun.y - uSun.z)) / (2.0 * uSun.z);
-    bool gap = k < 0.5 && fract(k * 9.0) < (0.5 - k) * 0.9;
-    if (r < 1.0 && vPos.y > uHorizon && !gap) c = mix(uSunBottom, uSunTop, clamp(k, 0.0, 1.0));
+    bool gap = uSunRetro > 0.5 && k < 0.5 && fract(k * 9.0) < (0.5 - k) * 0.9;
+    if (r < 1.0 && vPos.y > uHorizon && !gap) c = uSunRetro > 0.5 ? mix(uSunBottom, uSunTop, clamp(k, 0.0, 1.0)) : uSunTop;
     else c += uSunBottom * 0.25 * max(0.0, 1.0 - (r - 1.0) * 1.5);
+  }
+  if (uCloudCount > 0.5 && vPos.y > uHorizon) {
+    float ang = uYaw + atan(vPos.x * uTanHalf * uAspect);
+    float elev = (vPos.y - uHorizon) * uTanHalf;
+    for (int i = 0; i < 16; i++) {
+      if (float(i) >= uCloudCount) break;
+      vec4 cl = uClouds[i];
+      float da = mod(ang - cl.x + 3.14159265, 6.2831853) - 3.14159265;
+      vec2 p = vec2(da / cl.z, (elev - cl.y) / (cl.z * 0.5));
+      float puff = min(min(length(p - vec2(-0.45, 0.0)) / 0.5, length(p - vec2(0.05, 0.2)) / 0.62), length(p - vec2(0.55, 0.02)) / 0.45);
+      if (p.y > -0.28 && puff < 1.0) c = mix(uCloudShade, uCloudColor, clamp(p.y * 1.6 + 0.55, 0.0, 1.0));
+    }
   }
   gl_FragColor = vec4(c, 1.0);
 }`;
@@ -121,6 +140,7 @@ export function createRenderer3D(canvas) {
     light: [-0.4, -1, -0.3], lightColor: [0.85, 0.85, 0.85], ambient: [0.42, 0.42, 0.5],
     fogColor: [0.1, 0.05, 0.2], fog: [200, 800],
     skyTop: [0.1, 0.05, 0.25], skyBottom: [0.9, 0.4, 0.6], sun: null, sunTop: [1, 0.9, 0.3], sunBottom: [1, 0.2, 0.6],
+    sunRetro: 0, clouds: new Float32Array(64), cloudCount: 0, cloudColor: [1, 1, 1], cloudShade: [0.85, 0.88, 0.95],
     flash: 0,
   };
   let progs = null;
@@ -287,6 +307,15 @@ export function createRenderer3D(canvas) {
       gl.uniform3fv(sp.u.uBottom, scene.skyBottom);
       gl.uniform1f(sp.u.uHorizon, horizon);
       gl.uniform1f(sp.u.uAspect, aspect);
+      gl.uniform1f(sp.u.uSunRetro, scene.sunRetro);
+      gl.uniform1f(sp.u.uCloudCount, scene.cloudCount);
+      if (scene.cloudCount) {
+        gl.uniform4fv(sp.u['uClouds[0]'], scene.clouds);
+        gl.uniform3fv(sp.u.uCloudColor, scene.cloudColor);
+        gl.uniform3fv(sp.u.uCloudShade, scene.cloudShade);
+        gl.uniform1f(sp.u.uYaw, Math.atan2(fz, fx));
+        gl.uniform1f(sp.u.uTanHalf, Math.tan(cam.fov / 2));
+      }
       let sunOn = 0;
       if (scene.sun) {
         const [sx, sy, sz, rad] = scene.sun; // world direction + angular radius
@@ -386,13 +415,31 @@ export function createRenderer3D(canvas) {
       return out;
     },
 
-    setColors({ sky, fog, light, sun } = {}) {
+    // sun: { dir, radius, top, bottom, retro? } (retro = striped synthwave sun).
+    // clouds: { count ≤ 16, color, shade, seed? } or null.
+    setColors({ sky, fog, light, sun, clouds } = {}) {
       if (sky) { scene.skyTop = rgb(sky[0]); scene.skyBottom = rgb(sky[1]); }
       if (fog) { scene.fogColor = rgb(fog[0]); scene.fog = [fog[1], fog[2]]; }
       if (light) { scene.light = light.dir; scene.lightColor = rgb(light.color); scene.ambient = rgb(light.ambient); }
       if (sun !== undefined) {
         scene.sun = sun ? sun.dir.concat([sun.radius]) : null;
-        if (sun) { scene.sunTop = rgb(sun.top); scene.sunBottom = rgb(sun.bottom); }
+        if (sun) { scene.sunTop = rgb(sun.top); scene.sunBottom = rgb(sun.bottom); scene.sunRetro = sun.retro ? 1 : 0; }
+      }
+      if (clouds !== undefined) {
+        scene.cloudCount = clouds ? Math.min(16, clouds.count) : 0;
+        if (clouds) {
+          scene.cloudColor = rgb(clouds.color ?? '#ffffff');
+          scene.cloudShade = rgb(clouds.shade ?? '#d8def0');
+          // Deterministic spread around the horizon (no Math.random: same sky every time).
+          let seed = clouds.seed ?? 7;
+          const next = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+          for (let i = 0; i < 16; i++) {
+            scene.clouds[i * 4] = (i / 16) * Math.PI * 2 + next() * 0.3;
+            scene.clouds[i * 4 + 1] = 0.05 + next() * (clouds.height ?? 0.28);
+            scene.clouds[i * 4 + 2] = 0.1 + next() * 0.12;
+            scene.clouds[i * 4 + 3] = 0;
+          }
+        }
       }
     },
 

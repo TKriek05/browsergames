@@ -1,4 +1,4 @@
-// Neon Kart GP HUD on the 2D canvas above the 3D view: place, lap, time,
+// Turbo Kart GP HUD on the 2D canvas above the 3D view: place, lap, time,
 // item slot (with a short roulette), minimap, speed, start lights, banners
 // and the Grand Prix standings. Plus a top-down view when WebGL is missing.
 import { drawText } from '../../js/core/pixelfont.js';
@@ -23,10 +23,10 @@ export function createKartHud(view) {
     const ox = (MAP_W - (maxX - minX) * scale) / 2 - minX * scale;
     const oy = (MAP_H - (maxY - minY) * scale) / 2 - minY * scale;
     const { canvas, ctx: c } = createLayer(MAP_W, MAP_H);
-    c.fillStyle = 'rgba(11,11,30,0.82)';
+    c.fillStyle = 'rgba(28, 52, 30, 0.8)';
     c.fillRect(0, 0, MAP_W, MAP_H);
     c.lineJoin = 'round';
-    for (const [width, color] of [[5, '#0b0b1e'], [3, '#8a86c8']]) {
+    for (const [width, color] of [[5, '#1c1c24'], [3, '#c8c8d0']]) {
       c.strokeStyle = color;
       c.lineWidth = width;
       c.beginPath();
@@ -54,7 +54,7 @@ export function createKartHud(view) {
     },
 
     place(place, total) {
-      const w = drawText(ctx, `${place}E`, 6, 6, { color: place === 1 ? '#ffe14d' : '#ffffff', scale: 4, shadow: '#ff3ea5' });
+      const w = drawText(ctx, `${place}E`, 6, 6, { color: place === 1 ? '#ffe14d' : '#ffffff', scale: 4, shadow: '#c81d25' });
       drawText(ctx, `/${total}`, 8 + w, 25, { color: '#a3a8d6', shadow: SHADOW });
     },
 
@@ -72,9 +72,9 @@ export function createKartHud(view) {
     item(item, roll) {
       const x = W / 2 - 13;
       const y = 5;
-      ctx.fillStyle = 'rgba(11,11,30,0.7)';
+      ctx.fillStyle = 'rgba(20,20,28,0.65)';
       ctx.fillRect(x, y, 26, 26);
-      ctx.strokeStyle = '#3ef0ff';
+      ctx.strokeStyle = '#f4f4f4';
       ctx.lineWidth = 1;
       ctx.strokeRect(x + 0.5, y + 0.5, 25, 25);
       const shown = roll > 0 ? 1 + (Math.floor(performance.now() / 70) % 4) : item;
@@ -186,13 +186,13 @@ export function createFallback2D(view) {
   const scale = 0.5;
   return {
     draw(track, focus, karts, objects) {
-      ctx.fillStyle = '#1a0b35';
+      ctx.fillStyle = '#5fae48';
       ctx.fillRect(0, 0, W, H);
       ctx.save();
       ctx.translate(W / 2 - focus.x * scale, H / 2 - focus.y * scale);
       ctx.scale(scale, scale);
       ctx.lineJoin = 'round';
-      for (const [width, color] of [[track.width + 14, '#ff4d6d'], [track.width, '#2c2a44']]) {
+      for (const [width, color] of [[track.width + 14, '#e63946'], [track.width, '#5b5c64']]) {
         ctx.strokeStyle = color;
         ctx.lineWidth = width;
         ctx.beginPath();
@@ -204,7 +204,7 @@ export function createFallback2D(view) {
         ctx.stroke();
       }
       for (const o of objects) {
-        ctx.fillStyle = o.type === ITEM.ORB ? '#ff3ea5' : '#c77dff';
+        ctx.fillStyle = ITEMS[o.type]?.color ?? '#ffffff';
         ctx.fillRect(o.x - 6, o.y - 6, 12, 12);
       }
       for (const k of karts) {

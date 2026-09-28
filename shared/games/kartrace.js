@@ -1,12 +1,12 @@
-// Neon Kart GP: values both sides need.
+// Turbo Kart GP: values both sides need.
 export const KART_PHASE = { COUNTDOWN: 0, RACE: 1, RESULTS: 2, END: 3 };
 
 export const ITEM = { NONE: 0, TURBO: 1, ORB: 2, OIL: 3, SHIELD: 4 };
 export const ITEMS = [
   null,
-  { key: 'turbo', name: 'Turbo', color: '#3ef0ff' },
-  { key: 'orb', name: 'Neonbol', color: '#ff3ea5' },
-  { key: 'oil', name: 'Olievlek', color: '#c77dff' },
+  { key: 'turbo', name: 'Turbo', color: '#ffb020' },
+  { key: 'orb', name: 'Stuiterbal', color: '#ff5a36' },
+  { key: 'oil', name: 'Olievlek', color: '#8a7a9a' },
   { key: 'shield', name: 'Schild', color: '#5dff8a' },
 ];
 

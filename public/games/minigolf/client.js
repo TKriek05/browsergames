@@ -307,21 +307,21 @@ export function createGame() {
       const X = (x) => view.width / 2 + (x - FLAT.cx) * FLAT.s;
       const Y = (y) => view.height / 2 + 5 + (y - FLAT.cy) * FLAT.s;
       const rect = (r, color) => { ctx.fillStyle = color; ctx.fillRect(X(r.x), Y(r.y), r.w * FLAT.s, r.h * FLAT.s); };
-      ctx.fillStyle = '#120a2a';
+      ctx.fillStyle = '#5a9a44';
       ctx.fillRect(0, 0, view.width, view.height);
       ctx.beginPath();
       h.outline.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
       ctx.closePath();
       ctx.fillStyle = '#2f9e4f';
       ctx.fill();
-      ctx.strokeStyle = '#3ef0ff';
+      ctx.strokeStyle = '#9a6234';
       ctx.lineWidth = 2;
       ctx.stroke();
       for (const r of h.sand) rect(r, '#e6cf8e');
-      for (const r of h.water) rect(r, '#1f7ae0');
-      for (const r of h.blocks) rect(r, '#3a3190');
+      for (const r of h.water) rect(r, '#2f86c8');
+      for (const r of h.blocks) rect(r, '#8f8578');
       for (const b of h.bumpers) {
-        ctx.fillStyle = '#ff3ea5';
+        ctx.fillStyle = '#d62828';
         ctx.beginPath();
         ctx.arc(X(b.x), Y(b.y), b.r * FLAT.s, 0, Math.PI * 2);
         ctx.fill();
@@ -342,7 +342,7 @@ export function createGame() {
     hud(s) {
       const h = HOLES[s.hole];
       drawText(ctx, `HOLE ${s.holeNo + 1}/${s.holes}`, 6, 5, { color: '#ffffff', shadow: SHADOW });
-      drawText(ctx, `${h.name}  PAR ${h.par}`, 6, 15, { color: '#3ef0ff', shadow: SHADOW });
+      drawText(ctx, `${h.name}  PAR ${h.par}`, 6, 15, { color: '#ffe14d', shadow: SHADOW });
       if (s.phase === ARCADE_PHASE.PLAY) {
         const left = Math.ceil(core.secondsLeft());
         drawText(ctx, `TIJD ${left}`, 6, 25, { color: left <= 10 ? '#ff4d6d' : '#a3a8d6', shadow: SHADOW });
@@ -363,9 +363,9 @@ export function createGame() {
 
       const me = core.mine();
       if (s.phase === ARCADE_PHASE.COUNTDOWN) {
-        drawText(ctx, h.name, view.width / 2, 70, { color: '#ffffff', scale: 3, align: 'center', shadow: '#ff3ea5' });
-        drawText(ctx, `PAR ${h.par}`, view.width / 2, 98, { color: '#3ef0ff', scale: 2, align: 'center', shadow: SHADOW });
-        drawText(ctx, String(Math.max(1, Math.ceil(core.secondsLeft()))), view.width / 2, 130, { color: '#ffe14d', scale: 5, align: 'center', shadow: '#ff3ea5' });
+        drawText(ctx, h.name, view.width / 2, 70, { color: '#ffffff', scale: 3, align: 'center', shadow: '#1c4a2a' });
+        drawText(ctx, `PAR ${h.par}`, view.width / 2, 98, { color: '#ffe14d', scale: 2, align: 'center', shadow: SHADOW });
+        drawText(ctx, String(Math.max(1, Math.ceil(core.secondsLeft()))), view.width / 2, 130, { color: '#ffe14d', scale: 5, align: 'center', shadow: '#1c4a2a' });
       } else if (s.phase === ARCADE_PHASE.ROUND_END || s.phase === ARCADE_PHASE.END) {
         this.scorecard(s);
       } else if (banner && performance.now() < banner.until) {
@@ -385,9 +385,9 @@ export function createGame() {
       const hgt = 26 + rows.length * 11;
       const x0 = Math.round(view.width / 2 - w / 2);
       const y0 = Math.round(view.height / 2 - hgt / 2);
-      ctx.fillStyle = 'rgba(11, 8, 30, 0.88)';
+      ctx.fillStyle = 'rgba(16, 40, 24, 0.9)';
       ctx.fillRect(x0 - 6, y0 - 6, w + 12, hgt + 12);
-      ctx.fillStyle = '#ff3ea5';
+      ctx.fillStyle = '#ffe14d';
       ctx.fillRect(x0 - 6, y0 - 6, w + 12, 1);
       drawText(ctx, s.phase === ARCADE_PHASE.END ? 'EINDSTAND' : 'SCOREKAART', x0, y0, { color: '#ffe14d', shadow: SHADOW });
       drawText(ctx, 'TOT', x0 + w, y0 + 12, { color: '#a3a8d6', align: 'right' });

@@ -1,5 +1,6 @@
-// Tank Tumult in 3D: the arena (floor, neon walls, crates), low-poly tanks
-// with a separate turret, glowing bullets, spinning power-ups, particles.
+// Tank Tumult in 3D: the arena in its theme (desert camp, forest or winter
+// fort: floor, walls, wooden crates, scenery around it), low-poly tanks with
+// a separate turret, bullets, spinning power-ups and particles.
 // World mapping: game (x, y) → 3D (x, 0, y); the camera looks from the south.
 import { createRenderer3D } from '../../js/gl/renderer.js';
 import { MeshBuilder, rgb } from '../../js/gl/mesh.js';
@@ -7,6 +8,7 @@ import { create, compose, yawFromDir } from '../../js/gl/mat4.js';
 import { createParticles3D } from '../../js/gl/particles.js';
 import { TANK_TILE, TANK_COLS, TANK_ROWS, TANK_WORLD, TILE } from '../../../shared/maps/tank-arenas.js';
 import { POWERUPS } from '../../../shared/games/tanks.js';
+import { tankTheme } from './theme.js';
 
 const WALL_H = 16;
 const MODEL_SCALE = 1.15; // tanks look a bit bigger than their hitbox
@@ -17,20 +19,21 @@ const CZ = TANK_WORLD.height / 2;
 export function createTankScene(canvas, { arena, reducedMotion }) {
   const r = createRenderer3D(canvas);
   if (!r) return null;
+  const th = tankTheme(arena.key);
   r.setColors({
-    sky: ['#0b0620', '#26104a'],
-    fog: ['#120a2a', 420, 900],
-    light: { dir: [-0.35, -1, -0.55], color: '#d8d4ff', ambient: '#4a4470' },
+    sky: th.sky,
+    fog: [th.fog, 600, 1300],
+    light: { dir: [-0.35, -1, -0.55], color: th.light.color, ambient: th.light.ambient },
     sun: null,
   });
 
-  const floor = r.mesh(buildFloor(arena));
-  const walls = r.mesh(buildWalls(arena));
+  const floor = r.mesh(buildFloor(arena, th));
+  const walls = r.mesh(buildWalls(arena, th));
   const crates = r.mesh(new Float32Array(0));
   const hull = r.mesh(buildHull());
   const turret = r.mesh(buildTurret());
   const wreck = r.mesh(buildWreck());
-  const bullet = r.mesh(new MeshBuilder().color('#ffffff', { emissive: 1, tint: 0.8 }).octa(0, 0, 0, 2.2, 2.2).build());
+  const bullet = r.mesh(new MeshBuilder().color('#ffffff', { emissive: 0.8, tint: 0.6 }).octa(0, 0, 0, 2.2, 2.2).build());
   const pickup = r.mesh(buildPickup());
   const shadow = r.mesh(buildShadow());
   const shield = r.mesh(new MeshBuilder().color('#ffffff', { emissive: 0.7, tint: 1 }).sphere(0, 0, 0, 11, 8, 5).build());
@@ -100,14 +103,14 @@ export function createTankScene(canvas, { arena, reducedMotion }) {
       compose(m, x, 0, y, yawFromDir(dx, dy), 0, 0.08, MODEL_SCALE);
       r.draw(wreck, m);
       if (!reducedMotion && Math.random() < 0.25) {
-        particles.spawn(x + (Math.random() - 0.5) * 6, 6, y + (Math.random() - 0.5) * 6, 0, 12 + Math.random() * 8, 0, 1.2, '#4a4458', 3, 0, 0.99);
+        particles.spawn(x + (Math.random() - 0.5) * 6, 6, y + (Math.random() - 0.5) * 6, 0, 12 + Math.random() * 8, 0, 1.2, '#5a5652', 3, 0, 0.99);
       }
     },
 
     bullet(x, y, color) {
       compose(m, x, 5.5, y, time * 8);
       r.draw(bullet, m, color);
-      if (!reducedMotion && Math.random() < 0.6) particles.spawn(x, 5.5, y, 0, 0, 0, 0.25, color, 1.6, 0, 1);
+      if (!reducedMotion && Math.random() < 0.6) particles.spawn(x, 5.5, y, 0, 2, 0, 0.3, '#d8d4cc', 1.4, 0, 1);
     },
 
     pickup(x, y, type) {
@@ -160,38 +163,81 @@ export function createTankScene(canvas, { arena, reducedMotion }) {
 }
 
 // --- Static meshes ---------------------------------------------------------------
-function buildFloor(arena) {
+function seeded(seed) {
+  let v = seed;
+  return () => ((v = (v * 16807) % 2147483647) / 2147483647);
+}
+
+function buildFloor(arena, th) {
   const b = new MeshBuilder();
   const T = TANK_TILE;
-  // Dark base under everything (also outside the arena), then a subtle checker.
-  b.color('#0d0a24').box(CX, -2, CZ, TANK_WORLD.width + 400, 2, TANK_WORLD.height + 400);
+  const rnd = seeded(arena.key.length * 97 + 11);
+  // Ground around the arena, then the arena floor in two soft tones.
+  b.color(th.outside).box(CX, -2, CZ, TANK_WORLD.width + 700, 2, TANK_WORLD.height + 600);
   for (let ty = 0; ty < TANK_ROWS; ty++) {
     for (let tx = 0; tx < TANK_COLS; tx++) {
       if (arena.tiles[ty * TANK_COLS + tx] === TILE.WALL) continue;
-      b.color((tx + ty) % 2 ? '#1b1a44' : '#1f1e4c');
+      b.color((tx * 7 + ty * 3) % 5 === 0 ? th.floor[1] : th.floor[0]);
       b.face([[tx * T, 0, ty * T], [tx * T, 0, ty * T + T], [tx * T + T, 0, ty * T + T], [tx * T + T, 0, ty * T]], [0, 1, 0]);
     }
   }
-  // Faint neon grid lines every two tiles (thin lines would alias at our low resolution)
-  b.color('#25507a', { emissive: 0.9 });
-  for (let tx = 2; tx < TANK_COLS; tx += 2) b.box(tx * T, 0, CZ, 1.1, 0.08, TANK_WORLD.height, { bottom: false });
-  for (let ty = 2; ty < TANK_ROWS; ty += 2) b.box(CX, 0, ty * T, TANK_WORLD.width, 0.08, 1.1, { bottom: false });
-  // Power-up pads
-  b.color('#6a3fb8', { emissive: 0.8 });
-  for (const p of arena.pickups) b.cylinder(p.x, 0, p.y, 6.5, 0.12, 8);
+  // Tyre tracks and small details on the ground.
+  b.color(th.track);
+  for (let i = 0; i < 90; i++) {
+    const x = 20 + rnd() * (TANK_WORLD.width - 40);
+    const z = 20 + rnd() * (TANK_WORLD.height - 40);
+    const w = 2 + rnd() * 3;
+    b.face([[x, 0.05, z], [x, 0.05, z + w * 0.6], [x + w, 0.05, z + w * 0.6], [x + w, 0.05, z]], [0, 1, 0]);
+  }
+  // Power-up pads: painted landing circles.
+  for (const p of arena.pickups) {
+    b.color('#f4d23e').cylinder(p.x, 0, p.y, 7, 0.1, 10);
+    b.color('#3a3a3a').cylinder(p.x, 0, p.y, 5.2, 0.14, 10);
+  }
+  scenery(b, th, rnd);
   return b.build();
 }
 
-function buildWalls(arena) {
+// Cacti and rocks, trees or snowy pines around the arena.
+function scenery(b, th, rnd) {
+  const W = TANK_WORLD.width;
+  const H = TANK_WORLD.height;
+  for (let i = 0; i < 110; i++) {
+    const side = i % 4;
+    const along = rnd();
+    const out = 18 + rnd() * 150;
+    const x = side === 0 ? -out : side === 1 ? W + out : along * (W + 200) - 100;
+    const z = side === 2 ? -out : side === 3 ? H + out : along * (H + 160) - 80;
+    const s = 0.7 + rnd() * 0.7;
+    const c = th.decoColors[Math.floor(rnd() * th.decoColors.length)];
+    if (th.deco === 'desert') {
+      if (rnd() < 0.5) {
+        b.color(c).box(x, 0, z, 3.6 * s, 16 * s, 3.6 * s, { bottom: false });
+        b.box(x + 4 * s, 6 * s, z, 4.4 * s, 2.4 * s, 2.6 * s, { bottom: false }).box(x + 5.6 * s, 6 * s, z, 2.4 * s, 7 * s, 2.4 * s, { bottom: false });
+      } else b.color('#a08a6a').octa(x, 0, z, 6 * s, 4 * s);
+    } else {
+      b.color('#6b4a2e').box(x, 0, z, 2.6 * s, 5 * s, 2.6 * s, { bottom: false });
+      b.color(c).cone(x, 4 * s, z, 10 * s, 15 * s, 6).cone(x, 12 * s, z, 7 * s, 12 * s, 6);
+      if (th.deco === 'snow') b.color('#f8fbff').cone(x, 19 * s, z, 3.6 * s, 5.5 * s, 6);
+    }
+  }
+}
+
+function buildWalls(arena, th) {
   const b = new MeshBuilder();
   const T = TANK_TILE;
   for (let ty = 0; ty < TANK_ROWS; ty++) {
     for (let tx = 0; tx < TANK_COLS; tx++) {
       if (arena.tiles[ty * TANK_COLS + tx] !== TILE.WALL) continue;
       const edge = tx === 0 || ty === 0 || tx === TANK_COLS - 1 || ty === TANK_ROWS - 1;
-      b.color(edge ? '#241f55' : '#2c2766').box(tx * T + T / 2, 0, ty * T + T / 2, T, edge ? WALL_H * 0.8 : WALL_H, T, { top: '#3a3486', bottom: false });
-      // Neon cap
-      b.color(edge ? '#ff3ea5' : '#3ef0ff', { emissive: 1 }).box(tx * T + T / 2, edge ? WALL_H * 0.8 : WALL_H, ty * T + T / 2, T - 3, 0.6, T - 3, { bottom: false });
+      const h = edge ? WALL_H * 0.8 : WALL_H;
+      const x = tx * T + T / 2;
+      const z = ty * T + T / 2;
+      b.color(edge ? th.border : th.wall).box(x, 0, z, T, h, T, { top: edge ? th.borderTop : th.wallTop, bottom: false });
+      // Courses of sandbags / stones: slightly wider bands.
+      b.color(th.wallLine);
+      for (let k = 1; k < 3; k++) b.box(x, (h * k) / 3 - 0.5, z, T + 0.4, 1, T + 0.4, { bottom: false });
+      if (th.cap) b.color(th.cap).box(x, h, z, T - 5, 0.8, T - 5, { bottom: false }); // moss or snow on top
     }
   }
   return b.build();
@@ -221,7 +267,8 @@ function buildHull() {
   }
   b.color('#ffffff', { tint: 1 }).box(-0.8, 1.4, 0, 11, 3.6, 8, { top: '#ffffff' });
   b.color('#d0d0d0', { tint: 1 }).wedge(5.8, 1.4, 0, 3, 3.6, 8, 1.8);
-  b.color('#ffffff', { emissive: 1, tint: 1 }).box(-6.4, 2.2, 0, 0.5, 1.6, 8.2);
+  b.color('#2c2c34').box(-6.4, 2.2, 0, 0.5, 1.6, 8.2);
+  b.color('#e8e0c8').box(3.2, 5, 2.4, 1.6, 0.3, 1.6).box(-4.2, 5, -2.4, 2.4, 0.3, 1.2);
   return b.build();
 }
 
@@ -229,7 +276,7 @@ function buildTurret() {
   const b = new MeshBuilder();
   b.color('#e8e8e8', { tint: 1 }).cylinder(-0.5, 5, 0, 3.8, 3, 8, { top: '#ffffff' });
   b.color('#2c2c3a').box(5, 5.8, 0, 9, 1.7, 1.7);
-  b.color('#ffffff', { emissive: 1, tint: 1 }).box(9.6, 5.8, 0, 0.8, 1.9, 1.9);
+  b.color('#1c1c24').box(9.6, 5.8, 0, 0.8, 2.1, 2.1);
   return b.build();
 }
 
@@ -237,12 +284,12 @@ function buildWreck() {
   const b = new MeshBuilder();
   b.color('#1a1418').box(0, 0, 4.4, 14, 3, 3).box(0, 0, -4.4, 14, 3, 3);
   b.color('#2a2226').box(-0.8, 1.2, 0, 11, 3, 8, { top: '#1e181c' });
-  b.color('#ff6a2a', { emissive: 0.8 }).box(1, 4.2, 1, 2, 0.4, 2).box(-3, 4.2, -2, 1.5, 0.4, 1.5);
+  b.color('#ff6a2a', { emissive: 0.6 }).box(1, 4.2, 1, 2, 0.4, 2).box(-3, 4.2, -2, 1.5, 0.4, 1.5);
   return b.build();
 }
 
 function buildPickup() {
-  return new MeshBuilder().color('#ffffff', { emissive: 0.85, tint: 0.85 }).octa(0, 0, 0, 4.2, 6).build();
+  return new MeshBuilder().color('#ffffff', { emissive: 0.45, tint: 0.85 }).octa(0, 0, 0, 4.2, 6).build();
 }
 
 function buildShadow() {

@@ -1,4 +1,4 @@
-// Neon Kart GP circuits. A track is a closed Catmull-Rom spline through a
+// Turbo Kart GP circuits. A track is a closed Catmull-Rom spline through a
 // few control points, sampled into a polyline (the "centre line"). Sampling
 // uses only + - * / and Math.sqrt, rounded to float32, so the server and
 // every client build exactly the same track (the kart physics depends on it).
@@ -8,31 +8,50 @@ const f = Math.fround;
 // Control points in world units (≈ 1 kart = 12 units). y grows "south".
 const DEFS = {
   ring: {
-    name: 'Neon Ring',
+    name: 'Groene Vallei',
     width: 84,
     points: [[400, 0], [800, 0], [1100, 60], [1250, 250], [1200, 480], [1000, 560], [800, 500], [650, 560],
       [550, 750], [350, 850], [100, 820], [-100, 700], [-180, 450], [-150, 180], [0, 0]],
     items: [0.2, 0.47, 0.74], // item box rows (fraction of the lap)
     pads: [[0.09, 0], [0.58, -0.3], [0.86, 0.3]], // boost pads: fraction, lateral (-1..1 of half width)
-    sky: ['#12062e', '#ff5fa2'], sun: ['#ffe14d', '#ff3ea5'], ground: '#1a0b35', grid: '#ff3ea5', barrier: ['#3ef0ff', '#ff3ea5'],
+    // Sunny summer day: green hills, pine trees, red/white barriers.
+    theme: {
+      sky: ['#3d8ee0', '#cfe8fb'], fog: '#d5e8f5', sun: ['#fffbe6', '#fff1b0'], sunDir: [0.5, 0.35, -1],
+      light: { color: '#eee4cc', ambient: '#6f7a8c' }, clouds: 13,
+      ground: ['#55a044', '#4e973e'], edge: '#c9b98a', road: ['#5b5c64', '#606169'], kerb: ['#e63946', '#f4f4f4'],
+      wall: ['#f4f4f4', '#e63946'], hills: ['#4f9a4f', '#7fb97a'], trees: 'pine', leaves: ['#2f7a3b', '#3c8a45', '#28693a'],
+    },
   },
   park: {
-    name: 'Pixel Park',
+    name: 'Herfstbos',
     width: 78,
     points: [[175, 0], [350, 0], [600, -80], [750, -250], [980, -300], [1150, -180], [1150, 50], [950, 180], [900, 380],
       [1050, 560], [900, 720], [600, 700], [450, 520], [250, 560], [80, 700], [-150, 620], [-200, 380], [-100, 150], [0, 0]],
     items: [0.17, 0.44, 0.7],
     pads: [[0.06, 0], [0.33, 0.35], [0.62, -0.35], [0.9, 0]],
-    sky: ['#04122e', '#2fd4b0'], sun: ['#b4ff6a', '#2fa8ff'], ground: '#061a24', grid: '#3ef0ff', barrier: ['#5dff8a', '#3ef0ff'],
+    // Autumn afternoon in the woods: low warm sun, orange trees, wooden fences.
+    theme: {
+      sky: ['#5a8fd0', '#f4dcb4'], fog: '#e8d8bc', sun: ['#fff0c8', '#ffcf80'], sunDir: [-0.6, 0.22, -1],
+      light: { color: '#f0d8b4', ambient: '#76706a' }, clouds: 8,
+      ground: ['#7d9a3e', '#76913a'], edge: '#a88a58', road: ['#57565a', '#5c5b5f'], kerb: ['#d9822b', '#f4efe4'],
+      wall: ['#9a6a3c', '#86592f'], hills: ['#8a7a3a', '#b0a060'], trees: 'round', leaves: ['#d9822b', '#c4452c', '#e8b23a', '#8a9a2e'],
+    },
   },
   boulevard: {
-    name: 'Zonsondergang Boulevard',
+    name: 'Strandboulevard',
     width: 90,
     points: [[600, 0], [1200, 0], [1600, 100], [1800, 400], [1650, 700], [1300, 800], [900, 700], [600, 850],
       [250, 850], [-50, 700], [-200, 400], [-150, 120], [0, 0]],
     items: [0.14, 0.42, 0.69],
     pads: [[0.05, 0.35], [0.05, -0.35], [0.3, 0], [0.8, 0]],
-    sky: ['#1a0526', '#ff9a3e'], sun: ['#ffe14d', '#ff4d6d'], ground: '#220a1e', grid: '#ff9a3e', barrier: ['#ffd23e', '#ff4d6d'],
+    // Seaside at golden hour: sand, palm trees, blue/white barriers, the sea.
+    theme: {
+      sky: ['#4a78c0', '#ffc98a'], fog: '#f2d2a8', sun: ['#fff4d0', '#ffb060'], sunDir: [0.2, 0.12, 1],
+      light: { color: '#f2d6b0', ambient: '#7a7080' }, clouds: 9,
+      ground: ['#e6cf96', '#dfc68b'], edge: '#d4b878', road: ['#5a5a62', '#5f5f67'], kerb: ['#2a6fdb', '#f4f4f4'],
+      wall: ['#f4f4f4', '#2a6fdb'], hills: ['#b89a6a', '#d8bf90'], trees: 'palm', leaves: ['#3f8f3a', '#4fa046', '#35803a'],
+      sea: '#2f86c8',
+    },
   },
 };
 
@@ -88,7 +107,7 @@ function build(id) {
 
   const track = {
     id, name: def.name, width: def.width, half, count, px, py, tx, ty, seglen, cum, length,
-    colors: { sky: def.sky, sun: def.sun, ground: def.ground, grid: def.grid, barrier: def.barrier },
+    theme: def.theme,
     boxes: [], pads: [], grid: [],
   };
   // Item boxes: rows of 4 across the road.

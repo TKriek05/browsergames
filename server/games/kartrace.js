@@ -1,4 +1,4 @@
-// Neon Kart GP (server side): races on spline tracks, laps with
+// Turbo Kart GP (server side): races on spline tracks, laps with
 // checkpoints, positions, item boxes, orbs and oil, a Grand Prix over three
 // tracks, and bots that follow a racing line.
 import { stepKart, createKartState, KART_PHYS } from '../../shared/physics/kart.js';
@@ -397,7 +397,7 @@ class KartGame {
       return `${m}:${sec.toFixed(1).padStart(4, '0').replace('.', ',')}`;
     };
     return {
-      title: gp ? 'Uitslag Neon Kart GP' : `Uitslag ${this.track.name}`,
+      title: gp ? 'Uitslag Turbo Kart GP' : `Uitslag ${this.track.name}`,
       columns: gp ? ['Punten', 'Plaatsen'] : ['Tijd', 'Snelste ronde'],
       rows: sorted.map((k, i) => ({
         id: k.player.id,
