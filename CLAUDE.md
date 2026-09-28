@@ -79,6 +79,11 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 - Bordspellen: gebruik de oppervlakken uit `public/games/board/draw.js` (`woodTable`, `woodSquare`, `boardFrame`,
   `feltTable`, `dropShadow`) in plaats van een donkere achtergrond met glow.
 - De site zelf (hub, lobby, zijpaneel) houdt de Timon's Arcade-huisstijl.
+- **Pixel of scherp:** pixel-art alleen waar het de stijl is (Neon Tikkertje, Kwek Kwek Knal, Ruimtegolf).
+  Alle andere games gebruiken `meta.pixelated: false`: 3D op schermresolutie met anti-aliasing, 2D met
+  vectorvormen, `drawText` uit `core/hudtext.js` (gewone letter, zelfde aanroep als de pixelfont),
+  `createSharpLayer(view, draw)` voor vaste achtergronden en `createFx({ smooth: true })`.
+- 3D-deeltjes: `particles.draw(r, scale, additive)`; additief alleen voor vuur/vonken, rook en stof normaal.
 
 ## Game-module interface
 

@@ -121,3 +121,28 @@ export function createLayer(width, height) {
   canvas.height = height;
   return { canvas, ctx: canvas.getContext('2d') };
 }
+
+// Offscreen layer at the canvas' real resolution for smooth (non-pixelated)
+// games: draw(ctx) in logical units; it is redrawn when the canvas resizes.
+export function createSharpLayer(view, draw) {
+  let layer = null;
+  let w = 0;
+  let h = 0;
+  return {
+    blit(ctx) {
+      const cw = view.canvas.width;
+      const ch = view.canvas.height;
+      if (!layer || w !== cw || h !== ch) {
+        w = cw;
+        h = ch;
+        layer = layer ?? document.createElement('canvas');
+        layer.width = cw;
+        layer.height = ch;
+        const lctx = layer.getContext('2d');
+        lctx.setTransform(cw / view.width, 0, 0, ch / view.height, 0, 0);
+        draw(lctx);
+      }
+      ctx.drawImage(layer, 0, 0, view.width, view.height);
+    },
+  };
+}

@@ -4,12 +4,12 @@ import { BTN } from '../../../shared/messages.js';
 import { stepShip, ROCKS_FIELD as F, wrapDelta } from '../../../shared/physics/rocks.js';
 import { createArcadeCore, ARCADE_PHASE } from '../common/arcade.js';
 import { Predictor } from '../../js/core/predict.js';
-import { drawText } from '../../js/core/pixelfont.js';
+import { drawText } from '../../js/core/hudtext.js';
 import { createFx } from '../../js/core/fx.js';
-import { createLayer } from '../../js/core/canvas.js';
+import { createSharpLayer } from '../../js/core/canvas.js';
 
 export const meta = {
-  width: 320, height: 180, pixelated: true, step: 1 / 30,
+  width: 320, height: 180, pixelated: false, step: 1 / 30,
   touchButtons: [{ label: 'VUUR', bit: BTN.A }, { label: 'GAS', bit: BTN.B }],
 };
 
@@ -111,17 +111,27 @@ export function createGame() {
       const ox = cx - x;
       const oy = cy - y;
       const pts = [p(7, 0), p(-5, 4.5), p(-3, 0), p(-5, -4.5)];
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
+      ctx.lineJoin = 'round';
       ctx.beginPath();
       pts.forEach(([px, py], i) => (i ? ctx.lineTo(px + ox, py + oy) : ctx.moveTo(px + ox, py + oy)));
       ctx.closePath();
+      ctx.fillStyle = 'rgba(20, 24, 40, 0.85)';
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.1;
       ctx.stroke();
+      // Cockpit
+      const [kx, ky] = p(2, 0);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(kx + ox, ky + oy, 1, 0, Math.PI * 2);
+      ctx.fill();
       if (thrust && Math.floor(time * 20) % 2) {
         const [fx1, fy1] = p(-4, 2);
         const [fx2, fy2] = p(-9, 0);
         const [fx3, fy3] = p(-4, -2);
-        ctx.strokeStyle = '#ffd23e';
+        ctx.strokeStyle = '#ffb040';
+        ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(fx1 + ox, fy1 + oy);
         ctx.lineTo(fx2 + ox, fy2 + oy);
@@ -137,8 +147,8 @@ export function createGame() {
       input = c.input;
       sfx = c.sfx;
       core.mount(net, c);
-      fx = createFx({ max: 300, reducedMotion: c.reducedMotion });
-      bg = drawStars();
+      fx = createFx({ max: 300, reducedMotion: c.reducedMotion, smooth: true });
+      bg = createSharpLayer(view, drawStars);
     },
 
     onSnapshot(snap) {
@@ -184,7 +194,7 @@ export function createGame() {
     render(alpha) {
       ctx.save();
       ctx.translate(fx.shakeX(), fx.shakeY());
-      ctx.drawImage(bg, 0, 0);
+      bg.blit(ctx);
       const s = core.latest;
       const sample = core.sample();
       if (s && sample) {
@@ -217,14 +227,22 @@ export function createGame() {
             // A crater or two
             ctx.fillStyle = 'rgba(40, 30, 24, 0.45)';
             const cr = ROCK_R[rb.size] * 0.28;
-            ctx.fillRect(Math.round(cx + c * cr - 1), Math.round(cy + sn * cr - 1), 2 + rb.size, 2 + rb.size);
-            if (rb.size > 0) ctx.fillRect(Math.round(cx - sn * cr * 1.4), Math.round(cy + c * cr * 1.2), 2, 2);
+            ctx.beginPath();
+            ctx.arc(cx + c * cr, cy + sn * cr, 1 + rb.size * 0.7, 0, Math.PI * 2);
+            ctx.fill();
+            if (rb.size > 0) {
+              ctx.beginPath();
+              ctx.arc(cx - sn * cr * 1.4, cy + c * cr * 1.2, 1, 0, Math.PI * 2);
+              ctx.fill();
+            }
           });
         }
         // Bullets
         for (const bl of b.bullets) {
           ctx.fillStyle = core.hex(bl.slot);
-          ctx.fillRect(Math.round(bl.x) - 1, Math.round(bl.y) - 1, 2, 2);
+          ctx.beginPath();
+          ctx.arc(bl.x, bl.y, 1.1, 0, Math.PI * 2);
+          ctx.fill();
         }
         // Ships
         for (const eb of b.ents) {
@@ -259,7 +277,14 @@ export function createGame() {
       for (const e of [...s.ents].sort((p, q) => p.score - q.score)) {
         const w = drawText(ctx, `${e.score}`, x, 2, { color: e.lives > 0 ? '#ffffff' : '#8a8fb8', align: 'right', shadow: SHADOW });
         ctx.fillStyle = core.hex(e.slot);
-        for (let k = 0; k < Math.min(e.lives, 5); k++) ctx.fillRect(x - w - 6 - k * 4, 3, 3, 4);
+        for (let k = 0; k < Math.min(e.lives, 5); k++) {
+          ctx.beginPath();
+          ctx.moveTo(x - w - 4.5 - k * 4, 2.5);
+          ctx.lineTo(x - w - 3 - k * 4, 7);
+          ctx.lineTo(x - w - 6 - k * 4, 7);
+          ctx.closePath();
+          ctx.fill();
+        }
         x -= w + 10 + Math.min(e.lives, 5) * 4;
       }
       if (s.phase === ARCADE_PHASE.COUNTDOWN) {
@@ -279,8 +304,7 @@ export function createGame() {
 }
 
 // Deep space: a soft nebula, a distant ringed planet and many stars.
-function drawStars() {
-  const { canvas, ctx } = createLayer(F.width, F.height);
+function drawStars(ctx) {
   ctx.fillStyle = '#05060e';
   ctx.fillRect(0, 0, F.width, F.height);
   for (const [x, y, r, color] of [[70, 50, 90, 'rgba(70, 40, 110, 0.35)'], [240, 130, 110, 'rgba(30, 60, 110, 0.3)'], [180, 40, 60, 'rgba(110, 50, 70, 0.2)']]) {
@@ -292,7 +316,9 @@ function drawStars() {
   }
   for (let i = 0; i < 160; i++) {
     ctx.fillStyle = i % 9 === 0 ? '#f4ecd8' : i % 3 ? '#3a3e5a' : '#8a90b8';
-    ctx.fillRect((i * 131 + (i >> 3)) % F.width, (i * 71 + i * i) % F.height, 1, 1);
+    ctx.beginPath();
+    ctx.arc((i * 131 + (i >> 3)) % F.width, (i * 71 + i * i) % F.height, i % 9 === 0 ? 0.7 : 0.45, 0, Math.PI * 2);
+    ctx.fill();
   }
   // Ringed planet in the corner
   ctx.fillStyle = '#c9784e';
@@ -306,5 +332,4 @@ function drawStars() {
   ctx.beginPath();
   ctx.ellipse(282, 148, 27, 6, -0.3, 0, Math.PI * 2);
   ctx.stroke();
-  return canvas;
 }

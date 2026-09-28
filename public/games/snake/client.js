@@ -2,13 +2,13 @@
 // joystick. Snakes glide smoothly between grid cells (interpolated).
 import { SNAKE_GRID as G, dirFromAxes, unpackBody } from '../../../shared/games/snake.js';
 import { createArcadeCore, ARCADE_PHASE, isConnected } from '../common/arcade.js';
-import { drawText } from '../../js/core/pixelfont.js';
+import { drawText } from '../../js/core/hudtext.js';
 import { createFx } from '../../js/core/fx.js';
-import { createLayer } from '../../js/core/canvas.js';
+import { createSharpLayer } from '../../js/core/canvas.js';
 
-export const meta = { width: 320, height: 180, pixelated: true, step: 1 / 30, touchButtons: [] };
+export const meta = { width: 320, height: 180, pixelated: false, step: 1 / 30, touchButtons: [] };
 
-const SHADOW = '#0b0b1e';
+const SHADOW = '#14240f';
 
 function decode(r, time) {
   const s = { time, phase: r.u8(), endsAt: time + r.f32() * 1000, round: r.u8(), rounds: r.u8(), moves: r.u16(), ents: [], food: [] };
@@ -29,6 +29,8 @@ function decode(r, time) {
 
 const px = (cx) => G.x0 + cx * G.cell;
 const py = (cy) => G.y0 + cy * G.cell;
+const cxp = (cx) => px(cx) + G.cell / 2; // cell centre
+const cyp = (cy) => py(cy) + G.cell / 2;
 
 export function createGame() {
   const core = createArcadeCore({ decode });
@@ -36,39 +38,83 @@ export function createGame() {
   let lastSent = -1;
   let banner = null;
 
-  function drawSnake(cells, head, color, dark, alive, isMe) {
+  // A round snake: a thick line through the cell centres, a lighter belly
+  // stripe, and a head with eyes looking where it goes.
+  function drawSnake(cells, head, color, dir, alive, isMe) {
+    ctx.save();
     ctx.globalAlpha = alive ? 1 : 0.35;
-    // Segments as swept squares between consecutive points (smooth when the head moves).
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     const pts = [head, ...cells.slice(1)];
-    for (let i = pts.length - 1; i >= 1; i--) {
-      const [ax, ay] = pts[i];
-      const [bx, by] = pts[i - 1];
-      const x0 = Math.min(px(ax), px(bx));
-      const y0 = Math.min(py(ay), py(by));
-      const w = Math.abs(px(ax) - px(bx)) + G.cell;
-      const h = Math.abs(py(ay) - py(by)) + G.cell;
-      ctx.fillStyle = dark;
-      ctx.fillRect(Math.round(x0), Math.round(y0), Math.round(w), Math.round(h));
-      ctx.fillStyle = (i & 1) ? color : shade(color);
-      ctx.fillRect(Math.round(x0) + 1, Math.round(y0) + 1, Math.round(w) - 2, Math.round(h) - 2);
-    }
-    const hx = Math.round(px(head[0]));
-    const hy = Math.round(py(head[1]));
-    ctx.fillStyle = dark;
-    ctx.fillRect(hx - 1, hy - 1, G.cell + 2, G.cell + 2);
+    const path = () => {
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => (i ? ctx.lineTo(cxp(x), cyp(y)) : ctx.moveTo(cxp(x), cyp(y))));
+    };
+    path();
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = G.cell + 1.2;
+    ctx.stroke();
+    path();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = G.cell - 0.2;
+    ctx.stroke();
+    path();
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = G.cell * 0.28;
+    ctx.stroke();
+    // Head
+    const hx = cxp(head[0]);
+    const hy = cyp(head[1]);
+    ctx.beginPath();
+    ctx.arc(hx, hy, G.cell * 0.62, 0, Math.PI * 2);
     ctx.fillStyle = color;
-    ctx.fillRect(hx, hy, G.cell, G.cell);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(hx + 1, hy + 1, 2, 2);
-    ctx.fillRect(hx + 3, hy + 1, 2, 2);
-    ctx.fillStyle = SHADOW;
-    ctx.fillRect(hx + 2, hy + 2, 1, 1);
-    ctx.fillRect(hx + 4, hy + 2, 1, 1);
-    if (isMe && alive) {
+    ctx.fill();
+    const [dx, dy] = [[1, 0], [0, 1], [-1, 0], [0, -1]][dir] ?? [1, 0]; // right, down, left, up
+    for (const side of [-1, 1]) {
+      const ex = hx + dx * 1.2 - dy * side * 1.5;
+      const ey = hy + dy * 1.2 + dx * side * 1.5;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 1.2, 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(hx + 2, hy - 3, 2, 1);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(ex + dx * 0.45, ey + dy * 0.45, 0.6, 0, Math.PI * 2);
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fill();
     }
-    ctx.globalAlpha = 1;
+    if (isMe && alive) {
+      ctx.beginPath();
+      ctx.moveTo(hx - 2, hy - 7.5);
+      ctx.lineTo(hx + 2, hy - 7.5);
+      ctx.lineTo(hx, hy - 5.5);
+      ctx.closePath();
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawApple(x, y) {
+    const ax = cxp(x);
+    const ay = cyp(y) + 0.3;
+    ctx.beginPath();
+    ctx.arc(ax, ay, 2.6, 0, Math.PI * 2);
+    ctx.fillStyle = '#d62828';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(ax - 0.9, ay - 0.9, 0.8, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fill();
+    ctx.strokeStyle = '#6b4a2e';
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay - 2.4);
+    ctx.lineTo(ax + 0.4, ay - 3.6);
+    ctx.stroke();
+    ctx.fillStyle = '#3c8a45';
+    ctx.beginPath();
+    ctx.ellipse(ax + 1.4, ay - 3.2, 1.2, 0.6, -0.5, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   return {
@@ -77,8 +123,8 @@ export function createGame() {
       input = c.input;
       sfx = c.sfx;
       core.mount(net, c);
-      fx = createFx({ reducedMotion: c.reducedMotion });
-      bg = drawBackground();
+      fx = createFx({ reducedMotion: c.reducedMotion, smooth: true });
+      bg = createSharpLayer(view, drawBackground);
     },
 
     onSnapshot(snap) {
@@ -128,30 +174,21 @@ export function createGame() {
     render() {
       ctx.save();
       ctx.translate(fx.shakeX(), fx.shakeY());
-      ctx.drawImage(bg, 0, 0);
+      bg.blit(ctx);
       const s = core.latest;
       const sample = core.sample();
       if (s && sample) {
         const a = sample.a.state;
         const b = sample.b.state;
         const step = b.moves - a.moves === 1 ? sample.t : 1;
-        for (const [x, y] of b.food) {
-          ctx.fillStyle = '#d62828';
-          ctx.fillRect(px(x) + 1, py(y) + 1, 4, 4);
-          ctx.fillStyle = '#6b4a2e';
-          ctx.fillRect(px(x) + 3, py(y), 1, 1);
-          ctx.fillStyle = '#3c8a45';
-          ctx.fillRect(px(x) + 4, py(y), 1, 1);
-          ctx.fillStyle = '#ff9a9a';
-          ctx.fillRect(px(x) + 2, py(y) + 2, 1, 1);
-        }
+        for (const [x, y] of b.food) drawApple(x, y);
         for (const eb of b.ents) {
           const ea = core.find(a.ents, eb.slot);
           let head = eb.cells[0];
           if (ea && step < 1 && eb.alive && ea.cells[0]) {
             head = [ea.cells[0][0] + (eb.cells[0][0] - ea.cells[0][0]) * step, ea.cells[0][1] + (eb.cells[0][1] - ea.cells[0][1]) * step];
           }
-          drawSnake(eb.cells, head, core.hex(eb.slot), SHADOW, eb.alive, eb.slot === core.mySlot());
+          drawSnake(eb.cells, head, core.hex(eb.slot), eb.dir, eb.alive, eb.slot === core.mySlot());
         }
       }
       fx.drawParticles(ctx);
@@ -186,36 +223,47 @@ export function createGame() {
   };
 }
 
-// A garden: checkered lawn inside a hedge, a strip of soil for the HUD.
-function drawBackground() {
-  const { canvas, ctx } = createLayer(320, 180);
+// A garden: checkered lawn inside a hedge of round bushes, soil for the HUD.
+function drawBackground(ctx) {
   ctx.fillStyle = '#2f6a2a';
   ctx.fillRect(0, 0, 320, 180);
-  // Hedge texture
   let seed = 7;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 900; i++) {
-    ctx.fillStyle = rnd() < 0.5 ? '#3a7a32' : '#265a24';
-    ctx.fillRect(Math.floor(rnd() * 320), Math.floor(rnd() * 180), 2, 2);
+  // Hedge: overlapping round bushes around the lawn
+  for (let i = 0; i < 420; i++) {
+    const x = rnd() * 320;
+    const y = rnd() * 180;
+    const inLawn = x > G.x0 - 1 && x < G.x0 + G.cols * G.cell + 1 && y > G.y0 - 1 && y < G.y0 + G.rows * G.cell + 1;
+    if (inLawn) continue;
+    ctx.beginPath();
+    ctx.arc(x, y, 2 + rnd() * 3, 0, Math.PI * 2);
+    ctx.fillStyle = ['#2a6026', '#37772f', '#3f8a35'][i % 3];
+    ctx.fill();
   }
   ctx.fillStyle = '#5a3f28';
   ctx.fillRect(0, 0, 320, G.y0 - 2);
+  ctx.fillStyle = '#4a3320';
+  for (let x = 3; x < 320; x += 11) ctx.fillRect(x, 2 + (x % 3), 2, 1);
   for (let y = 0; y < G.rows; y++) {
     for (let x = 0; x < G.cols; x++) {
       ctx.fillStyle = (x + y) % 2 ? '#8cc152' : '#81b84a';
       ctx.fillRect(px(x), py(y), G.cell, G.cell);
     }
   }
-  // A few blades of grass
-  for (let i = 0; i < 160; i++) {
-    ctx.fillStyle = '#74a843';
-    ctx.fillRect(G.x0 + Math.floor(rnd() * G.cols * G.cell), G.y0 + Math.floor(rnd() * G.rows * G.cell), 1, 2);
+  ctx.strokeStyle = '#74a843';
+  ctx.lineWidth = 0.4;
+  for (let i = 0; i < 260; i++) {
+    const x = G.x0 + rnd() * G.cols * G.cell;
+    const y = G.y0 + 1 + rnd() * (G.rows * G.cell - 2);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (rnd() - 0.5), y - 1.4);
+    ctx.stroke();
   }
-  return canvas;
-}
-
-function shade(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  const c = [16, 8, 0].map((sh) => Math.round(((n >> sh) & 255) * 0.78));
-  return `rgb(${c[0]},${c[1]},${c[2]})`;
+  // Soft shadow of the hedge on the lawn
+  const g = ctx.createLinearGradient(0, G.y0, 0, G.y0 + 5);
+  g.addColorStop(0, 'rgba(0,0,0,0.22)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(G.x0, G.y0, G.cols * G.cell, 5);
 }

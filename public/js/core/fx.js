@@ -2,11 +2,13 @@
 // ("+100") and screen shake. No allocations per frame; respects reduced motion
 // (no shake, fewer particles).
 import { textSprite } from './pixelfont.js';
+import { drawText as drawSmoothText } from './hudtext.js';
 
 const MAX_TEXTS = 24;
 const SPRITE_CACHE = 64;
 
-export function createFx({ max = 240, reducedMotion = false } = {}) {
+// smooth: round particles and normal text (for non-pixelated games).
+export function createFx({ max = 240, reducedMotion = false, smooth = false } = {}) {
   const parts = Array.from({ length: max }, () => ({
     alive: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, color: '#fff', size: 1, gravity: 0, drag: 0.92,
   }));
@@ -56,7 +58,10 @@ export function createFx({ max = 240, reducedMotion = false } = {}) {
         if (t.alive) continue;
         t.alive = true;
         t.x = x; t.y = y; t.life = life; t.max = life;
-        t.sprite = sprite(str, color, scale);
+        t.sprite = smooth ? null : sprite(str, color, scale);
+        t.str = str;
+        t.color = color;
+        t.scale = scale;
         return;
       }
     },
@@ -94,7 +99,11 @@ export function createFx({ max = 240, reducedMotion = false } = {}) {
         if (!p.alive) continue;
         ctx.globalAlpha = Math.max(0, Math.min(1, (p.life / p.max) * 1.5));
         ctx.fillStyle = p.color;
-        ctx.fillRect(Math.round(p.x - p.size / 2), Math.round(p.y - p.size / 2), p.size, p.size);
+        if (smooth) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * 0.6, 0, Math.PI * 2);
+          ctx.fill();
+        } else ctx.fillRect(Math.round(p.x - p.size / 2), Math.round(p.y - p.size / 2), p.size, p.size);
       }
       ctx.globalAlpha = 1;
     },
@@ -103,7 +112,8 @@ export function createFx({ max = 240, reducedMotion = false } = {}) {
       for (const t of texts) {
         if (!t.alive) continue;
         ctx.globalAlpha = Math.min(1, (t.life / t.max) * 2);
-        ctx.drawImage(t.sprite, Math.round(t.x - t.sprite.width / 2), Math.round(t.y - t.sprite.height / 2));
+        if (t.sprite) ctx.drawImage(t.sprite, Math.round(t.x - t.sprite.width / 2), Math.round(t.y - t.sprite.height / 2));
+        else drawSmoothText(ctx, t.str, t.x, t.y - 4.5 * t.scale, { color: t.color, scale: t.scale, align: 'center', shadow: '#1a1a22' });
       }
       ctx.globalAlpha = 1;
     },

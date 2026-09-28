@@ -8,12 +8,12 @@ import {
   COLS, ROWS, HIDDEN, SHAPES, createSequence, emptyBoard, spawn, fits, dropY, tryRotate, place, decodeBoard, gravityInterval,
 } from '../../../shared/games/blocks.js';
 import { ARCADE_PHASE } from '../../../shared/games/arcade.js';
-import { drawText } from '../../js/core/pixelfont.js';
+import { drawText, roundRect } from '../../js/core/hudtext.js';
 import { createFx } from '../../js/core/fx.js';
-import { createLayer } from '../../js/core/canvas.js';
+import { createSharpLayer } from '../../js/core/canvas.js';
 
 export const meta = {
-  width: 320, height: 180, pixelated: true, step: 1 / 60,
+  width: 320, height: 180, pixelated: false, step: 1 / 60,
   touchButtons: [{ label: 'DRAAI', bit: BTN.X }, { label: 'VAL', bit: BTN.A }],
 };
 
@@ -30,7 +30,7 @@ const BX = 12;
 const BY = 12 - HIDDEN * CELL; // hidden rows sit above the visible board
 
 export function createGame() {
-  const bg = drawTable();
+  let bg = null;
   let net, session, input, sfx, ctx, fx;
   let snap = null;
   let seq = null;
@@ -142,17 +142,25 @@ export function createGame() {
 
   function drawCell(x, y, size, v, alpha = 1) {
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = COLORS[v];
-    ctx.fillRect(x, y, size, size);
-    if (size >= 5) {
-      // Bevel: light top/left, dark bottom/right, like a wooden block.
-      ctx.fillStyle = 'rgba(255,255,255,0.4)';
-      ctx.fillRect(x, y, size, 1);
-      ctx.fillRect(x, y, 1, size);
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.fillRect(x, y + size - 1, size, 1);
-      ctx.fillRect(x + size - 1, y, 1, size);
+    if (size < 5) {
+      ctx.fillStyle = COLORS[v];
+      ctx.fillRect(x, y, size, size);
+      ctx.globalAlpha = 1;
+      return;
     }
+    // A painted wooden block: rounded, lit from the top left.
+    const g = ctx.createLinearGradient(x, y, x + size, y + size);
+    g.addColorStop(0, lighten(COLORS[v]));
+    g.addColorStop(1, COLORS[v]);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    roundRect(ctx, x + 0.4, y + 0.6, size - 0.4, size - 0.4, 1.4);
+    ctx.fill();
+    ctx.fillStyle = g;
+    roundRect(ctx, x + 0.2, y + 0.2, size - 0.6, size - 0.6, 1.4);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    roundRect(ctx, x + 1.2, y + 1, size - 3, 1, 0.5);
+    ctx.fill();
     ctx.globalAlpha = 1;
   }
 
@@ -179,7 +187,8 @@ export function createGame() {
       input = c.input;
       sfx = c.sfx;
       ctx = view.ctx;
-      fx = createFx({ reducedMotion: c.reducedMotion });
+      fx = createFx({ reducedMotion: c.reducedMotion, smooth: true });
+      bg = createSharpLayer(view, drawTable);
     },
 
     onSnapshot(msg) {
@@ -288,7 +297,7 @@ export function createGame() {
     render() {
       ctx.save();
       ctx.translate(fx.shakeX(), fx.shakeY());
-      ctx.drawImage(bg, 0, 0);
+      bg.blit(ctx);
       if (!snap) { ctx.restore(); return; }
       const mine = me();
       const slot = mySlot();
@@ -303,8 +312,10 @@ export function createGame() {
           for (const [cx, cy] of SHAPES[active.k][active.r]) {
             if (gy + cy >= HIDDEN) {
               ctx.strokeStyle = COLORS[active.k + 1];
-              ctx.globalAlpha = 0.5;
-              ctx.strokeRect(BX + (active.x + cx) * CELL + 0.5, BY + (gy + cy) * CELL + 0.5, CELL - 1, CELL - 1);
+              ctx.lineWidth = 0.8;
+              ctx.globalAlpha = 0.55;
+              roundRect(ctx, BX + (active.x + cx) * CELL + 0.7, BY + (gy + cy) * CELL + 0.7, CELL - 1.4, CELL - 1.4, 1.4);
+              ctx.stroke();
               ctx.globalAlpha = 1;
             }
           }
@@ -313,7 +324,9 @@ export function createGame() {
           }
         }
         ctx.strokeStyle = mine ? hexOf(slot) : '#c8945a';
-        ctx.strokeRect(BX - 1.5, 10.5, COLS * CELL + 3, (ROWS - HIDDEN) * CELL + 3);
+        ctx.lineWidth = 1.2;
+        roundRect(ctx, BX - 1.5, 10.5, COLS * CELL + 3, (ROWS - HIDDEN) * CELL + 3, 2);
+        ctx.stroke();
         if (flash > 0) {
           ctx.fillStyle = `rgba(255,255,255,${flash * 2})`;
           ctx.fillRect(BX, 12, COLS * CELL, (ROWS - HIDDEN) * CELL);
@@ -347,7 +360,9 @@ export function createGame() {
         drawText(ctx, nameOf(p.slot).slice(0, 5), x, 4, { color: hexOf(p.slot), shadow: SHADOW });
         drawBoard(decodeBoard(p.board), x, y - HIDDEN * size, size, p.alive ? p.piece : null);
         ctx.strokeStyle = hexOf(p.slot);
-        ctx.strokeRect(x - 0.5, y - 0.5, COLS * size + 1, (ROWS - HIDDEN) * size + 1);
+        ctx.lineWidth = 0.8;
+        roundRect(ctx, x - 0.5, y - 0.5, COLS * size + 1, (ROWS - HIDDEN) * size + 1, 1.5);
+        ctx.stroke();
         if (p.pending) {
           ctx.fillStyle = '#ff4d6d';
           ctx.fillRect(x - 3, y + (20 - Math.min(20, p.pending)) * size, 2, Math.min(20, p.pending) * size);
@@ -376,17 +391,28 @@ export function createGame() {
 }
 
 // A walnut tabletop with a lighter wooden frame around your own board.
-function drawTable() {
-  const { canvas, ctx } = createLayer(320, 180);
+function drawTable(ctx) {
   for (let y = 0; y < 180; y += 8) {
     ctx.fillStyle = (y / 8) % 2 ? '#5a3a22' : '#62402a';
     ctx.fillRect(0, y, 320, 8);
-    ctx.fillStyle = '#4a2f1b';
-    for (let x = ((y / 8) % 4) * 31; x < 320; x += 96) ctx.fillRect(x, y, 1, 8);
+    ctx.fillStyle = 'rgba(40, 24, 12, 0.5)';
+    ctx.fillRect(0, y, 320, 0.4);
+    for (let x = ((y / 8) % 4) * 31; x < 320; x += 96) ctx.fillRect(x, y, 0.5, 8);
   }
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  roundRect(ctx, BX - 3, 10, COLS * CELL + 8, (ROWS - HIDDEN) * CELL + 8, 3);
+  ctx.fill();
   ctx.fillStyle = '#c8945a';
-  ctx.fillRect(BX - 4, 8, COLS * CELL + 8, (ROWS - HIDDEN) * CELL + 8);
+  roundRect(ctx, BX - 4, 8, COLS * CELL + 8, (ROWS - HIDDEN) * CELL + 8, 3);
+  ctx.fill();
   ctx.fillStyle = '#a8743f';
-  ctx.fillRect(BX - 2, 10, COLS * CELL + 4, (ROWS - HIDDEN) * CELL + 4);
-  return canvas;
+  roundRect(ctx, BX - 2, 10, COLS * CELL + 4, (ROWS - HIDDEN) * CELL + 4, 2);
+  ctx.fill();
+}
+
+// A lighter tint of a hex colour (for the block gradient).
+function lighten(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const c = [16, 8, 0].map((sh) => Math.round(((n >> sh) & 255) * 0.6 + 255 * 0.4));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
 }

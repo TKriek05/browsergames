@@ -4,11 +4,11 @@ import { MAZE, MAZE_W, MAZE_H, UNIT, PLAYER_SPEED, DIRS, stepMover, GHOST_MODE a
 import { dirFromAxes } from '../../../shared/games/snake.js';
 import { createArcadeCore, ARCADE_PHASE } from '../common/arcade.js';
 import { Predictor } from '../../js/core/predict.js';
-import { drawText } from '../../js/core/pixelfont.js';
+import { drawText, roundRect } from '../../js/core/hudtext.js';
 import { createFx } from '../../js/core/fx.js';
-import { createLayer } from '../../js/core/canvas.js';
+import { createSharpLayer } from '../../js/core/canvas.js';
 
-export const meta = { width: 320, height: 180, pixelated: true, step: 1 / 30, touchButtons: [] };
+export const meta = { width: 320, height: 180, pixelated: false, step: 1 / 30, touchButtons: [] };
 
 const T = 7; // pixels per tile
 const X0 = Math.floor((320 - MAZE_W * T) / 2);
@@ -71,38 +71,73 @@ export function createGame() {
     ctx.arc(x, y, 3.6, a + mouth, a + Math.PI * 2 - mouth);
     ctx.closePath();
     ctx.fill();
+    // Eye
+    const ea = a - Math.PI / 2 * 0.6;
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    ctx.arc(x + Math.cos(ea) * 1.7, y + Math.sin(ea) * 1.7, 0.55, 0, Math.PI * 2);
+    ctx.fill();
     if (isMe) {
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(Math.round(x) - 1, Math.round(y) - 7, 2, 1);
+      ctx.beginPath();
+      ctx.moveTo(x - 1.6, y - 7.2);
+      ctx.lineTo(x + 1.6, y - 7.2);
+      ctx.lineTo(x, y - 5.6);
+      ctx.closePath();
+      ctx.fill();
     }
   }
 
+  // A sheet ghost: dome, wavy hem, eyes looking where it goes. Frightened:
+  // dark blue with a wobbly mouth. Eaten: only the eyes fly home.
   function drawGhost(x, y, g, fright) {
-    const ix = Math.round(x) - 3;
-    const iy = Math.round(y) - 4;
+    const r = 3.4;
     if (g.mode !== M.EYES) {
       let body = GHOST_COLORS[g.id];
       if (g.mode === M.FRIGHT) body = fright < 2 && Math.floor(time * 6) % 2 ? '#f4f4f4' : '#3a4a9a';
+      const wave = Math.floor(time * 8) % 2 ? 0.7 : -0.7;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(x, y + r + 1, r, 0.9, 0, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = body;
-      ctx.fillRect(ix + 1, iy, 5, 1);
-      ctx.fillRect(ix, iy + 1, 7, 6);
-      // Wavy skirt
-      for (let k = Math.floor(time * 8) % 2; k < 7; k += 2) ctx.fillRect(ix + k, iy + 7, 1, 1);
+      ctx.globalAlpha = g.mode === M.FRIGHT ? 1 : 0.92;
+      ctx.beginPath();
+      ctx.arc(x, y - 0.6, r, Math.PI, 0);
+      ctx.lineTo(x + r, y + r - 0.4);
+      for (let k = 0; k < 4; k++) {
+        const x0 = x + r - (k * 2 * r) / 4;
+        ctx.quadraticCurveTo(x0 - r / 4, y + r + (k % 2 ? -wave : wave), x0 - r / 2, y + r - 0.4);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
     }
     if (g.mode === M.FRIGHT) {
-      ctx.fillStyle = '#ffb3c1';
-      ctx.fillRect(ix + 2, iy + 2, 1, 1);
-      ctx.fillRect(ix + 4, iy + 2, 1, 1);
-      ctx.fillRect(ix + 1, iy + 5, 5, 1);
+      ctx.fillStyle = '#ffd8e0';
+      ctx.fillRect(x - 1.6, y - 1.5, 1, 1);
+      ctx.fillRect(x + 0.6, y - 1.5, 1, 1);
+      ctx.strokeStyle = '#ffd8e0';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x - 2, y + 1.3);
+      for (let k = 1; k <= 4; k++) ctx.lineTo(x - 2 + k, y + 1.3 + (k % 2 ? -0.5 : 0));
+      ctx.stroke();
       return;
     }
     const [dx, dy] = g.dir >= 0 ? DIRS[g.dir] : [0, 0];
-    ctx.fillStyle = g.mode === M.EYES ? '#f4f4f4' : '#2a1a2e';
-    ctx.fillRect(ix + 1, iy + 2, 2, 2);
-    ctx.fillRect(ix + 4, iy + 2, 2, 2);
-    ctx.fillStyle = g.mode === M.EYES ? '#3a2a4a' : '#d8453a';
-    ctx.fillRect(ix + 1 + (dx > 0 ? 1 : 0), iy + 2 + (dy > 0 ? 1 : 0), 1, 1);
-    ctx.fillRect(ix + 4 + (dx > 0 ? 1 : 0), iy + 2 + (dy > 0 ? 1 : 0), 1, 1);
+    for (const side of [-1, 1]) {
+      const ex = x + side * 1.3;
+      const ey = y - 1;
+      ctx.fillStyle = g.mode === M.EYES ? '#f4f4f4' : '#2a1a2e';
+      ctx.beginPath();
+      ctx.ellipse(ex, ey, 0.9, 1.15, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = g.mode === M.EYES ? '#3a2a4a' : '#d8453a';
+      ctx.beginPath();
+      ctx.arc(ex + dx * 0.4, ey + dy * 0.5, 0.45, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   return {
@@ -111,8 +146,8 @@ export function createGame() {
       input = c.input;
       sfx = c.sfx;
       core.mount(net, c);
-      fx = createFx({ reducedMotion: c.reducedMotion });
-      maze = drawMaze();
+      fx = createFx({ reducedMotion: c.reducedMotion, smooth: true });
+      maze = createSharpLayer(view, drawMaze);
     },
 
     onSnapshot(snap) {
@@ -166,7 +201,7 @@ export function createGame() {
     },
 
     render(alpha) {
-      ctx.drawImage(maze, 0, 0);
+      maze.blit(ctx);
       const s = core.latest;
       const sample = core.sample();
       if (s) {
@@ -179,23 +214,37 @@ export function createGame() {
           const y = Y0 + Math.floor(i / MAZE_W) * T + 3;
           if (d === 1) {
             ctx.fillStyle = '#ffd27a';
-            ctx.fillRect(x, y, 1, 1);
+            ctx.beginPath();
+            ctx.arc(x + 0.5, y + 0.5, 0.75, 0, Math.PI * 2);
+            ctx.fill();
           } else {
+            // A little pumpkin
             ctx.fillStyle = blink ? '#ff9a2a' : '#e8781a';
-            ctx.fillRect(x - 1, y - 1, 3, 3);
+            ctx.beginPath();
+            ctx.ellipse(x + 0.5, y + 0.8, 2.2, 1.8, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(120, 50, 10, 0.6)';
+            ctx.lineWidth = 0.35;
+            ctx.beginPath();
+            ctx.moveTo(x + 0.5, y - 0.8); ctx.lineTo(x + 0.5, y + 2.4);
+            ctx.stroke();
             ctx.fillStyle = '#3c8a45';
-            ctx.fillRect(x, y - 2, 1, 1);
+            ctx.fillRect(x + 0.2, y - 1.6, 0.7, 1);
           }
         }
         if (s.fruit) {
           const x = px(13 * UNIT);
           const y = py(13 * UNIT);
-          ctx.fillStyle = '#ff4d6d';
-          ctx.fillRect(x - 3, y, 3, 3);
-          ctx.fillRect(x + 1, y - 1, 3, 3);
-          ctx.fillStyle = '#5dff8a';
-          ctx.fillRect(x - 1, y - 4, 1, 3);
-          ctx.fillRect(x, y - 4, 2, 1);
+          // Cherries
+          ctx.fillStyle = '#d62839';
+          ctx.beginPath(); ctx.arc(x - 1.6, y + 1.5, 1.6, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(x + 2.4, y + 0.6, 1.6, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#3c8a45';
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(x - 1.6, y); ctx.quadraticCurveTo(x - 0.5, y - 3, x + 0.8, y - 3.6);
+          ctx.moveTo(x + 2.4, y - 0.8); ctx.quadraticCurveTo(x + 1.8, y - 2.6, x + 0.8, y - 3.6);
+          ctx.stroke();
         }
       }
       if (s && sample) {
@@ -233,7 +282,8 @@ export function createGame() {
       let y = 3;
       for (const e of [...s.ents].sort((p, q) => q.score - p.score)) {
         ctx.fillStyle = core.hex(e.slot);
-        ctx.fillRect(252, y + 1, 4, 5);
+        roundRect(ctx, 252, y + 1, 4.5, 5, 1);
+        ctx.fill();
         drawText(ctx, `${core.name(e.slot).slice(0, 6)} ${e.score}`, 259, y, { color: e.alive ? '#ffffff' : '#8a8fb8' });
         y += 10;
       }
@@ -252,8 +302,7 @@ export function createGame() {
 
 // A haunted house: wooden floorboards, stone walls with a lit top edge
 // wherever a wall meets a corridor, and a moon in the night outside.
-function drawMaze() {
-  const { canvas, ctx } = createLayer(320, 180);
+function drawMaze(ctx) {
   ctx.fillStyle = '#140e1c';
   ctx.fillRect(0, 0, 320, 180);
   ctx.fillStyle = '#f4ecd0';
@@ -271,7 +320,7 @@ function drawMaze() {
       ctx.fillRect(X0 + x * T, Y0 + y * T, T, T);
       if ((x + y * 3) % 5 === 0) {
         ctx.fillStyle = '#261c21';
-        ctx.fillRect(X0 + x * T, Y0 + y * T, 1, T);
+        ctx.fillRect(X0 + x * T, Y0 + y * T, 0.4, T);
       }
     }
   }
@@ -283,21 +332,21 @@ function drawMaze() {
       const Y = Y0 + y * T;
       if (w === 2) {
         ctx.fillStyle = '#8a6a4a';
-        ctx.fillRect(X, Y + 3, T, 1);
+        ctx.fillRect(X, Y + 3, T, 0.8);
         continue;
       }
       if (w !== 1) continue;
       ctx.fillStyle = (x + y) % 3 ? '#4a4458' : '#46405a';
       ctx.fillRect(X, Y, T, T);
       ctx.fillStyle = '#3a3448';
-      ctx.fillRect(X, Y + (x % 2 ? 2 : 4), T, 1);
+      ctx.fillRect(X, Y + (x % 2 ? 2.3 : 4.6), T, 0.45);
+      ctx.fillRect(X + (y % 2 ? 2 : 5), Y, 0.45, T);
       ctx.fillStyle = '#7a7290';
-      if (!wall(x, y - 1)) ctx.fillRect(X, Y, T, 1);
-      if (!wall(x - 1, y)) ctx.fillRect(X, Y, 1, T);
+      if (!wall(x, y - 1)) ctx.fillRect(X, Y, T, 0.7);
+      if (!wall(x - 1, y)) ctx.fillRect(X, Y, 0.7, T);
       ctx.fillStyle = '#241f2e';
-      if (!wall(x, y + 1)) ctx.fillRect(X, Y + T - 1, T, 1);
-      if (!wall(x + 1, y)) ctx.fillRect(X + T - 1, Y, 1, T);
+      if (!wall(x, y + 1)) ctx.fillRect(X, Y + T - 0.7, T, 0.7);
+      if (!wall(x + 1, y)) ctx.fillRect(X + T - 0.7, Y, 0.7, T);
     }
   }
-  return canvas;
 }

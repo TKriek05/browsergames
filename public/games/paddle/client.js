@@ -5,16 +5,16 @@ import { stepPaddle } from '../../../shared/physics/paddle.js';
 import { PF, SIDE_NAMES, paddleMin, paddleMax, sideAxis, isHorizontal } from '../../../shared/games/paddle.js';
 import { createArcadeCore, ARCADE_PHASE, lerp, isConnected } from '../common/arcade.js';
 import { Predictor } from '../../js/core/predict.js';
-import { drawText } from '../../js/core/pixelfont.js';
+import { drawText, roundRect, heart } from '../../js/core/hudtext.js';
 import { createFx } from '../../js/core/fx.js';
-import { createLayer } from '../../js/core/canvas.js';
+import { createSharpLayer } from '../../js/core/canvas.js';
 
-export const meta = { width: 320, height: 180, pixelated: true, step: 1 / 30, touchButtons: [] };
+export const meta = { width: 320, height: 180, pixelated: false, step: 1 / 30, touchButtons: [] };
 
 const OX = 72;
 const OY = 2;
 const S = PF.size;
-const SHADOW = '#0b0b1e';
+const SHADOW = '#2a1a10';
 
 function decode(r, time) {
   const s = { time, phase: r.u8(), endsAt: 0, ents: [], balls: [] };
@@ -58,8 +58,8 @@ export function createGame() {
       input = c.input;
       sfx = c.sfx;
       core.mount(net, c);
-      fx = createFx({ reducedMotion: c.reducedMotion });
-      bg = drawField();
+      fx = createFx({ reducedMotion: c.reducedMotion, smooth: true });
+      bg = createSharpLayer(view, drawField);
     },
 
     onSnapshot(snap) {
@@ -102,7 +102,7 @@ export function createGame() {
     render(alpha) {
       ctx.save();
       ctx.translate(fx.shakeX(), fx.shakeY());
-      ctx.drawImage(bg, 0, 0);
+      bg.blit(ctx);
       const s = core.latest;
       const sample = core.sample();
       if (s && sample) {
@@ -112,11 +112,13 @@ export function createGame() {
         for (let sd = 0; sd < 4; sd++) {
           const owner = b.ents.find((e) => e.side === sd && e.alive);
           if (owner) continue;
+          // An empty side: a white board closes it off.
           ctx.fillStyle = '#e8e8e8';
-          if (sd === 0) ctx.fillRect(OX, OY + S - 3, S, 3);
-          if (sd === 1) ctx.fillRect(OX, OY, S, 3);
-          if (sd === 2) ctx.fillRect(OX, OY, 3, S);
-          if (sd === 3) ctx.fillRect(OX + S - 3, OY, 3, S);
+          if (sd === 0) roundRect(ctx, OX, OY + S - 3, S, 3, 1.5);
+          if (sd === 1) roundRect(ctx, OX, OY, S, 3, 1.5);
+          if (sd === 2) roundRect(ctx, OX, OY, 3, S, 1.5);
+          if (sd === 3) roundRect(ctx, OX + S - 3, OY, 3, S, 1.5);
+          ctx.fill();
         }
         for (const eb of b.ents) {
           if (!eb.alive || eb.side < 0) continue;
@@ -124,14 +126,21 @@ export function createGame() {
           const me = eb.slot === core.mySlot() && predictor.ready;
           const p = me ? predictor.get('p', alpha) : lerp(ea.p, eb.p, sample.t);
           const [x, y, w, h] = paddleRect(eb.side, p);
-          ctx.fillStyle = SHADOW;
-          ctx.fillRect(Math.round(OX + x) - 1, Math.round(OY + y) - 1, Math.round(w) + 2, Math.round(h) + 2);
+          // Bat: rubber in the player's colour on a wooden blade.
+          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          roundRect(ctx, OX + x + 0.8, OY + y + 1.2, w, h, Math.min(w, h) / 2);
+          ctx.fill();
+          ctx.fillStyle = '#c8945a';
+          roundRect(ctx, OX + x - 0.5, OY + y - 0.5, w + 1, h + 1, Math.min(w, h) / 2 + 0.5);
+          ctx.fill();
           ctx.fillStyle = core.hex(eb.slot);
-          ctx.fillRect(Math.round(OX + x), Math.round(OY + y), Math.round(w), Math.round(h));
+          roundRect(ctx, OX + x, OY + y, w, h, Math.min(w, h) / 2);
+          ctx.fill();
           if (me) {
             ctx.fillStyle = '#ffffff';
-            if (isHorizontal(eb.side)) ctx.fillRect(Math.round(OX + x + w / 2 - 3), Math.round(OY + y + h / 2), 6, 1);
-            else ctx.fillRect(Math.round(OX + x + w / 2), Math.round(OY + y + h / 2 - 3), 1, 6);
+            if (isHorizontal(eb.side)) roundRect(ctx, OX + x + w / 2 - 3, OY + y + h / 2 - 0.4, 6, 0.8, 0.4);
+            else roundRect(ctx, OX + x + w / 2 - 0.4, OY + y + h / 2 - 3, 0.8, 6, 0.4);
+            ctx.fill();
           }
         }
         core.each(sample, 'balls', 'id', (bb, x, y) => {
@@ -140,13 +149,25 @@ export function createGame() {
           if (trail.length > 6) trail.shift();
           trails.set(bb.id, trail);
           trail.forEach(([tx, ty], i) => {
-            ctx.globalAlpha = (i + 1) / (trail.length * 2.5);
+            ctx.globalAlpha = (i + 1) / (trail.length * 3);
             ctx.fillStyle = '#ffc080';
-            ctx.fillRect(Math.round(OX + tx) - 1, Math.round(OY + ty) - 1, 3, 3);
+            ctx.beginPath();
+            ctx.arc(OX + tx, OY + ty, 1.5, 0, Math.PI * 2);
+            ctx.fill();
           });
           ctx.globalAlpha = bb.wait && Math.floor(performance.now() / 150) % 2 ? 0.4 : 1;
-          ctx.fillStyle = '#ff8a1a';
-          ctx.fillRect(Math.round(OX + x) - 2, Math.round(OY + y) - 2, 5, 5);
+          // Ball with its shadow on the table
+          ctx.fillStyle = 'rgba(0,0,0,0.25)';
+          ctx.beginPath();
+          ctx.arc(OX + x + 1.2, OY + y + 1.6, 2.4, 0, Math.PI * 2);
+          ctx.fill();
+          const g = ctx.createRadialGradient(OX + x - 0.8, OY + y - 0.8, 0.3, OX + x, OY + y, 2.6);
+          g.addColorStop(0, '#ffe0b8');
+          g.addColorStop(1, '#ff8a1a');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(OX + x, OY + y, 2.5, 0, Math.PI * 2);
+          ctx.fill();
           ctx.globalAlpha = 1;
         });
         if (trails.size > 12) trails.clear();
@@ -165,13 +186,15 @@ export function createGame() {
         const y = 8 + Math.floor(i / 2) * 44;
         ctx.fillStyle = core.hex(e.slot);
         ctx.globalAlpha = isConnected(e.flags) ? 1 : 0.5;
-        ctx.fillRect(x, y, 4, 16);
+        roundRect(ctx, x, y, 4, 16, 2);
+        ctx.fill();
         ctx.globalAlpha = 1;
         drawText(ctx, e.slot === core.mySlot() ? 'JIJ' : core.name(e.slot).slice(0, 10), x + 8, y, { color: e.alive ? '#ffffff' : '#6a5a4a', shadow: SHADOW });
         drawText(ctx, e.side >= 0 ? SIDE_NAMES[e.side] : '', x + 8, y + 9, { color: '#f4e4c8', shadow: SHADOW });
         for (let k = 0; k < Math.min(e.lives, 9); k++) {
+          heart(ctx, x + 10.5 + k * 6.5, y + 21.5, 5.5);
           ctx.fillStyle = e.alive ? '#e63946' : '#6a5a4a';
-          ctx.fillRect(x + 8 + k * 6, y + 19, 4, 4);
+          ctx.fill();
         }
         if (!e.alive) drawText(ctx, 'AF', x + 8, y + 19, { color: '#ff4d6d' });
       });
@@ -190,34 +213,42 @@ export function createGame() {
 }
 
 // A table-tennis table in a sports hall: wooden floor, blue table with
-// white lines, wooden corner posts.
-function drawField() {
-  const { canvas, ctx } = createLayer(320, 180);
+// white lines and a shadow, wooden corner posts.
+function drawField(ctx) {
   ctx.fillStyle = '#a8703f';
   ctx.fillRect(0, 0, 320, 180);
   for (let y = 0; y < 180; y += 6) {
     ctx.fillStyle = (y / 6) % 2 ? '#9e6838' : '#b07846';
     ctx.fillRect(0, y, 320, 6);
-    ctx.fillStyle = '#8a5a30';
-    for (let x = ((y / 6) % 3) * 23; x < 320; x += 70) ctx.fillRect(x, y, 1, 6);
+    ctx.fillStyle = 'rgba(90, 58, 30, 0.6)';
+    ctx.fillRect(0, y, 320, 0.3);
+    for (let x = ((y / 6) % 3) * 23; x < 320; x += 70) ctx.fillRect(x, y, 0.4, 6);
   }
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-  ctx.fillRect(OX + 3, OY + 3, S, S);
+  // Court lines of the sports hall
+  ctx.strokeStyle = 'rgba(255, 240, 200, 0.35)';
+  ctx.lineWidth = 0.8;
+  ctx.strokeRect(20, 10, 280, 160);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+  roundRect(ctx, OX + 3, OY + 4, S, S, 2);
+  ctx.fill();
   ctx.fillStyle = '#1f5fa8';
-  ctx.fillRect(OX, OY, S, S);
-  ctx.fillStyle = '#f4f4f4';
-  ctx.fillRect(OX, OY, S, 1);
-  ctx.fillRect(OX, OY + S - 1, S, 1);
-  ctx.fillRect(OX, OY, 1, S);
-  ctx.fillRect(OX + S - 1, OY, 1, S);
-  ctx.fillRect(OX + S / 2, OY, 1, S);
-  ctx.fillRect(OX, OY + S / 2, S, 1);
+  roundRect(ctx, OX, OY, S, S, 1.5);
+  ctx.fill();
+  ctx.strokeStyle = '#f4f4f4';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(OX + 0.5, OY + 0.5, S - 1, S - 1);
+  ctx.lineWidth = 0.6;
+  ctx.beginPath();
+  ctx.moveTo(OX + S / 2, OY); ctx.lineTo(OX + S / 2, OY + S);
+  ctx.moveTo(OX, OY + S / 2); ctx.lineTo(OX + S, OY + S / 2);
+  ctx.stroke();
   const c = PF.corner;
   for (const [x, y] of [[0, 0], [S - c, 0], [0, S - c], [S - c, S - c]]) {
     ctx.fillStyle = '#5a3a22';
-    ctx.fillRect(OX + x, OY + y, c, c);
-    ctx.fillStyle = '#6e4a2c';
-    ctx.fillRect(OX + x + 2, OY + y + 2, c - 4, c - 4);
+    roundRect(ctx, OX + x, OY + y, c, c, 2);
+    ctx.fill();
+    ctx.fillStyle = '#7a5030';
+    roundRect(ctx, OX + x + 2, OY + y + 2, c - 4, c - 4, 1.5);
+    ctx.fill();
   }
-  return canvas;
 }
