@@ -198,9 +198,32 @@ const entries = [
   },
 
   // --- Extras -------------------------------------------------------------------
-  { id: 'snake', title: 'Slangenstrijd', tagline: 'Battle royale met slangen: blijf het langst over.', kind: 'realtime', phase: 5 },
-  { id: 'paddle', title: 'Paddle Party', tagline: 'Batjes en een bal, met tot vier spelers.', kind: 'realtime', phase: 5 },
-  { id: 'breakout', title: 'Stenenbreker', tagline: 'Samen de muur kapot kaatsen.', kind: 'realtime', phase: 5 },
+  {
+    id: 'snake', title: 'Slangenstrijd', tagline: 'Battle royale met slangen: blijf het langst over.',
+    kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Pijltjes/WASD, gamepad of joystick',
+    settings: [
+      {
+        key: 'rounds', label: 'Rondes', type: 'select',
+        options: [{ value: 1, label: '1 ronde' }, { value: 3, label: '3 rondes' }, { value: 5, label: '5 rondes' }],
+        default: 3,
+      },
+    ],
+  },
+  {
+    id: 'paddle', title: 'Paddle Party', tagline: 'Pong met tot vier spelers: elke kant een batje.',
+    kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Onder/boven: links-rechts. Links/rechts: omhoog-omlaag',
+    settings: [
+      {
+        key: 'lives', label: 'Levens', type: 'select',
+        options: [{ value: 3, label: '3 levens' }, { value: 5, label: '5 levens' }, { value: 7, label: '7 levens' }],
+        default: 5,
+      },
+    ],
+  },
+  {
+    id: 'breakout', title: 'Stenenbreker', tagline: 'Samen de muur kapot kaatsen, drie levels.',
+    kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Pijltjes, muis of joystick. Spatie/klik = bal afschieten',
+  },
   { id: 'bomber', title: 'Boemstad', tagline: 'Leg bommen, blaas muren op, blijf overeind.', kind: 'realtime', phase: 5 },
   { id: 'ghosts', title: 'Spookjesdoolhof', tagline: 'Eet stipjes en ontloop de spoken, samen.', kind: 'realtime', phase: 5 },
   { id: 'blocks', title: 'Blokval', tagline: 'Vallende blokken, versus met rommelrijen.', kind: 'realtime', phase: 5 },
