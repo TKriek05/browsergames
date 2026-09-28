@@ -37,9 +37,10 @@ import { boardGame } from './board.js';
 import tictactoe from '../../shared/rules/tictactoe.js';
 import connect4 from '../../shared/rules/connect4.js';
 import reversi from '../../shared/rules/reversi.js';
+import checkers from '../../shared/rules/checkers.js';
 
 // Board games are pure rules modules wrapped by the generic adapter.
-const BOARD_RULES = [tictactoe, connect4, reversi];
+const BOARD_RULES = [tictactoe, connect4, reversi, checkers];
 
 const MODULES = new Map([[tag.id, tag], ...BOARD_RULES.map((rules) => [rules.id, boardGame(rules)])]);
 

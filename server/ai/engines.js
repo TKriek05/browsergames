@@ -3,9 +3,11 @@
 import tictactoe from './tictactoe.js';
 import connect4 from './connect4.js';
 import reversi from './reversi.js';
+import checkers from './checkers.js';
 
 export const ENGINES = {
   tictactoe,
   connect4,
   reversi,
+  checkers,
 };
