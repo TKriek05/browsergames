@@ -61,6 +61,7 @@ Veel kamers vanaf één IP? Start de server dan met ruimere limieten:
 | Erger je niet! | 2-4 | Geïnspireerd op mens-erger-je-niet, eigen naam |
 | Ganzenbord | 2-6 | Klassieke vakjes: ganzen, brug, herberg, put, doolhof, gevangenis, dood |
 | Zeeslag | 2 | Verborgen vloot per speler, slimme bot met kansenkaart |
+| Neon Kart GP | 1-6 | 3D-racer met achtervolgcamera, drift + mini-turbo, boost-pads, items (turbo, neonbol, olievlek, schild), 3 circuits of een Grand Prix met punten |
 | Tank Tumult | 2-6 | 3D (eigen WebGL-engine), stuiterende kogels, kapotschietbare kratten, power-ups, op tijd of laatste tank |
 | Kwek Kwek Knal | 1-6 | Eenden schieten met muis, touch of toetsen. Lag compensation: de server spoelt terug naar wat jij zag. Tegen elkaar of samen (quotum per ronde) |
 

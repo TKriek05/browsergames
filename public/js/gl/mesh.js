@@ -70,6 +70,23 @@ export class MeshBuilder {
     return this;
   }
 
+  // Box rotated around the y axis (same yaw convention as mat4.compose):
+  // centre x/z, bottom at y, size sx (local x) × sy × sz (local z).
+  orientedBox(x, y, z, sx, sy, sz, yaw) {
+    const c = Math.cos(yaw);
+    const sn = Math.sin(yaw);
+    const P = (lx, ly, lz) => [x + lx * c + lz * sn, y + ly, z - lx * sn + lz * c];
+    const N = (lx, ly, lz) => [lx * c + lz * sn, ly, -lx * sn + lz * c];
+    const hx = sx / 2, hz = sz / 2;
+    this.face([P(-hx, 0, hz), P(hx, 0, hz), P(hx, sy, hz), P(-hx, sy, hz)], N(0, 0, 1));
+    this.face([P(-hx, 0, -hz), P(-hx, sy, -hz), P(hx, sy, -hz), P(hx, 0, -hz)], N(0, 0, -1));
+    this.face([P(hx, 0, -hz), P(hx, sy, -hz), P(hx, sy, hz), P(hx, 0, hz)], N(1, 0, 0));
+    this.face([P(-hx, 0, -hz), P(-hx, 0, hz), P(-hx, sy, hz), P(-hx, sy, -hz)], N(-1, 0, 0));
+    this.face([P(-hx, sy, -hz), P(-hx, sy, hz), P(hx, sy, hz), P(hx, sy, -hz)], N(0, 1, 0));
+    this.face([P(-hx, 0, -hz), P(hx, 0, -hz), P(hx, 0, hz), P(-hx, 0, hz)], N(0, -1, 0));
+    return this;
+  }
+
   // Box with a slanted top: the +x end is `dropFront` lower (wedges, noses).
   wedge(x, y, z, sx, sy, sz, dropFront) {
     const x0 = x - sx / 2, x1 = x + sx / 2;

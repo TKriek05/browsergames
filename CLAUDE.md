@@ -93,5 +93,5 @@ thumbnail in `public/js/thumbs.js`, server- en clientmodule, tests.
 1. Bordspellen: boter-kaas-en-eieren, vier op een rij, dammen, reversi, schaken, Erger je niet!, ganzenbord, zeeslag ✅
 2. Kwek Kwek Knal (eenden schieten, lag compensation) ✅
 3. Tank Tumult (tanks in 3D) ✅
-4. Neon Kart GP (Mode 7 kartrace)
+4. Neon Kart GP (3D-kartrace met eigen WebGL-engine) ✅
 5. Extra's (snake, paddle, breakout, bomber, spoken, blokken, minigolf, memory, mijnenveger, invaders, rotsen)

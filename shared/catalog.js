@@ -160,7 +160,42 @@ const entries = [
       },
     ],
   },
-  { id: 'kartrace', title: 'Neon Kart GP', tagline: 'Retro kartracen met drift, items en een Grand Prix.', kind: 'realtime', phase: 4 },
+  {
+    id: 'kartrace',
+    title: 'Neon Kart GP',
+    tagline: 'Kartracen in 3D met drift, items en een Grand Prix.',
+    kind: 'realtime',
+    phase: 4,
+    available: true,
+    bots: true,
+    controls: 'Pijltjes/WASD (omhoog = gas), Shift = driften, E = item. Touch: stuur + knoppen',
+    settings: [
+      {
+        key: 'track',
+        label: 'Circuit',
+        type: 'select',
+        options: [
+          { value: 'ring', label: 'Neon Ring' },
+          { value: 'park', label: 'Pixel Park' },
+          { value: 'boulevard', label: 'Zonsondergang Boulevard' },
+          { value: 'gp', label: 'Grand Prix (alle drie)' },
+        ],
+        default: 'ring',
+      },
+      {
+        key: 'laps',
+        label: 'Rondes',
+        type: 'select',
+        options: [
+          { value: 2, label: '2 rondes' },
+          { value: 3, label: '3 rondes' },
+          { value: 5, label: '5 rondes' },
+        ],
+        default: 3,
+      },
+      { key: 'items', label: 'Items', type: 'toggle', default: true },
+    ],
+  },
 
   // --- Extras -------------------------------------------------------------------
   { id: 'snake', title: 'Slangenstrijd', tagline: 'Battle royale met slangen: blijf het langst over.', kind: 'realtime', phase: 5 },

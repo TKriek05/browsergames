@@ -110,10 +110,55 @@ const SOUNDS = {
   pop: () => { noise({ dur: 0.08, vol: 0.5, filter: 8000, to: 1000 }); tone({ type: 'square', freq: 200, to: 90, dur: 0.2, vol: 0.2 }); },
   thud: () => tone({ type: 'sine', freq: 110, to: 50, dur: 0.15, vol: 0.3 }),
   laugh: () => [0, 0.14, 0.28].forEach((d) => tone({ type: 'square', freq: 520 - d * 400, to: 330, dur: 0.1, vol: 0.14, delay: d })),
+  // Neon Kart GP
+  boost: () => { noise({ dur: 0.5, vol: 0.35, filter: 900, to: 4000 }); tone({ type: 'sawtooth', freq: 180, to: 520, dur: 0.4, vol: 0.12 }); },
+  spin: () => tone({ type: 'triangle', freq: 900, to: 150, dur: 0.6, vol: 0.22 }),
+  item: () => [0, 0.06, 0.12, 0.18].forEach((d, i) => tone({ type: 'square', freq: 700 + i * 120, dur: 0.05, vol: 0.1, delay: d })),
 };
 
 export function play(name) {
   // Never create the context here: that would log autoplay warnings.
   if (muted || !ctx || ctx.state !== 'running') return;
   SOUNDS[name]?.();
+}
+
+// A continuous engine hum for racing games: { set(speed01, boost), stop() },
+// or null while audio is not unlocked yet (call again later).
+export function engineSound() {
+  if (!ctx || ctx.state !== 'running') return null;
+  const t = ctx.currentTime;
+  const saw = ctx.createOscillator();
+  const sub = ctx.createOscillator();
+  saw.type = 'sawtooth';
+  sub.type = 'square';
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 500;
+  const gain = ctx.createGain();
+  gain.gain.value = 0;
+  saw.connect(lp);
+  sub.connect(lp);
+  lp.connect(gain).connect(master);
+  saw.start(t);
+  sub.start(t);
+  let stopped = false;
+  return {
+    set(speed01, boost) {
+      if (stopped) return;
+      const now = ctx.currentTime;
+      const f = 48 + speed01 * 105 + (boost ? 22 : 0);
+      saw.frequency.setTargetAtTime(f, now, 0.06);
+      sub.frequency.setTargetAtTime(f / 2, now, 0.06);
+      lp.frequency.setTargetAtTime(380 + speed01 * 1000, now, 0.08);
+      gain.gain.setTargetAtTime(0.035 + speed01 * 0.045, now, 0.1);
+    },
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      const now = ctx.currentTime;
+      gain.gain.setTargetAtTime(0, now, 0.05);
+      saw.stop(now + 0.3);
+      sub.stop(now + 0.3);
+    },
+  };
 }

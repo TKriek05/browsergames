@@ -1,0 +1,163 @@
+// Neon Kart GP circuits. A track is a closed Catmull-Rom spline through a
+// few control points, sampled into a polyline (the "centre line"). Sampling
+// uses only + - * / and Math.sqrt, rounded to float32, so the server and
+// every client build exactly the same track (the kart physics depends on it).
+
+const f = Math.fround;
+
+// Control points in world units (≈ 1 kart = 12 units). y grows "south".
+const DEFS = {
+  ring: {
+    name: 'Neon Ring',
+    width: 84,
+    points: [[400, 0], [800, 0], [1100, 60], [1250, 250], [1200, 480], [1000, 560], [800, 500], [650, 560],
+      [550, 750], [350, 850], [100, 820], [-100, 700], [-180, 450], [-150, 180], [0, 0]],
+    items: [0.2, 0.47, 0.74], // item box rows (fraction of the lap)
+    pads: [[0.09, 0], [0.58, -0.3], [0.86, 0.3]], // boost pads: fraction, lateral (-1..1 of half width)
+    sky: ['#12062e', '#ff5fa2'], sun: ['#ffe14d', '#ff3ea5'], ground: '#1a0b35', grid: '#ff3ea5', barrier: ['#3ef0ff', '#ff3ea5'],
+  },
+  park: {
+    name: 'Pixel Park',
+    width: 78,
+    points: [[175, 0], [350, 0], [600, -80], [750, -250], [980, -300], [1150, -180], [1150, 50], [950, 180], [900, 380],
+      [1050, 560], [900, 720], [600, 700], [450, 520], [250, 560], [80, 700], [-150, 620], [-200, 380], [-100, 150], [0, 0]],
+    items: [0.17, 0.44, 0.7],
+    pads: [[0.06, 0], [0.33, 0.35], [0.62, -0.35], [0.9, 0]],
+    sky: ['#04122e', '#2fd4b0'], sun: ['#b4ff6a', '#2fa8ff'], ground: '#061a24', grid: '#3ef0ff', barrier: ['#5dff8a', '#3ef0ff'],
+  },
+  boulevard: {
+    name: 'Zonsondergang Boulevard',
+    width: 90,
+    points: [[600, 0], [1200, 0], [1600, 100], [1800, 400], [1650, 700], [1300, 800], [900, 700], [600, 850],
+      [250, 850], [-50, 700], [-200, 400], [-150, 120], [0, 0]],
+    items: [0.14, 0.42, 0.69],
+    pads: [[0.05, 0.35], [0.05, -0.35], [0.3, 0], [0.8, 0]],
+    sky: ['#1a0526', '#ff9a3e'], sun: ['#ffe14d', '#ff4d6d'], ground: '#220a1e', grid: '#ff9a3e', barrier: ['#ffd23e', '#ff4d6d'],
+  },
+};
+
+export const KART_TRACK_IDS = Object.keys(DEFS);
+export const WALL_MARGIN = 26; // barrier distance beyond the road edge (grass in between)
+const SPACING = 12; // target distance between samples
+
+function catmull(p0, p1, p2, p3, t) {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+}
+
+function build(id) {
+  const def = DEFS[id];
+  const P = def.points;
+  const n = P.length;
+  const xs = [];
+  const ys = [];
+  for (let i = 0; i < n; i++) {
+    const p0 = P[(i - 1 + n) % n];
+    const p1 = P[i];
+    const p2 = P[(i + 1) % n];
+    const p3 = P[(i + 2) % n];
+    const dx = p2[0] - p1[0];
+    const dy = p2[1] - p1[1];
+    const steps = Math.max(2, Math.ceil(Math.sqrt(dx * dx + dy * dy) / SPACING));
+    for (let k = 0; k < steps; k++) {
+      const t = k / steps;
+      xs.push(f(catmull(p0[0], p1[0], p2[0], p3[0], t)));
+      ys.push(f(catmull(p0[1], p1[1], p2[1], p3[1], t)));
+    }
+  }
+  const count = xs.length;
+  const px = new Float32Array(xs);
+  const py = new Float32Array(ys);
+  const tx = new Float32Array(count); // unit direction of segment i → i+1
+  const ty = new Float32Array(count);
+  const seglen = new Float32Array(count);
+  const cum = new Float64Array(count + 1); // distance at the start of segment i
+  for (let i = 0; i < count; i++) {
+    const j = (i + 1) % count;
+    const dx = px[j] - px[i];
+    const dy = py[j] - py[i];
+    const len = Math.sqrt(dx * dx + dy * dy);
+    tx[i] = f(dx / len);
+    ty[i] = f(dy / len);
+    seglen[i] = f(len);
+    cum[i + 1] = cum[i] + seglen[i];
+  }
+  const length = cum[count];
+  const half = def.width / 2;
+
+  const track = {
+    id, name: def.name, width: def.width, half, count, px, py, tx, ty, seglen, cum, length,
+    colors: { sky: def.sky, sun: def.sun, ground: def.ground, grid: def.grid, barrier: def.barrier },
+    boxes: [], pads: [], grid: [],
+  };
+  // Item boxes: rows of 4 across the road.
+  for (const frac of def.items) {
+    const at = pointAt(track, frac * length);
+    for (let k = 0; k < 4; k++) {
+      const lat = (k - 1.5) * (def.width / 4.6);
+      track.boxes.push({ x: f(at.x - at.ty * lat), y: f(at.y + at.tx * lat) });
+    }
+  }
+  for (const [frac, lat] of def.pads) {
+    const at = pointAt(track, frac * length);
+    track.pads.push({ x: f(at.x - at.ty * lat * half), y: f(at.y + at.tx * lat * half), dx: at.tx, dy: at.ty });
+  }
+  // Starting grid: two columns behind the finish line (distance 0).
+  for (let slot = 0; slot < 6; slot++) {
+    const back = 26 + Math.floor(slot / 2) * 26 + (slot % 2) * 10;
+    const at = pointAt(track, length - back);
+    const lat = (slot % 2 ? 1 : -1) * half * 0.42;
+    track.grid.push({ x: f(at.x - at.ty * lat), y: f(at.y + at.tx * lat), hx: at.tx, hy: at.ty });
+  }
+  return track;
+}
+
+// Point + direction at a distance along the centre line.
+export function pointAt(track, d) {
+  const L = track.length;
+  d = ((d % L) + L) % L;
+  let i = 0;
+  let lo = 0;
+  let hi = track.count - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (track.cum[mid] <= d) { i = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  const t = (d - track.cum[i]) / track.seglen[i];
+  return {
+    x: track.px[i] + track.tx[i] * track.seglen[i] * t,
+    y: track.py[i] + track.ty[i] * track.seglen[i] * t,
+    tx: track.tx[i], ty: track.ty[i], seg: i,
+  };
+}
+
+// Closest point on the centre line. Writes { seg, dist, lateral, nx, ny } into out.
+// lateral > 0: right of the driving direction. Full scan: deterministic and
+// cheap enough (a few hundred segments).
+export function trackQuery(track, x, y, out) {
+  const { px, py, tx, ty, seglen, count } = track;
+  let best = Infinity;
+  let bi = 0;
+  let bt = 0;
+  for (let i = 0; i < count; i++) {
+    const ax = x - px[i];
+    const ay = y - py[i];
+    let t = ax * tx[i] + ay * ty[i];
+    if (t < 0) t = 0;
+    else if (t > seglen[i]) t = seglen[i];
+    const dx = ax - tx[i] * t;
+    const dy = ay - ty[i] * t;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < best) { best = d2; bi = i; bt = t; }
+  }
+  out.seg = bi;
+  out.dist = track.cum[bi] + bt;
+  // Normal pointing to the right of the direction (y grows south).
+  out.nx = -ty[bi];
+  out.ny = tx[bi];
+  out.lateral = (x - (px[bi] + tx[bi] * bt)) * out.nx + (y - (py[bi] + ty[bi] * bt)) * out.ny;
+  return out;
+}
+
+export const KART_TRACKS = Object.fromEntries(KART_TRACK_IDS.map((id) => [id, build(id)]));
