@@ -244,7 +244,17 @@ const entries = [
     kind: 'realtime', phase: 5, available: true, bots: true,
     controls: 'Links/rechts, omhoog = draaien, omlaag = sneller, spatie = laten vallen',
   },
-  { id: 'minigolf', title: 'Minigolf', tagline: 'Top-down holes, om de beurt of tegelijk.', kind: 'realtime', phase: 5 },
+  {
+    id: 'minigolf', title: 'Minigolf', tagline: 'Negen neon-holes in 3D, iedereen tegelijk.',
+    kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Sleep terug en laat los om te slaan, of pijltjes + spatie',
+    settings: [
+      {
+        key: 'holes', label: 'Aantal holes', type: 'select',
+        options: [{ value: 3, label: '3 holes' }, { value: 6, label: '6 holes' }, { value: 9, label: '9 holes' }],
+        default: 6,
+      },
+    ],
+  },
   {
     id: 'memory', title: 'Onthoud ’m', tagline: 'Draai kaartjes om en vind de paren.',
     kind: 'board', phase: 5, available: true, bots: true, controls: 'Klik of tik op een kaart, of pijltjes + Enter',

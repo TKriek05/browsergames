@@ -116,6 +116,10 @@ const SOUNDS = {
   boost: () => { noise({ dur: 0.5, vol: 0.35, filter: 900, to: 4000 }); tone({ type: 'sawtooth', freq: 180, to: 520, dur: 0.4, vol: 0.12 }); },
   spin: () => tone({ type: 'triangle', freq: 900, to: 150, dur: 0.6, vol: 0.22 }),
   item: () => [0, 0.06, 0.12, 0.18].forEach((d, i) => tone({ type: 'square', freq: 700 + i * 120, dur: 0.05, vol: 0.1, delay: d })),
+  // Minigolf
+  putt: () => { tone({ type: 'sine', freq: 1500, to: 900, dur: 0.05, vol: 0.25 }); noise({ dur: 0.03, vol: 0.15, filter: 7000, to: 3000 }); },
+  plop: () => { tone({ type: 'sine', freq: 520, to: 180, dur: 0.12, vol: 0.3 }); tone({ type: 'sine', freq: 300, to: 120, dur: 0.1, vol: 0.2, delay: 0.1 }); },
+  splash: () => noise({ dur: 0.45, vol: 0.35, filter: 1800, to: 400 }),
 };
 
 export function play(name) {
