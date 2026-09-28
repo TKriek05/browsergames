@@ -262,6 +262,14 @@ const DRAW = {
     disc(ctx, 31, 12, 2, '#ffd23e'); R(ctx, 30, 11, 2, 2, '#ff9a3e');
     R(ctx, 0, 30, 48, 2, '#3d8fd1');
   },
+  fish(ctx) {
+    for (let y = 0; y < 32; y++) R(ctx, 0, y, 48, 1, y < 10 ? '#2c8fbf' : y < 22 ? '#1d74a3' : '#16618f');
+    R(ctx, 0, 29, 48, 3, '#c9b27d'); R(ctx, 5, 22, 1, 7, '#3d9457'); R(ctx, 6, 20, 1, 3, '#3d9457'); R(ctx, 42, 23, 1, 6, '#2f7d4a');
+    const fishy = (x, y, s, c) => { R(ctx, x, y, 3 * s, 2 * s, c); R(ctx, x - s, y - Math.floor(s / 2), s, 3 * s - s, c); R(ctx, x + 2 * s, y, s, s, C.white); };
+    fishy(28, 8, 3, '#ffd23e'); fishy(10, 15, 2, '#ff4d6d'); fishy(36, 20, 1, '#3ec5ff');
+    for (const [x, y] of [[16, 6], [22, 25], [40, 12], [8, 26], [33, 27]]) R(ctx, x, y, 1, 1, '#ffb3c7');
+    R(ctx, 21, 4, 1, 1, C.white); R(ctx, 23, 2, 1, 1, C.white);
+  },
 };
 
 export function drawThumb(canvas, gameId) {

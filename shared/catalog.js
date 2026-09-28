@@ -400,6 +400,18 @@ const entries = [
       },
     ],
   },
+  {
+    id: 'fish', title: 'Hapvis', tagline: 'Eet plankton en kleinere vissen, en zwem weg van de grote.',
+    kind: 'realtime', phase: 6, available: true, bots: true,
+    controls: 'Pijltjes/WASD, joystick of muis om te zwemmen, spatie of HAP voor een sprintje',
+    settings: [
+      {
+        key: 'duration', label: 'Speelduur', type: 'select',
+        options: [{ value: 120, label: '2 minuten' }, { value: 180, label: '3 minuten' }, { value: 300, label: '5 minuten' }],
+        default: 180,
+      },
+    ],
+  },
 ];
 
 // Fill in limits + defaults so consumers can rely on every field existing.
