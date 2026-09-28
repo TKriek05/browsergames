@@ -176,17 +176,19 @@ test('bots of every level play a full match and splat each other', () => {
     const players = [bot('p1', 0, 'hard'), bot('p2', 1, 'normal'), bot('p3', 2, 'easy'), human('p4', 3)];
     const room = fakeRoom(players);
     const game = paintball.create(room, { arena: key, duration: 120, seed: 5 });
-    let maxMs = 0;
+    let totalMs = 0;
+    let ticks = 0;
     for (let i = 0; i < 130 * SIM_TICK_RATE && !room.results; i++) {
       room.clock += DT * 1000;
       const t0 = performance.now();
       game.tick(DT);
-      maxMs = Math.max(maxMs, performance.now() - t0);
+      totalMs += performance.now() - t0;
+      ticks++;
     }
     assert.ok(room.results, `${key}: the match ends`);
     const kills = game.ents.reduce((n, e) => n + e.kills, 0);
     assert.ok(kills >= 4, `${key}: bots splat each other (${kills})`);
-    assert.ok(maxMs < 20, `${key}: tick stays cheap (${maxMs.toFixed(1)} ms)`);
+    assert.ok(totalMs / ticks < 2, `${key}: ticks stay cheap (${(totalMs / ticks).toFixed(2)} ms on average)`);
     assert.equal(room.results.rows.length, 4);
     assert.deepEqual(room.results.columns, ['Spetters', 'Gespetterd', 'Raak']);
   }

@@ -111,6 +111,21 @@ after(() => server.close());
 
 const serverRoom = (code) => server.rooms.rooms.get(code);
 
+// The newest room state that satisfies `pred` (or the last one seen, so the
+// assertion after it fails with a clear message). No fixed sleeps: robust on busy machines.
+async function roomWhere(c, pred, timeoutMs = 3000) {
+  const end = Date.now() + timeoutMs;
+  let last = null;
+  while (Date.now() < end) {
+    const r = await c.latestRoom(20);
+    if (r) {
+      last = r;
+      if (pred(r)) return r;
+    }
+  }
+  return last;
+}
+
 async function createParty(name, mode, extra = {}) {
   const c = await new TestClient(server).open();
   c.send('create', { name, mode, ...extra });
@@ -131,13 +146,13 @@ test('a party lobby without a game draws one; the host can pick another', async 
   guest.send('game', { game: 'chess' });
   assert.equal((await guest.waitType('error')).code, ERR.NOT_HOST);
   host.send('game', { game: 'chess' });
-  let room = await host.latestRoom(60);
+  let room = await roomWhere(host, (r) => r.game === 'chess');
   assert.equal(room.game, 'chess');
   assert.deepEqual(room.settings, {});
 
   host.send('game', { game: 'nope' });
   host.send('draw');
-  room = await host.latestRoom(60);
+  room = await roomWhere(host, (r) => r.party.draws > 1 && r.game !== 'chess');
   assert.notEqual(room.game, 'chess', 'a fresh draw avoids the current game');
   host.close();
   guest.close();
@@ -148,7 +163,7 @@ test('settings are kept per game when switching back and forth', async () => {
   host.send('settings', { settings: { duration: 60 } });
   host.send('game', { game: 'snake' });
   host.send('game', { game: 'tag' });
-  const room = await host.latestRoom(60);
+  const room = await roomWhere(host, (r) => r.game === 'tag' && r.settings.duration === 60);
   assert.equal(room.game, 'tag');
   assert.equal(room.settings.duration, 60);
   host.close();
@@ -157,29 +172,29 @@ test('settings are kept per game when switching back and forth', async () => {
 test('a smaller game benches bots and moves late joiners to the stands; a bigger one brings them back', async () => {
   const host = await createRoom(server, 'Host', 'tag');
   host.send('fillBots', { level: 'hard' });
-  let room = await host.latestRoom(60);
+  let room = await roomWhere(host, (r) => r.players.filter((p) => p.bot).length === 5);
   assert.equal(room.players.filter((p) => p.bot).length, 5);
 
   host.send('game', { game: 'chess' });
-  room = await host.latestRoom(60);
+  room = await roomWhere(host, (r) => r.game === 'chess');
   assert.equal(room.players.length, 2, 'four bots on the bench');
   assert.equal(room.players.filter((p) => p.bot).length, 1);
 
   host.send('game', { game: 'tanks' });
-  room = await host.latestRoom(60);
+  room = await roomWhere(host, (r) => r.game === 'tanks');
   assert.equal(room.players.filter((p) => p.bot && p.bot === 'hard').length, 5, 'bots come back with their level');
 
   const guest = await joinRoom(server, host.code, 'Gast'); // takes a bot's place
   host.send('game', { game: 'connect4' });
-  room = await host.latestRoom(60);
+  room = await roomWhere(host, (r) => r.game === 'connect4');
   const seated = room.players.filter((p) => p.role === 'player');
   assert.deepEqual(seated.map((p) => p.id).sort(), [host.id, guest.id].sort(), 'humans before bots');
 
   const third = await joinRoom(server, host.code, 'Derde');
-  room = await host.latestRoom(60);
+  room = await roomWhere(host, (r) => r.players.some((p) => p.id === third.id));
   assert.equal(room.players.find((p) => p.id === third.id).role, 'spectator');
   host.send('game', { game: 'ludo' });
-  room = await host.latestRoom(60);
+  room = await roomWhere(host, (r) => r.game === 'ludo');
   assert.equal(room.players.find((p) => p.id === third.id).role, 'player', 'a free seat for the waiting spectator');
   for (const c of [host, guest, third]) c.close();
 });
@@ -188,11 +203,11 @@ test('removing a bot by hand empties the bench', async () => {
   const host = await createRoom(server, 'Host', 'tag');
   host.send('fillBots', { level: 'easy' });
   host.send('game', { game: 'chess' });
-  let room = await host.latestRoom(60);
+  let room = await roomWhere(host, (r) => r.game === 'chess' && r.players.some((p) => p.bot));
   const bot = room.players.find((p) => p.bot);
   host.send('removeBot', { id: bot.id });
   host.send('game', { game: 'tag' });
-  room = await host.latestRoom(60);
+  room = await roomWhere(host, (r) => r.game === 'tag');
   assert.equal(room.players.filter((p) => p.bot).length, 0);
   host.close();
 });
@@ -203,7 +218,7 @@ test('tournament: scores per finished game, auto-draws the next one and crowns a
   assert.equal(room.party.mode, 'tournament');
   assert.equal(room.party.tournament.played, 0);
   host.send('party', { length: 3 });
-  room = await host.latestRoom(60);
+  room = await roomWhere(host, (r) => r.party.tournament?.length === 3);
   assert.equal(room.party.tournament.length, 3);
 
   const r = serverRoom(host.code);
@@ -216,7 +231,7 @@ test('tournament: scores per finished game, auto-draws the next one and crowns a
     const winner = i < 2 ? host.id : ids.find((id) => id !== host.id) ?? host.id;
     r.endGame(results(winner, ...ids.filter((id) => id !== winner)), 'finished');
   }
-  room = await host.latestRoom(60);
+  room = await roomWhere(host, (x) => x.party.tournament?.played === 3);
   const t = room.party.tournament;
   assert.equal(t.played, 3);
   assert.equal(t.done, true);
@@ -229,7 +244,7 @@ test('tournament: scores per finished game, auto-draws the next one and crowns a
   host.send('start');
   assert.equal((await host.waitType('error')).code, ERR.CANNOT_START);
   host.send('party', { restart: true });
-  room = await host.latestRoom(60);
+  room = await roomWhere(host, (x) => x.party.tournament?.played === 0);
   assert.equal(room.party.tournament.played, 0);
   assert.equal(room.party.tournament.done, false);
   host.close();
@@ -240,7 +255,7 @@ test('an aborted game does not count for the tournament', async () => {
   const r = serverRoom(host.code);
   r.start(null);
   r.endGame(null, 'aborted');
-  const room = await host.latestRoom(60);
+  const room = await roomWhere(host, (x) => x.state === 'lobby');
   assert.equal(room.party.tournament.played, 0);
   host.close();
 });
@@ -248,14 +263,14 @@ test('an aborted game does not count for the tournament', async () => {
 test('random mode draws a new game after each finished one; the pool is respected', async () => {
   const host = await createParty('Host', 'random', { solo: true });
   host.send('party', { pool: ['tanks', 'kartrace', 'nope'] });
-  let room = await host.latestRoom(60);
+  let room = await roomWhere(host, (x) => x.party.pool.length === 2);
   assert.deepEqual(room.party.pool, ['tanks', 'kartrace']);
   assert.ok(['tanks', 'kartrace'].includes(room.game), 'current game left the pool: redrawn');
   const r = serverRoom(host.code);
   const first = r.gameId;
   r.start(null);
   r.endGame(results(host.id), 'finished');
-  room = await host.latestRoom(60);
+  room = await roomWhere(host, (x) => x.results?.game === first);
   assert.notEqual(room.game, first);
   assert.equal(room.results.game, first, 'results say which game they belong to');
   host.close();
@@ -267,7 +282,8 @@ test('party messages are validated', async () => {
   host.send('party', { length: 4 });
   host.send('party', { pool: 'tag' });
   host.send('party', { pool: Array(100).fill('tag') });
-  const room = await host.latestRoom(60);
+  host.send('party', {}); // a valid no-op: the room answers once everything before it was handled
+  const room = await roomWhere(host, (x) => x.party.pool.length > 1);
   assert.equal(room.party.mode, 'free');
   assert.equal(room.party.length, 5);
   host.close();
