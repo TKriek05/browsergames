@@ -368,6 +368,18 @@ const entries = [
       },
     ],
   },
+  {
+    id: 'penguins', title: 'Pinguïnbotsen', tagline: 'Glibber over een smeltende ijsschots en duw de rest het water in. In 3D.',
+    kind: 'realtime', phase: 6, available: true, bots: true,
+    controls: 'Pijltjes/WASD of joystick glijden, spatie of DUW om te botsen',
+    settings: [
+      {
+        key: 'wins', label: 'Winnen bij', type: 'select',
+        options: [{ value: 2, label: '2 rondes' }, { value: 3, label: '3 rondes' }, { value: 5, label: '5 rondes' }],
+        default: 3,
+      },
+    ],
+  },
 ];
 
 // Fill in limits + defaults so consumers can rely on every field existing.

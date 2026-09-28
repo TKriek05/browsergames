@@ -244,6 +244,14 @@ const DRAW = {
     for (const [x, y] of [[6, 17], [26, 17], [6, 22], [26, 22]]) R(ctx, x, y, 2, 2, '#e8b84a');
     R(ctx, 39, 17, 2, 2, C.white);
   },
+  penguins(ctx) {
+    R(ctx, 0, 0, 48, 12, '#8cc4ec'); R(ctx, 0, 12, 48, 20, '#2c6a8a');
+    R(ctx, 2, 8, 6, 4, '#f2f8fc'); R(ctx, 40, 6, 7, 6, '#f2f8fc'); R(ctx, 42, 4, 3, 2, '#f2f8fc');
+    for (let y = 15; y < 29; y++) { const w = Math.round(Math.sqrt(49 - ((y - 22) / 1.1) ** 2) * 2.6); R(ctx, 24 - w, y, w * 2, 1, y < 17 ? '#d8e9f3' : '#f2f8fc'); }
+    const peng = (x, y, c) => { R(ctx, x, y, 5, 7, '#23252d'); R(ctx, x + 1, y + 2, 3, 5, '#f7f7f2'); R(ctx, x, y + 3, 5, 1, c); R(ctx, x + 2, y + 1, 2, 1, '#f29a2e'); R(ctx, x + 1, y - 1, 3, 1, c); };
+    peng(14, 14, '#ff4d6d'); peng(27, 16, '#3ec5ff'); peng(37, 21, '#ffd23e');
+    R(ctx, 41, 26, 4, 2, C.white); R(ctx, 36, 28, 3, 1, C.white);
+  },
 };
 
 export function drawThumb(canvas, gameId) {
