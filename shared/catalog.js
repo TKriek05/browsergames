@@ -226,7 +226,11 @@ const entries = [
   },
   { id: 'bomber', title: 'Boemstad', tagline: 'Leg bommen, blaas muren op, blijf overeind.', kind: 'realtime', phase: 5 },
   { id: 'ghosts', title: 'Spookjesdoolhof', tagline: 'Eet stipjes en ontloop de spoken, samen.', kind: 'realtime', phase: 5 },
-  { id: 'blocks', title: 'Blokval', tagline: 'Vallende blokken, versus met rommelrijen.', kind: 'realtime', phase: 5 },
+  {
+    id: 'blocks', title: 'Blokval', tagline: 'Vallende blokken, versus met rommelrijen.',
+    kind: 'realtime', phase: 5, available: true, bots: true,
+    controls: 'Links/rechts, omhoog = draaien, omlaag = sneller, spatie = laten vallen',
+  },
   { id: 'minigolf', title: 'Minigolf', tagline: 'Top-down holes, om de beurt of tegelijk.', kind: 'realtime', phase: 5 },
   {
     id: 'memory', title: 'Onthoud ’m', tagline: 'Draai kaartjes om en vind de paren.',
@@ -256,8 +260,33 @@ const entries = [
       },
     ],
   },
-  { id: 'invaders', title: 'Ruimtegolf', tagline: 'Houd de aanvallende golven samen tegen.', kind: 'realtime', phase: 5 },
-  { id: 'rocks', title: 'Rotsregen', tagline: 'Schiet de ruimterotsen aan gruzelementen.', kind: 'realtime', phase: 5 },
+  {
+    id: 'invaders', title: 'Ruimtegolf', tagline: 'Houd de aanvallende golven samen tegen.',
+    kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Links/rechts bewegen, spatie of VUUR schieten',
+    settings: [
+      {
+        key: 'waves', label: 'Golven', type: 'select',
+        options: [{ value: 3, label: '3 golven' }, { value: 5, label: '5 golven' }, { value: 0, label: 'Eindeloos' }],
+        default: 5,
+      },
+    ],
+  },
+  {
+    id: 'rocks', title: 'Rotsregen', tagline: 'Schiet de ruimterotsen aan gruzelementen.',
+    kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Links/rechts draaien, omhoog = gas, spatie = vuur',
+    settings: [
+      {
+        key: 'mode', label: 'Spelvorm', type: 'select',
+        options: [{ value: 'coop', label: 'Samen' }, { value: 'versus', label: 'Tegen elkaar' }],
+        default: 'coop',
+      },
+      {
+        key: 'lives', label: 'Levens', type: 'select',
+        options: [{ value: 1, label: '1 leven' }, { value: 3, label: '3 levens' }, { value: 5, label: '5 levens' }],
+        default: 3,
+      },
+    ],
+  },
 ];
 
 // Fill in limits + defaults so consumers can rely on every field existing.

@@ -42,6 +42,9 @@ import kartrace from './kartrace.js';
 import snake from './snake.js';
 import paddle from './paddle.js';
 import breakout from './breakout.js';
+import invaders from './invaders.js';
+import rocks from './rocks.js';
+import blocks from './blocks.js';
 import { boardGame } from './board.js';
 import tictactoe from '../../shared/rules/tictactoe.js';
 import connect4 from '../../shared/rules/connect4.js';
@@ -57,7 +60,8 @@ import mines from '../../shared/rules/mines.js';
 // Board games are pure rules modules wrapped by the generic adapter.
 const BOARD_RULES = [tictactoe, connect4, reversi, checkers, chess, ludo, goose, battleship, memory, mines];
 
-const REALTIME = [tag, duckshoot, tanks, kartrace, snake, paddle, breakout];
+// Custom modules (realtime or not) that are not generic board games.
+const REALTIME = [tag, duckshoot, tanks, kartrace, snake, paddle, breakout, invaders, rocks, blocks];
 
 const MODULES = new Map([...REALTIME.map((m) => [m.id, m]), ...BOARD_RULES.map((rules) => [rules.id, boardGame(rules)])]);
 

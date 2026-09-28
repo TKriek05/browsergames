@@ -110,6 +110,8 @@ const SOUNDS = {
   pop: () => { noise({ dur: 0.08, vol: 0.5, filter: 8000, to: 1000 }); tone({ type: 'square', freq: 200, to: 90, dur: 0.2, vol: 0.2 }); },
   thud: () => tone({ type: 'sine', freq: 110, to: 50, dur: 0.15, vol: 0.3 }),
   laugh: () => [0, 0.14, 0.28].forEach((d) => tone({ type: 'square', freq: 520 - d * 400, to: 330, dur: 0.1, vol: 0.14, delay: d })),
+  // Ruimtegolf: the formation's marching beat
+  beat: () => tone({ type: 'square', freq: 82, dur: 0.07, vol: 0.16 }),
   // Neon Kart GP
   boost: () => { noise({ dur: 0.5, vol: 0.35, filter: 900, to: 4000 }); tone({ type: 'sawtooth', freq: 180, to: 520, dur: 0.4, vol: 0.12 }); },
   spin: () => tone({ type: 'triangle', freq: 900, to: 150, dur: 0.6, vol: 0.22 }),
