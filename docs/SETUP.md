@@ -1,8 +1,8 @@
 # Plan: Timon's Arcade in je GitHub-repo zetten en houden
 
 Dit is het stappenplan om de code in `github.com/TKriek05/browsergames` te krijgen, er
-netjes mee te werken en hem daarna op de server te zetten. Het deployen zelf staat
-uitgebreid in de [README](../README.md#deployen-nodejs-site-in-cloudpanel-achter-cloudflare).
+netjes mee te werken en hem daarna op de server te zetten. Het live zetten op CloudPanel staat
+stap voor stap in [CLOUDPANEL.md](CLOUDPANEL.md).
 
 ---
 
@@ -10,8 +10,8 @@ uitgebreid in de [README](../README.md#deployen-nodejs-site-in-cloudpanel-achter
 
 ### Route A (aanbevolen): Claude laten pushen
 
-Claude Code kon niet pushen (`403 Resource not accessible by integration`): de Claude
-GitHub App heeft geen schrijfrechten op deze repo.
+Dit is inmiddels gebeurd: de branch `claude/ecstatic-carson-tmelbl` staat op GitHub. Krijgt Claude
+later toch `403 Resource not accessible by integration`, dan mist de Claude GitHub App schrijfrechten:
 
 1. Ga naar <https://github.com/apps/claude/installations/select_target> en kies je account `TKriek05`.
 2. Kies *Only select repositories* → `browsergames` (of *All repositories*) en sla op.
@@ -96,21 +96,11 @@ Node 22 of nieuwer is nodig (`node -v`). Met nvm: `nvm install 22 && nvm use 22`
 
 ## Stap 5 – Van repo naar server
 
-Kies één van deze twee manieren en blijf daarbij.
+Zie **[CLOUDPANEL.md](CLOUDPANEL.md)**. Kort: één keer `deploy/cloudpanel-setup.sh` draaien.
 
-**A. Vanaf je eigen computer (zo is `deploy/deploy.sh` gebouwd):**
-1. `main` bijwerken: `git switch main && git pull`.
-2. `./deploy/deploy.sh`: draait de tests, rsynct naar de server, `npm ci`, pm2 reload, health check.
-
-**B. Git op de server (alternatief):**
-```bash
-ssh tkriek-games@<IP>
-cd ~/htdocs/games.tkriek.dev
-git clone https://github.com/TKriek05/browsergames.git .     # eenmalig (map moet leeg zijn)
-git pull && npm ci --omit=dev && pm2 startOrReload deploy/ecosystem.config.cjs --update-env
-```
-Voor een privé-repo heb je op de server een *deploy key* nodig
-(*Repo → Settings → Deploy keys*, alleen-lezen).
+- **Route A (aanbevolen):** de server haalt de code met git van GitHub. Updaten = het setup-script
+  opnieuw draaien. Voor een privé-repo maakt het script een *deploy key* aan (alleen lezen).
+- **Route B:** `./deploy/deploy.sh` uploadt de code met rsync vanaf je eigen computer.
 
 **Later (optioneel): automatisch deployen met GitHub Actions** na een merge naar `main`.
 Dat vraagt een SSH-key als repository secret. Pas doen als het handmatige deployen goed loopt.
@@ -121,4 +111,4 @@ Dat vraagt een SSH-key als repository secret. Pas doen als het handmatige deploy
 - [ ] `main` is de default branch, met branch protection
 - [ ] De eerste *Tests*-run in het tabblad *Actions* is groen
 - [ ] Lokaal: `npm install && npm test` werkt
-- [ ] Server: stappen 1-10 uit de README gedaan, `https://games.tkriek.dev/healthz` geeft `"status":"ok"`
+- [ ] Server: [CLOUDPANEL.md](CLOUDPANEL.md) doorlopen, `https://games.tkriek.dev/healthz` geeft `"status":"ok"`

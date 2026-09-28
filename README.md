@@ -125,117 +125,27 @@ test/              node --test
 
 ## Deployen: Node.js-site in CloudPanel achter Cloudflare
 
-Voorbeeld: `games.tkriek.dev`, site-user `tkriek-games`, App Port `3000`. Pas namen aan naar jouw situatie.
+Het volledige stappenplan staat in **[docs/CLOUDPANEL.md](docs/CLOUDPANEL.md)**. In het kort:
 
-### 1. Node.js-site aanmaken in CloudPanel
+1. **Cloudflare:** A-record `games` → VPS-IP (oranje wolk), SSL/TLS op *Full*.
+2. **CloudPanel:** *Add Site → Create a Node.js Site* (Node 22+, App Port `3000`, site-user `tkriek-games`).
+3. **SSH-key** voor de site-user (`ssh-copy-id tkriek-games@<IP>`).
+4. **Setup-script** vanaf je computer. Het regelt Node, code, `.env`, `npm ci`, pm2 en herstart na een reboot:
+   ```bash
+   ssh tkriek-games@<IP> 'bash -s -- --domain games.tkriek.dev --port 3000 --branch main' < deploy/cloudpanel-setup.sh
+   ```
+5. **Vhost:** vervang `location /` door `~/arcade-vhost-snippet.conf` (het script zet hem klaar).
+6. **SSL:** Let's Encrypt in CloudPanel, daarna Cloudflare op *Full (strict)*.
+7. **Beveiliging:** *Allow traffic from Cloudflare only*; Rocket Loader, Email Obfuscation en Web Analytics uit.
 
-*Sites → Add Site → Create a Node.js Site*
-- **Domain:** `games.tkriek.dev`
-- **Node.js version:** de nieuwste LTS (22 of hoger)
-- **App Port:** `3000` (moet uniek zijn op de server)
-- **Site User:** `tkriek-games` (+ sterk wachtwoord)
+**Updaten:** hetzelfde setup-commando opnieuw draaien (git op de server), of `./deploy/deploy.sh`
+(rsync vanaf je computer). Spelers met een oude pagina zien *"Er is een nieuwe versie – Ververs"*.
+Let op: kamers staan in het geheugen. **Een deploy of herstart beëindigt lopende potjes.**
 
-De code komt in `/home/tkriek-games/htdocs/games.tkriek.dev`.
-
-### 2. DNS in Cloudflare
-
-- A-record `games` → IP van je VPS, **Proxied (oranje wolk)**.
-- WebSockets staan in Cloudflare standaard aan (*Network → WebSockets*). Controleer het even.
-- Zet uit (*Speed → Optimization* en *Scrape Shield*): **Rocket Loader**, **Email Address Obfuscation**
-  en automatisch geïnjecteerde **Web Analytics**. Die voegen scripts toe die de CSP blokkeert
-  (console-errors) en Rocket Loader breekt ES modules.
-- *Caching → Configuration → Browser Cache TTL:* **Respect Existing Headers**.
-
-### 3. SSL
-
-1. Cloudflare *SSL/TLS → Overview*: tijdelijk **Full**.
-2. CloudPanel: *Site → SSL/TLS → Actions → New Let's Encrypt Certificate*.
-3. Daarna Cloudflare op **Full (strict)**.
-
-Alternatief: een *Cloudflare Origin Certificate* maken en in CloudPanel importeren (*Import Certificate*).
-
-### 4. SSH-key voor de site-user
-
-Op je eigen computer:
-
-```bash
-ssh-keygen -t ed25519 -C "deploy games.tkriek.dev"     # als je nog geen key hebt
-ssh-copy-id -p 22 tkriek-games@<IP-van-je-VPS>
-ssh tkriek-games@<IP-van-je-VPS>                        # moet zonder wachtwoord werken
-```
-
-Gebruik het **echte IP** (of een DNS-only record): SSH gaat niet door de Cloudflare-proxy.
-In CloudPanel kun je keys ook toevoegen via *Site → SSH/FTP → SSH Keys*.
-
-### 5. Vhost aanpassen (nginx)
-
-*Site → Vhost*: vervang het `location / { … }`-blok door de inhoud van
-[`deploy/nginx-snippet.conf`](deploy/nginx-snippet.conf) en vervang `games.tkriek.dev` door je domein.
-Lees de opmerkingen bovenin het bestand: staat er een blok voor statische bestanden
-(`location ~* ^.+\.(css|js|…)$ { expires max; … }`), verwijder dat.
-
-**Wat CloudPanel waarschijnlijk al zelf regelt** (controleer het in jouw Vhost, templates verschillen per versie):
-- de redirect van http naar https en de SSL-certificaatregels;
-- `proxy_pass` naar `127.0.0.1:{{app_port}}` met `Upgrade`/`Connection`-headers en lange timeouts
-  in het standaard Node.js-template (onze snippet vervangt dat blok netjes);
-- een `include` met globale instellingen; staat daar al `gzip on;`, haal dan de gzip-regels uit de
-  snippet weg (dubbel `gzip on` geeft een nginx-fout bij het opslaan);
-- eventueel eigen `add_header`-regels. Let op: nginx neemt `add_header` van het server-niveau
-  niet over in een `location` die zelf `add_header` gebruikt.
-
-### 6. Productie-instellingen
-
-Open `deploy/ecosystem.config.cjs` en controleer `PORT` (= App Port), `ALLOWED_ORIGINS` en `HOST`
-(`127.0.0.1`, zodat de app alleen via nginx bereikbaar is). Zet ook bovenin
-`deploy/deploy.sh` je IP, site-user, pad en URL.
-
-### 7. Eerste deploy
-
-```bash
-./deploy/deploy.sh
-```
-
-Het script draait de tests, synchroniseert de bestanden met `rsync --delete`
-(zonder `.git`, `node_modules`, `tools/`, `test/`, README en CLAUDE.md; van `deploy/` gaat alleen
-de pm2-config mee), schrijft een nieuwe build-id, draait `npm ci --omit=dev`, installeert pm2 als
-dat nog niet bestaat, start/herlaadt de app en controleert `/healthz`.
-
-### 8. pm2 laten opstarten na een reboot
-
-Als root (eenmalig):
-
-```bash
-pm2 startup systemd -u tkriek-games --hp /home/tkriek-games
-```
-
-Dat print een commando dat je als root uitvoert. Daarna als site-user `pm2 save`.
-Geen root? Voeg in CloudPanel (*Site → Cron Jobs*) toe: `@reboot` met
-`bash -lc 'pm2 resurrect'`.
+**Logs:** `pm2 logs timons-arcade`. Elke minuut logt de server de tick-duur (`tick stats`) als er
+gespeeld wordt; boven 10 ms wordt het een waarschuwing.
 
 Liever systemd zonder pm2? Zie het voorbeeld in [`deploy/timons-arcade.service`](deploy/timons-arcade.service).
-
-### 9. Logs bekijken
-
-```bash
-ssh tkriek-games@<IP>
-pm2 logs timons-arcade            # live
-pm2 logs timons-arcade --lines 200
-tail -f ~/htdocs/games.tkriek.dev/logs/error.log
-curl -s https://games.tkriek.dev/healthz
-```
-
-Elke minuut logt de server de tick-duur (`tick stats`) als er gespeeld wordt; boven 10 ms wordt het een waarschuwing.
-
-### 10. Updaten
-
-```bash
-git pull   # of je eigen wijzigingen committen
-./deploy/deploy.sh
-```
-
-Spelers met een oude pagina zien een melding *"Er is een nieuwe versie – Ververs"*.
-Let op: kamers staan in het geheugen. **Een deploy of herstart beëindigt lopende potjes.**
-Clients zien dan netjes *"De server wordt herstart"* en daarna *"Kamer niet gevonden"*.
 
 ### Omgevingsvariabelen
 
@@ -250,7 +160,8 @@ Clients zien dan netjes *"De server wordt herstart"* en daarna *"Kamer niet gevo
 | `MAX_ROOMS_PER_IP` | `8` | Open kamers per IP |
 | `TRUST_PROXY` | `loopback` | `CF-Connecting-IP`/`X-Forwarded-For` alleen vertrouwen als het verzoek van 127.0.0.1 komt |
 
-Zie ook [`.env.example`](.env.example). Lokaal kun je een `.env` maken; Node leest die zelf in.
+Op de server staan ze in `.env` (gemaakt door het setup-script, niet in git). Zie ook
+[`.env.example`](.env.example). Lokaal kun je ook een `.env` maken; Node leest die zelf in.
 
 ---
 

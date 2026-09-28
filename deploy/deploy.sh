@@ -2,6 +2,8 @@
 # Deploy Timon's Arcade to the VPS (CloudPanel Node.js site) with one command:
 #   ./deploy/deploy.sh            # tests, rsync, npm ci, pm2 reload, health check
 #   ./deploy/deploy.sh --no-tests
+# First time on a new server: run deploy/cloudpanel-setup.sh once (docs/CLOUDPANEL.md).
+# Alternative without rsync: git on the server, see docs/CLOUDPANEL.md (route A).
 set -euo pipefail
 
 # --- Settings (adjust these) ---------------------------------------------------
@@ -57,9 +59,13 @@ ssh -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s -- "$REMOTE_DIR" "$BUILD_ID" "$
 set -euo pipefail
 REMOTE_DIR="$1"; BUILD_ID="$2"; PM2_APP="$3"
 # CloudPanel installs Node per site user with nvm; non-interactive SSH does not load it.
+# nvm does not like `set -u`, so relax it while loading.
 export NVM_DIR="$HOME/.nvm"
+set +u
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+set -u
 cd "$REMOTE_DIR"
+[ -f .env ] || echo "⚠ Geen .env op de server: draai eenmalig deploy/cloudpanel-setup.sh (zie docs/CLOUDPANEL.md)."
 mkdir -p logs
 echo "$BUILD_ID" > .build-id
 npm ci --omit=dev --no-audit --no-fund

@@ -1,4 +1,8 @@
-// pm2 configuration. Start with: pm2 start deploy/ecosystem.config.cjs
+// pm2 configuration. Start with: pm2 startOrReload deploy/ecosystem.config.cjs
+//
+// Server settings (PORT, ALLOWED_ORIGINS, …) live in `.env` next to
+// package.json, written once by deploy/cloudpanel-setup.sh. That file is not
+// in git and deploys never overwrite it. See .env.example for all options.
 //
 // IMPORTANT: exactly ONE instance in fork mode. Rooms live in the memory of
 // the process; cluster mode would spread players over processes that do not
@@ -21,11 +25,6 @@ module.exports = {
       merge_logs: true,
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
-        HOST: '127.0.0.1',
-        ALLOWED_ORIGINS: 'https://games.tkriek.dev',
-        MAX_ROOMS: 500,
-        LOG_LEVEL: 'info',
       },
     },
   ],
