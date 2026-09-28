@@ -7,6 +7,8 @@ import checkers from './checkers.js';
 import chess from './chess.js';
 import ludo from './ludo.js';
 import battleship from './battleship.js';
+import memory from './memory.js';
+import mines from './mines.js';
 
 export const ENGINES = {
   tictactoe,
@@ -16,4 +18,6 @@ export const ENGINES = {
   chess,
   ludo,
   battleship,
+  memory,
+  mines,
 };

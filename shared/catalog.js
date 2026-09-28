@@ -205,8 +205,34 @@ const entries = [
   { id: 'ghosts', title: 'Spookjesdoolhof', tagline: 'Eet stipjes en ontloop de spoken, samen.', kind: 'realtime', phase: 5 },
   { id: 'blocks', title: 'Blokval', tagline: 'Vallende blokken, versus met rommelrijen.', kind: 'realtime', phase: 5 },
   { id: 'minigolf', title: 'Minigolf', tagline: 'Top-down holes, om de beurt of tegelijk.', kind: 'realtime', phase: 5 },
-  { id: 'memory', title: 'Onthoud ’m', tagline: 'Draai kaartjes om en vind de paren.', kind: 'board', phase: 5 },
-  { id: 'mines', title: 'Mijnenveger', tagline: 'Samen het veld veilig vegen.', kind: 'board', phase: 5 },
+  {
+    id: 'memory', title: 'Onthoud ’m', tagline: 'Draai kaartjes om en vind de paren.',
+    kind: 'board', phase: 5, available: true, bots: true, controls: 'Klik of tik op een kaart, of pijltjes + Enter',
+    settings: [
+      {
+        key: 'size', label: 'Aantal kaarten', type: 'select',
+        options: [{ value: 'klein', label: '16 (4×4)' }, { value: 'normaal', label: '24 (6×4)' }, { value: 'groot', label: '36 (6×6)' }],
+        default: 'normaal',
+      },
+    ],
+  },
+  {
+    id: 'mines', title: 'Mijnenveger', tagline: 'Samen tegelijk het veld veilig vegen.',
+    kind: 'board', phase: 5, available: true, bots: true,
+    controls: 'Klik = vegen, rechtsklik of lang drukken = vlag. Toetsen: pijltjes, Enter, F',
+    settings: [
+      {
+        key: 'size', label: 'Veld', type: 'select',
+        options: [{ value: 'klein', label: 'Klein (9×9, 10 mijnen)' }, { value: 'middel', label: 'Middel (16×12, 32 mijnen)' }, { value: 'groot', label: 'Groot (24×14, 62 mijnen)' }],
+        default: 'middel',
+      },
+      {
+        key: 'lives', label: 'Levens', type: 'select',
+        options: [{ value: 1, label: '1 leven' }, { value: 3, label: '3 levens' }, { value: 5, label: '5 levens' }],
+        default: 3,
+      },
+    ],
+  },
   { id: 'invaders', title: 'Ruimtegolf', tagline: 'Houd de aanvallende golven samen tegen.', kind: 'realtime', phase: 5 },
   { id: 'rocks', title: 'Rotsregen', tagline: 'Schiet de ruimterotsen aan gruzelementen.', kind: 'realtime', phase: 5 },
 ];

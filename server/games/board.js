@@ -123,7 +123,10 @@ class BoardGame {
     this.epoch++;
     this.last = { seat, info, n: this.moveNo };
     this.undoReq = null;
-    this.botWait.clear();
+    // Turn-based: every bot starts thinking afresh. Simultaneous games
+    // (everyone may move at any time): only the mover waits again.
+    if (this.rules.simultaneous) this.botWait.delete(seat);
+    else this.botWait.clear();
     const res = this.rules.result(state);
     if (res) this._finish(res);
     this.dirty = true;
@@ -213,7 +216,8 @@ class BoardGame {
       const level = this.playerAt(seat)?.botLevel ?? 'normal';
       const waited = (this.botWait.get(seat) ?? 0) + dt;
       this.botWait.set(seat, waited);
-      if (waited < (BOT_DELAY_S[level] ?? 0.7)) continue;
+      // botPace > 1 slows bots down (games where everyone moves at once).
+      if (waited < (BOT_DELAY_S[level] ?? 0.7) * (this.rules.botPace ?? 1)) continue;
       this._botMove(seat, level);
     }
   }

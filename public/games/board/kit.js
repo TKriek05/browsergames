@@ -17,6 +17,7 @@
 //   initLocal?() → {}              per-client UI state (selection, …)
 //   turnText?(f) → string          override "Jouw beurt!"
 //   onKey?(key, api, f) → true      handle a key on the focused board
+//   onAltPick?(target, api, f)     right-click or long press (e.g. place a flag)
 // }
 import { h, clear, preserveFocus } from '../../js/core/ui.js';
 import { REACTIONS, C2S } from '../../../shared/messages.js';
@@ -220,9 +221,40 @@ class BoardClient {
     on('pointerleave', () => { this.hover = null; });
     on('click', (e) => {
       this.keyboard = false;
+      if (this.suppressClick) {
+        this.suppressClick = false;
+        return;
+      }
       const target = at(e);
       if (target !== null && target !== undefined) this._pick(target);
     });
+    if (this.spec.onAltPick) {
+      const alt = (e) => {
+        const target = at(e);
+        if (target !== null && target !== undefined) this.spec.onAltPick(target, this.api, this.frame());
+      };
+      on('contextmenu', (e) => {
+        e.preventDefault();
+        alt(e);
+      });
+      // Long press on touch screens = right click.
+      let timer = 0;
+      on('pointerdown', (e) => {
+        if (e.pointerType !== 'touch') return;
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          this.suppressClick = true;
+          alt(e);
+        }, 450);
+      });
+      for (const type of ['pointerup', 'pointercancel', 'pointermove']) {
+        on(type, (e) => {
+          if (type === 'pointermove' && Math.abs(e.movementX) + Math.abs(e.movementY) < 4) return;
+          clearTimeout(timer);
+        });
+      }
+      this.cleanups.push(() => clearTimeout(timer));
+    }
     on('keydown', (e) => {
       if (!this.snap) return;
       // Game-specific keys first (space = roll, R = rotate, …).
@@ -323,6 +355,8 @@ class BoardClient {
       const r = s.result;
       let head;
       if (r.draw) head = 'Gelijkspel!';
+      else if (!r.winners.length) head = 'Verloren!';
+      else if (r.winners.length === s.seats.length && s.seats.length > 1) head = 'Samen gewonnen! 🎉';
       else if (r.winners.includes(s.you)) head = 'Jij wint! 🎉';
       else head = `${r.winners.map((w) => this._name(s.seats[w])).join(' en ')} ${r.winners.length > 1 ? 'winnen' : 'wint'}.`;
       return `${head} ${r.reason ?? ''}`.trim();

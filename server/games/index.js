@@ -48,9 +48,11 @@ import chess from '../../shared/rules/chess.js';
 import ludo from '../../shared/rules/ludo.js';
 import goose from '../../shared/rules/goose.js';
 import battleship from '../../shared/rules/battleship.js';
+import memory from '../../shared/rules/memory.js';
+import mines from '../../shared/rules/mines.js';
 
 // Board games are pure rules modules wrapped by the generic adapter.
-const BOARD_RULES = [tictactoe, connect4, reversi, checkers, chess, ludo, goose, battleship];
+const BOARD_RULES = [tictactoe, connect4, reversi, checkers, chess, ludo, goose, battleship, memory, mines];
 
 const REALTIME = [tag, duckshoot, tanks, kartrace];
 
