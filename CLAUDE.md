@@ -50,6 +50,20 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 - **Zware bot-berekeningen in realtime games** (Minigolf): als generator met een tijdsbudget per tick,
   nooit in één keer in `tick()`.
 
+## Party-lobby
+
+- Een kamer is niet vast aan één game: de host wisselt in de lobby met `C2S.GAME`. `Room.selectGame` zet
+  `gameId/meta/module/settings` (instellingen per game onthouden in `settingsByGame`) en `_fitSeats` past de plekken
+  aan: bots gaan eerst naar de bank (`benched`, komen terug bij een grotere game), daarna kijken de laatste joiners mee.
+- `room.party = { mode: 'free'|'random'|'tournament', order, length, pool, draws, tournament }`, pure regels in
+  `shared/party.js` (`gameFits`, `drawGame`, `scoreGame`, `champions`). Willekeurig: na elke **afgemaakte** game trekt de
+  server een nieuwe (`drawNext`, `draws++` = roulette in de lobby). Toernooi: winst (rank 1) telt, plaatspunten
+  (n-1 … 0) beslissen bij gelijke stand; afgebroken games tellen niet.
+- `room.autoReturn` (party-modus ≠ free): bordspellen gaan na één potje zelf terug naar de lobby (geen rematch).
+- CREATE zonder `game` = party-lobby (`mode` optioneel). Client: `public/js/party.js` (gamekaart, roulette, gamekiezer,
+  pool, toernooistand) naast `public/js/lobby.js`.
+- `node tools/botclients.js --party --clients 2` wisselt steeds van game: goede rooktest voor alle game-modules.
+
 ## Bordspellen (fase 1)
 
 - Regels: `shared/rules/<id>.js`, puur en onveranderlijk (`apply` geeft een nieuwe state terug).

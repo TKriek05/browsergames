@@ -18,6 +18,9 @@ export const C2S = Object.freeze({
   BOT_LEVEL: 'botLevel',
   FILL_BOTS: 'fillBots',
   KICK: 'kick',
+  GAME: 'game', // host picks the next game: { game }
+  PARTY: 'party', // host sets the party mode: { mode?, order?, length?, pool?, restart? }
+  DRAW: 'draw', // host asks for another random game
   START: 'start',
   TO_LOBBY: 'toLobby',
   INPUT: 'input', // turn-based moves etc: { data: {...} }

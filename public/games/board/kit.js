@@ -374,7 +374,9 @@ class BoardClient {
     clear(a);
     const isHost = this.session.isHost;
     if (s.result) {
-      if (s.you >= 0) {
+      if (s.autoReturn) {
+        a.append(h('p', { class: 'bp__ask' }, 'Zo meteen gaan we door naar de volgende game…'));
+      } else if (s.you >= 0) {
         const voted = s.rematch.includes(s.you);
         a.append(h('button', {
           class: 'btn btn--primary', type: 'button', 'data-key': 'rematch', disabled: voted,

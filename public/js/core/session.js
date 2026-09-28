@@ -112,8 +112,9 @@ export class Session {
     );
   }
 
-  create(game, name, solo = false) {
-    return this._request(C2S.CREATE, { game, name, solo });
+  // Without a game: a party lobby in the given mode ('free' | 'random' | 'tournament').
+  create(game, name, solo = false, mode = undefined) {
+    return this._request(C2S.CREATE, { game: game ?? undefined, name, solo, mode });
   }
 
   join(code, name) {

@@ -138,8 +138,10 @@ export class GameHost {
       muteBtn.setAttribute('aria-pressed', String(m));
     }));
 
+    const t = this.session.room?.party?.tournament;
     const hud = h('div', { class: 'hud' },
       h('span', { class: 'hud__title' }, game?.title ?? ''),
+      t && !t.done ? h('span', { class: 'hud__code', title: 'Toernooi' }, `🏆 ${t.played + 1}/${t.length}`) : null,
       h('span', { class: 'hud__code', 'aria-label': `Kamercode ${this.session.room?.code ?? ''}` }, this.session.room?.code ?? ''),
       h('span', { class: 'hud__spacer' }),
       this.pingEl,

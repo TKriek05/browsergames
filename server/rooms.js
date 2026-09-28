@@ -2,10 +2,11 @@
 import { randomInt } from 'node:crypto';
 import {
   ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH, RECONNECT_GRACE_MS, HOST_MIGRATE_DELAY_MS,
-  EMPTY_ROOM_TTL_MS, IDLE_ROOM_TTL_MS, ROOM_SWEEP_INTERVAL_MS,
+  EMPTY_ROOM_TTL_MS, IDLE_ROOM_TTL_MS, ROOM_SWEEP_INTERVAL_MS, MAX_PEOPLE_PER_ROOM,
 } from '../shared/constants.js';
 import { C2S, S2C, ERR } from '../shared/messages.js';
 import { getGame } from '../shared/catalog.js';
+import { availableGameIds, drawGame } from '../shared/party.js';
 import { Room } from './room.js';
 
 // Codes we never hand out (the alphabet has no I/L/O, so the list stays short).
@@ -64,10 +65,12 @@ export class RoomManager {
     return conn.room.handleBinaryInput(conn.player, reader);
   }
 
-  create(conn, { game, name, solo }) {
-    const meta = getGame(game);
-    const module = this.registry.get(game);
-    if (!meta || !meta.available || !module) return conn.error(ERR.GAME_UNAVAILABLE);
+  // Without a game this is a party lobby: the server draws the first game
+  // and the host can change it (or the mode) in the lobby.
+  create(conn, { game, name, solo, mode }) {
+    const gameId = game ?? drawGame(availableGameIds(), { humans: 1, bots: solo ? MAX_PEOPLE_PER_ROOM - 1 : 0 });
+    const meta = getGame(gameId);
+    if (!meta || !meta.available || !this.registry.get(gameId)) return conn.error(ERR.GAME_UNAVAILABLE);
     if (this.rooms.size >= this.config.maxRooms) return conn.error(ERR.SERVER_FULL);
     const limited = this.ipLimiter.checkCreateRoom(conn.ip);
     if (limited) {
@@ -80,8 +83,8 @@ export class RoomManager {
     if (conn.room) this.leave(conn, true);
     const room = new Room({
       code,
-      gameId: game,
-      module,
+      gameId,
+      registry: this.registry,
       creatorIp: conn.ip,
       timing: this.timing,
       log: this.log,
@@ -91,7 +94,8 @@ export class RoomManager {
 
     const player = room.addHuman(conn, name);
     if (solo) room.fillBots('normal');
-    this.log.info('room created', { room: code, game, ip: conn.ip });
+    if (mode && mode !== 'free') room.setParty({ mode });
+    this.log.info('room created', { room: code, game: room.gameId, party: room.party.mode, ip: conn.ip });
     conn.send(S2C.JOINED, { room: room.publicState(), you: { id: player.id, token: player.token } });
   }
 

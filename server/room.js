@@ -7,6 +7,9 @@ import { S2C, ERR, CLOSE, C2S } from '../shared/messages.js';
 import { getGame } from '../shared/catalog.js';
 import { normalizeSettings } from '../shared/settings.js';
 import { checkCanStart } from '../shared/lobbyrules.js';
+import {
+  DEFAULT_PARTY, availableGameIds, cleanPool, drawGame, newTournament, scoreGame, champions, tournamentView,
+} from '../shared/party.js';
 import { sanitizeName, defaultName, BOT_NAMES } from '../shared/names.js';
 import { decodeInput } from '../shared/binary.js';
 import { encode } from './protocol.js';
@@ -16,11 +19,13 @@ import { GameLoop } from './gameloop.js';
 const newToken = () => randomBytes(18).toString('base64url'); // 24 chars
 
 export class Room {
-  constructor({ code, gameId, module, creatorIp, timing, log, onEmptyTick }) {
+  constructor({ code, gameId, registry, creatorIp, timing, log, onEmptyTick }) {
     this.code = code;
-    this.gameId = gameId;
-    this.meta = getGame(gameId);
-    this.module = module;
+    this.registry = registry;
+    this.gameId = null;
+    this.meta = null;
+    this.module = null;
+    this.settingsByGame = new Map(); // host choices are kept when switching back and forth
     this.creatorIp = creatorIp;
     this.timing = timing;
     this.log = log;
@@ -30,9 +35,14 @@ export class Room {
     this.players = []; // join order; includes bots and spectators
     this.hostId = null;
     this.hostLostAt = 0;
-    this.settings = normalizeSettings(gameId, {});
+    this.settings = {};
     this.lastResults = null;
     this.nextPlayerNum = 1;
+    // Party lobby: the host picks games (free), the server draws them (random)
+    // or a series of games is played for the most wins (tournament).
+    this.party = { ...DEFAULT_PARTY, pool: availableGameIds(), draws: 0, tournament: null, recent: [] };
+    this.benched = []; // bots moved off the field for a smaller game: { name, botLevel }
+    this._useGame(gameId);
 
     const now = Date.now();
     this.createdAt = now;
@@ -139,6 +149,7 @@ export class Room {
     player.name = this._uniqueName(sanitizeName(rawName) || defaultName(player.slot));
     player.wantsToPlay = true;
     this.players.push(player);
+    this.benched.pop(); // a new human takes the place of a bot on the bench
     this._attach(player, conn);
     if (!this.hostId) this.hostId = player.id;
     if (this.game && player.role === 'player') this.game.onJoin?.(player);
@@ -296,7 +307,10 @@ export class Room {
         break;
       case C2S.REMOVE_BOT: {
         const bot = this.findById(msg.id);
-        if (hostOnly() && bot?.isBot && this.state === 'lobby') this._remove(bot);
+        if (hostOnly() && bot?.isBot && this.state === 'lobby') {
+          this._remove(bot);
+          this.benched = []; // the host manages the bots now: nobody comes back from the bench
+        }
         break;
       }
       case C2S.BOT_LEVEL: {
@@ -312,6 +326,15 @@ export class Room {
         if (hostOnly() && target && target !== player) this.kick(target);
         break;
       }
+      case C2S.GAME:
+        if (hostOnly()) this.selectGame(msg.game);
+        break;
+      case C2S.PARTY:
+        if (hostOnly()) this.setParty(msg);
+        break;
+      case C2S.DRAW:
+        if (hostOnly()) this.drawNext();
+        break;
       case C2S.START:
         if (hostOnly()) this.start(player);
         break;
@@ -382,11 +405,18 @@ export class Room {
       by?.conn?.error(ERR.NO_SEAT);
       return false;
     }
-    const used = new Set(this.players.map((p) => p.name));
+    const used = new Set([...this.players, ...this.benched].map((p) => p.name));
     const name = BOT_NAMES.find((n) => !used.has(n)) ?? `Bot ${this.nextPlayerNum}`;
-    this.players.push(this._newPlayer({ name, isBot: true, botLevel: level }));
-    this.markDirty();
+    this._addBotPlayer(name, level);
     return true;
+  }
+
+  _addBotPlayer(name, level) {
+    const bot = this._newPlayer({ name: '', isBot: true, botLevel: level });
+    bot.name = this._uniqueName(name);
+    this.players.push(bot);
+    this.markDirty();
+    return bot;
   }
 
   fillBots(level, by = null) {
@@ -409,6 +439,132 @@ export class Room {
   }
 
   // ---------------------------------------------------------------------------
+  // Party lobby: switching games, random draws, tournaments
+  // ---------------------------------------------------------------------------
+  _useGame(gameId) {
+    if (this.gameId) this.settingsByGame.set(this.gameId, this.settings);
+    this.gameId = gameId;
+    this.meta = getGame(gameId);
+    this.module = this.registry.get(gameId);
+    this.settings = normalizeSettings(gameId, this.settingsByGame.get(gameId) ?? {});
+  }
+
+  // The host (or a random draw) picks the next game. Lobby only.
+  selectGame(gameId) {
+    if (this.state !== 'lobby') return false;
+    if (!getGame(gameId)?.available || !this.registry.get(gameId)) return false;
+    if (gameId !== this.gameId) {
+      this._useGame(gameId);
+      this._fitSeats();
+    }
+    this.markDirty();
+    return true;
+  }
+
+  // Board games in a random or tournament party go back to the lobby by
+  // themselves after one match, so the party keeps flowing.
+  get autoReturn() {
+    return this.party.mode !== 'free';
+  }
+
+  _randomPicks() {
+    const { mode, order } = this.party;
+    return mode === 'random' || (mode === 'tournament' && order === 'random');
+  }
+
+  // People who want to play (not watching by choice) and the bots.
+  headcount() {
+    let humans = 0;
+    let bots = 0;
+    for (const p of this.players) {
+      if (p.isBot) bots++;
+      else if (p.wantsToPlay) humans++;
+    }
+    return { humans, bots };
+  }
+
+  // After a game switch. Short of seats: bots go to the bench first, then the
+  // latest joiners watch (they keep wanting to play). Free seats go to those
+  // spectators first, then to benched bots.
+  _fitSeats() {
+    if (!this.meta.bots) for (const bot of this.players.filter((p) => p.isBot)) this._bench(bot);
+    while (this.seated.length > this.meta.max) {
+      const bot = [...this.seated].reverse().find((p) => p.isBot);
+      if (bot) {
+        this._bench(bot);
+        continue;
+      }
+      const humans = this.seated.filter((p) => p.id !== this.hostId).sort((a, b) => b.joinedAt - a.joinedAt);
+      const out = humans[0] ?? this.seated[this.seated.length - 1];
+      out.role = 'spectator';
+      out.ready = false;
+    }
+    const waiting = this.players.filter((p) => p.role === 'spectator' && p.wantsToPlay).sort((a, b) => a.joinedAt - b.joinedAt);
+    for (const p of waiting) {
+      if (this.seated.length >= this.meta.max) break;
+      p.role = 'player';
+    }
+    while (this.benched.length && this.meta.bots && this.seated.length < this.meta.max && this.players.length < MAX_PEOPLE_PER_ROOM) {
+      const b = this.benched.shift();
+      this._addBotPlayer(b.name, b.botLevel);
+    }
+  }
+
+  _bench(bot) {
+    this.benched.push({ name: bot.name, botLevel: bot.botLevel });
+    this._remove(bot);
+  }
+
+  // Host changes the party mode, tournament length/order or the random pool.
+  setParty({ mode, order, length, pool, restart = false }) {
+    if (this.state !== 'lobby') return;
+    const p = this.party;
+    const wasRandom = this._randomPicks();
+    const modeChanged = mode !== undefined && mode !== p.mode;
+    if (mode) p.mode = mode;
+    if (order) p.order = order;
+    if (length) p.length = length;
+    if (pool) p.pool = cleanPool(pool) ?? p.pool;
+
+    if (p.mode !== 'tournament') p.tournament = null;
+    else if (!p.tournament || modeChanged || restart) p.tournament = newTournament(p.length);
+    else {
+      // A longer or shorter series keeps the scores so far.
+      p.tournament.length = p.length;
+      p.tournament.done = p.tournament.played >= p.length;
+    }
+    const isRandom = this._randomPicks();
+    if (isRandom && (!wasRandom || restart || !p.pool.includes(this.gameId))) this.drawNext();
+    this.markDirty();
+  }
+
+  // A random game from the pool that suits the group; in a tournament the
+  // games played so far come last, otherwise the recent ones.
+  drawNext() {
+    if (this.state !== 'lobby') return false;
+    const t = this.party.tournament;
+    const exclude = [this.gameId, ...(t ? t.games.map((g) => g.game) : this.party.recent)];
+    const id = drawGame(this.party.pool, { ...this.headcount(), exclude });
+    if (!id || !this.selectGame(id)) return false;
+    this.party.draws++;
+    return true;
+  }
+
+  _afterPartyGame(results) {
+    const p = this.party;
+    p.recent = [this.gameId, ...p.recent.filter((id) => id !== this.gameId)].slice(0, 4);
+    const t = p.tournament;
+    if (p.mode === 'tournament' && t && !t.done) {
+      scoreGame(t, this.gameId, results);
+      if (t.done) {
+        const names = champions(t.standings).map((s) => s.name);
+        if (names.length) this.notice(names.length > 1 ? `🏆 ${names.join(' en ')} winnen samen het toernooi!` : `🏆 ${names[0]} wint het toernooi!`);
+      }
+    }
+    if (this._randomPicks() && !t?.done) this.drawNext();
+  }
+
+  // ---------------------------------------------------------------------------
   // Game lifecycle
   // ---------------------------------------------------------------------------
   start(by) {
@@ -421,7 +577,7 @@ export class Room {
     this.loop.start();
     this.broadcast(S2C.START, this.startPayload());
     this.loop.sendSnapshot();
-    this.log.info('game start', { room: this.code, game: this.gameId, players: this.seated.length });
+    this.log.info('game start', { room: this.code, game: this.gameId, players: this.seated.length, party: this.party.mode });
     this.markDirty();
   }
 
@@ -442,7 +598,7 @@ export class Room {
     this.game?.dispose?.();
     this.game = null;
     this.state = 'lobby';
-    this.lastResults = results ?? null;
+    this.lastResults = results ? { ...results, game: this.gameId } : null;
     for (const p of this.players) {
       if (!p.isBot) p.ready = false;
     }
@@ -452,6 +608,7 @@ export class Room {
     }
     this.broadcast(S2C.END, { results: this.lastResults, reason });
     this.log.info('game end', { room: this.code, game: this.gameId, reason });
+    if (reason === 'finished' && results) this._afterPartyGame(results);
     this.markDirty();
   }
 
@@ -498,6 +655,14 @@ export class Room {
       hostId: this.hostId,
       settings: this.settings,
       results: this.lastResults,
+      party: {
+        mode: this.party.mode,
+        order: this.party.order,
+        length: this.party.length,
+        pool: this.party.pool,
+        draws: this.party.draws,
+        tournament: tournamentView(this.party.tournament),
+      },
       players: this.players.map((p) => ({
         id: p.id,
         name: p.name,
@@ -505,6 +670,7 @@ export class Room {
         color: p.color,
         role: p.role,
         ready: p.ready,
+        wants: p.wantsToPlay, // a spectator with wants=true is waiting for a seat
         bot: p.isBot ? p.botLevel : null,
         connected: p.isBot || p.connected,
       })),

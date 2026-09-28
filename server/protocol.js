@@ -4,6 +4,7 @@
 import { PROTOCOL_VERSION, ROOM_CODE_PATTERN, BOT_LEVELS, MAX_PAYLOAD_BYTES } from '../shared/constants.js';
 import { C2S, BIN, REACTIONS } from '../shared/messages.js';
 import { ByteReader } from '../shared/binary.js';
+import { PARTY_MODES, TOURNAMENT_ORDERS, TOURNAMENT_LENGTHS } from '../shared/party.js';
 
 // --- Field validators: return the cleaned value or INVALID ------------------
 const INVALID = Symbol('invalid');
@@ -14,6 +15,11 @@ const int = (min, max) => (v) => (Number.isInteger(v) && v >= min && v <= max ? 
 const num = () => (v) => (typeof v === 'number' && Number.isFinite(v) ? v : INVALID);
 const oneOf = (values) => (v) => (values.includes(v) ? v : INVALID);
 const pattern = (re) => (v) => (typeof v === 'string' && re.test(v) ? v : INVALID);
+const list = (check, max) => (v) => {
+  if (!Array.isArray(v) || v.length > max) return INVALID;
+  const out = v.map(check);
+  return out.includes(INVALID) ? INVALID : out;
+};
 const optional = (check) => {
   const fn = (v) => (v === undefined ? undefined : check(v));
   fn.optional = true;
@@ -43,7 +49,7 @@ const gameId = () => pattern(/^[a-z0-9]{2,16}$/);
 // --- Schemas per message type ---------------------------------------------------
 const SCHEMAS = {
   [C2S.HELLO]: { build: optional(str(64)) },
-  [C2S.CREATE]: { game: gameId(), name: str(200), solo: optional(bool()) },
+  [C2S.CREATE]: { game: optional(gameId()), name: str(200), solo: optional(bool()), mode: optional(oneOf(PARTY_MODES)) },
   [C2S.JOIN]: { code: pattern(ROOM_CODE_PATTERN), name: str(200), token: optional(token()) },
   [C2S.LEAVE]: {},
   [C2S.READY]: { ready: bool() },
@@ -56,6 +62,15 @@ const SCHEMAS = {
   [C2S.BOT_LEVEL]: { id: playerId(), level: oneOf(BOT_LEVELS) },
   [C2S.FILL_BOTS]: { level: optional(oneOf(BOT_LEVELS)) },
   [C2S.KICK]: { id: playerId() },
+  [C2S.GAME]: { game: gameId() },
+  [C2S.PARTY]: {
+    mode: optional(oneOf(PARTY_MODES)),
+    order: optional(oneOf(TOURNAMENT_ORDERS)),
+    length: optional(oneOf(TOURNAMENT_LENGTHS)),
+    pool: optional(list(gameId(), 64)),
+    restart: optional(bool()),
+  },
+  [C2S.DRAW]: {},
   [C2S.START]: {},
   [C2S.TO_LOBBY]: {},
   [C2S.INPUT]: { data: data() },
@@ -67,6 +82,7 @@ const SCHEMAS = {
 export const LOBBY_TYPES = new Set([
   C2S.CREATE, C2S.JOIN, C2S.READY, C2S.NAME, C2S.COLOR, C2S.ROLE, C2S.SETTINGS,
   C2S.ADD_BOT, C2S.REMOVE_BOT, C2S.BOT_LEVEL, C2S.FILL_BOTS, C2S.KICK, C2S.START, C2S.TO_LOBBY,
+  C2S.GAME, C2S.PARTY, C2S.DRAW,
 ]);
 
 // Result: { ok: true, msg } | { ok: false, reason, version? }

@@ -7,6 +7,8 @@ import { getGame, BOT_LEVEL_LABELS } from '../../shared/catalog.js';
 import { settingLabel } from '../../shared/settings.js';
 import { checkCanStart } from '../../shared/lobbyrules.js';
 import { h, clear, preserveFocus, toast, copyText, dialog } from './core/ui.js';
+import { PARTY_MODE_LABELS } from '../../shared/party.js';
+import { PartyUi } from './party.js';
 import { createQr, drawQr } from './core/qr.js';
 import { local } from './core/storage.js';
 import * as sfx from './core/audio.js';
@@ -18,9 +20,11 @@ export class Lobby {
     this.onLeave = onLeave;
     this.showQr = false;
     this.botLevel = local.get('botLevel', 'normal');
+    this.party = new PartyUi(this);
     session.on('room', ({ room, prev }) => {
       if (!room) return;
       this._sounds(room, prev);
+      this.party.noteRoom(room);
       if (!this.root.hidden) this.render();
     });
     session.on('react', (msg) => this.showReaction(msg.id, msg.r));
@@ -73,7 +77,7 @@ export class Lobby {
     );
     const head = h('header', { class: 'lobby__head' },
       h('div', {},
-        h('p', { class: 'eyebrow' }, `Lobby · ${game?.title ?? room.game}`),
+        h('p', { class: 'eyebrow' }, room.party.mode === 'free' ? 'Lobby' : `Party-lobby · ${PARTY_MODE_LABELS[room.party.mode]}`),
         h('h2', { class: 'lobby__title' }, h('span', { class: 'lobby__code-label' }, 'Kamer'), codeLetters),
         h('p', { class: 'muted' }, 'Deel de link of code. Wie hem opent, zit meteen in deze lobby.'),
       ),
@@ -82,7 +86,11 @@ export class Lobby {
     wrap.append(head);
     if (this.showQr) wrap.append(this._qr());
 
-    if (room.results) wrap.append(this._results(room));
+    // Last game's results next to the tournament standings.
+    const tournament = this.party.tournament(room, isHost);
+    const results = room.results ? this._results(room) : null;
+    if (tournament && results) wrap.append(h('div', { class: 'lobby__grid lobby__grid--even' }, results, tournament));
+    else if (tournament || results) wrap.append(tournament ?? results);
 
     // --- Players -------------------------------------------------------------------------
     const list = h('ul', { class: 'players' });
@@ -105,10 +113,14 @@ export class Lobby {
       playersPanel.append(h('h4', { class: 'panel__subtitle' }, `Toeschouwers (${spectators.length})`), specList);
     }
 
-    // --- Settings + host tools ----------------------------------------------------------
-    const settingsPanel = h('section', { class: 'panel', 'aria-labelledby': 'settings-title' },
-      h('h3', { id: 'settings-title', class: 'panel__title' }, 'Instellingen'));
-    if (!game.settings.length) settingsPanel.append(h('p', { class: 'muted' }, 'Dit spel heeft geen instellingen.'));
+    // --- Next game, party mode, settings + host tools -------------------------------------
+    const settingsPanel = h('section', { class: 'panel panel--game', 'aria-labelledby': 'settings-title' },
+      h('h3', { id: 'settings-title', class: 'panel__title' }, room.party.mode === 'free' ? 'Game' : 'Volgende game'),
+      this.party.modeControls(room, isHost),
+      this.party.gameCard(room),
+      isHost ? this.party.gameTools(room) : null,
+      h('h4', { class: 'panel__subtitle' }, 'Instellingen'));
+    if (!game.settings.length) settingsPanel.append(h('p', { class: 'muted small' }, 'Deze game heeft geen instellingen.'));
     for (const s of game.settings) {
       const id = `setting-${s.key}`;
       if (isHost && s.type === 'toggle') {
@@ -150,6 +162,8 @@ export class Lobby {
     if (game.controls) settingsPanel.append(h('p', { class: 'muted small' }, `Besturing: ${game.controls}`));
 
     wrap.append(h('div', { class: 'lobby__grid' }, playersPanel, settingsPanel));
+    const grid = this.party.gameGrid(room);
+    if (grid) wrap.append(grid);
 
     // --- Actions ------------------------------------------------------------------------
     const actions = h('div', { class: 'lobby__actions' });
@@ -205,7 +219,7 @@ export class Lobby {
 
     let status;
     if (!p.connected) status = h('span', { class: 'player__status player__status--away' }, 'Verbinding weg…');
-    else if (p.role === 'spectator') status = h('span', { class: 'player__status' }, 'Kijkt mee');
+    else if (p.role === 'spectator') status = h('span', { class: 'player__status' }, p.wants ? 'Wacht op een plek' : 'Kijkt mee');
     else if (p.bot || p.id === room.hostId) status = h('span', { class: 'player__status player__status--ok' }, 'Klaar');
     else status = h('span', { class: `player__status ${p.ready ? 'player__status--ok' : ''}` }, p.ready ? '✓ Klaar' : 'Nog niet klaar');
 
@@ -243,13 +257,16 @@ export class Lobby {
 
   _results(room) {
     const r = room.results;
+    const allTied = r.rows.length > 1 && r.rows.every((row) => row.rank === r.rows[0].rank); // a draw
     const table = h('table', { class: 'results' },
       h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, '#'), h('th', { scope: 'col' }, 'Speler'), ...r.columns.map((c) => h('th', { scope: 'col' }, c)))),
       h('tbody', {}, ...r.rows.map((row) => h('tr', { class: row.id === this.session.me ? 'is-me' : '' },
-        h('td', {}, row.rank === 1 ? '🏆' : String(row.rank)),
+        h('td', {}, allTied ? '=' : row.rank === 1 ? '🏆' : String(row.rank)),
         h('td', {}, h('span', { class: 'player__chip player__chip--small', dataset: { color: String(row.color) }, 'aria-hidden': 'true' }), row.name),
         ...row.values.map((v) => h('td', {}, v))))));
+    const of = getGame(r.game)?.title;
     return h('section', { class: 'panel panel--results', 'aria-labelledby': 'results-title' },
+      of ? h('p', { class: 'eyebrow' }, `Vorige game · ${of}`) : null,
       h('h3', { id: 'results-title', class: 'panel__title' }, r.title), table);
   }
 
@@ -280,7 +297,8 @@ export class Lobby {
 
   async _share(game) {
     try {
-      await navigator.share({ title: `${game.title} in Timon's Arcade`, text: `Doe mee met ${game.title}! Code: ${this.session.room.code}`, url: this.link });
+      const what = this.session.room.party?.mode === 'free' ? game.title : 'een party';
+      await navigator.share({ title: `${what} in Timon's Arcade`, text: `Doe mee met ${what}! Code: ${this.session.room.code}`, url: this.link });
     } catch {
       /* user cancelled */
     }

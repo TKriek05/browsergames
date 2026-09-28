@@ -6,6 +6,7 @@
 //   node tools/botclients.js                       # 6 clients, 1 room, 20 s
 //   node tools/botclients.js --rooms 5 --duration 60
 //   node tools/botclients.js --chaos
+//   node tools/botclients.js --party --clients 2 --duration 90   # random party: a new game every few seconds
 //   node tools/botclients.js --url wss://games.tkriek.dev/ws --origin https://games.tkriek.dev
 import WebSocket from 'ws';
 import { PROTOCOL_VERSION } from '../shared/constants.js';
@@ -26,6 +27,8 @@ const ROOMS = Number(args.rooms ?? 1);
 const GAME = args.game ?? 'tag';
 const DURATION_S = Number(args.duration ?? 20);
 const CHAOS = !!args.chaos;
+const PARTY = !!args.party; // random party lobby: the host stops each game after --switch seconds and draws another
+const SWITCH_S = Number(args.switch ?? 6);
 const JOIN_CODE = typeof args.room === 'string' ? args.room.toUpperCase() : null;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -33,7 +36,7 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 const stats = {
   snapshots: 0, jsonMsgs: 0, bytes: 0, reconnectsOk: 0, reconnectsFailed: 0, hostMigrations: 0,
-  junkSent: 0, fullRejected: 0, unexpectedCloses: 0, errors: {},
+  junkSent: 0, fullRejected: 0, unexpectedCloses: 0, errors: {}, partyGames: {},
 };
 
 // --- One fake client -----------------------------------------------------------------
@@ -101,7 +104,12 @@ class BotClient {
         this.room = msg.room;
         break;
       case S2C.ROOM: if (msg.room) this.room = msg.room; break;
-      case S2C.START: this.playing = true; this.lastSnapAt = 0; break;
+      case S2C.START:
+        this.playing = true;
+        this.lastSnapAt = 0;
+        this.startedAt = Date.now();
+        if (this.isHost) stats.partyGames[msg.game] = (stats.partyGames[msg.game] ?? 0) + 1;
+        break;
       case S2C.END: this.playing = false; break;
       case S2C.PONG: this.rtt = Date.now() - msg.c; break;
       case S2C.ERROR:
@@ -172,7 +180,7 @@ async function runRoom(index) {
   if (JOIN_CODE) {
     for (const c of clients) c.send(C2S.JOIN, { code: JOIN_CODE, name: c.name });
   } else {
-    host.send(C2S.CREATE, { game: GAME, name: host.name });
+    host.send(C2S.CREATE, PARTY ? { name: host.name, mode: 'random' } : { game: GAME, name: host.name });
     await host.waitFor((m) => m.t === S2C.JOINED);
     for (const c of clients.slice(1)) {
       c.send(C2S.JOIN, { code: host.code, name: c.name });
@@ -192,12 +200,32 @@ async function runRoom(index) {
   const inputTimer = setInterval(() => clients.forEach((c) => c.tickInput()), 1000 / 30);
   const pingTimer = setInterval(() => clients.forEach((c) => c.send(C2S.PING, { c: Date.now() })), 2000);
   const chaosTimer = CHAOS ? setInterval(() => chaos(clients, code).catch((e) => log('chaos error', e.message)), 2500) : null;
+  const partyTimer = PARTY ? setInterval(() => partyStep(clients), 500) : null;
 
   await sleep(DURATION_S * 1000);
   clearInterval(inputTimer);
   clearInterval(pingTimer);
   if (chaosTimer) clearInterval(chaosTimer);
+  if (partyTimer) clearInterval(partyTimer);
   return clients;
+}
+
+// --- Party: keep switching games ---------------------------------------------------------
+function partyStep(clients) {
+  const host = clients.find((c) => c.me && c.isHost && c.ws?.readyState === WebSocket.OPEN);
+  const room = host?.room;
+  if (!room) return;
+  if (room.state === 'lobby') {
+    for (const c of clients) {
+      const p = room.players.find((x) => x.id === c.me);
+      if (p && p.role === 'player' && !p.ready && c !== host) c.send(C2S.READY, { ready: true });
+    }
+    if (Math.random() < 0.5) host.send(C2S.DRAW);
+    else host.send(C2S.START);
+  } else if (room.state === 'playing' && host.startedAt && Date.now() - host.startedAt > SWITCH_S * 1000) {
+    host.startedAt = 0;
+    host.send(C2S.TO_LOBBY);
+  }
 }
 
 // --- Chaos actions -------------------------------------------------------------------------
@@ -251,7 +279,7 @@ async function chaos(clients, code) {
 }
 
 // --- Main ------------------------------------------------------------------------------------
-log(`botclients → ${URL_} | ${ROOMS} room(s) × ${CLIENTS} clients | game=${GAME} | ${DURATION_S}s${CHAOS ? ' | CHAOS' : ''}`);
+log(`botclients → ${URL_} | ${ROOMS} room(s) × ${CLIENTS} clients | game=${PARTY ? 'party' : GAME} | ${DURATION_S}s${CHAOS ? ' | CHAOS' : ''}`);
 const statsTimer = setInterval(() => {
   log(`snapshots=${stats.snapshots} json=${stats.jsonMsgs} kB=${Math.round(stats.bytes / 1024)} reconnects=${stats.reconnectsOk}/${stats.reconnectsOk + stats.reconnectsFailed}`);
 }, 5000);
@@ -275,6 +303,7 @@ const summary = {
     junkMessagesSent: stats.junkSent,
     overfillRejected: stats.fullRejected,
   }),
+  ...(PARTY && { partyGames: stats.partyGames }),
   unexpectedCloses: stats.unexpectedCloses,
   serverErrors: stats.errors,
 };

@@ -119,13 +119,14 @@ async function ensureName() {
 // ---------------------------------------------------------------------------
 // Room flow
 // ---------------------------------------------------------------------------
-async function createRoom(gameId, solo = false) {
+// gameId null = party lobby (the host picks games, or random / tournament).
+async function createRoom(gameId, solo = false, mode = undefined) {
   const name = await ensureName();
   if (!name) return;
   lastGameId = gameId;
   sfx.play('click');
   try {
-    await session.create(gameId, name, solo);
+    await session.create(gameId, name, solo, mode);
   } catch (err) {
     handleRequestError(err, gameId);
   }
@@ -179,6 +180,7 @@ session.on('start', (msg) => {
 });
 
 session.on('room', ({ room }) => {
+  if (room.state === 'lobby') loadGameModule(room.game).catch(() => {}); // the host may have picked another game
   if (room.state === 'lobby' && current === 'game') {
     show('lobby');
     lobby.render();
@@ -299,6 +301,13 @@ function renderHub() {
     if (name) local.set('name', name);
     joinRoom(code);
   });
+
+  $('#party-free').addEventListener('click', () => {
+    lobby.party.openOnJoin = 'pick'; // the host starts by choosing a game
+    createRoom(null, false, 'free');
+  });
+  $('#party-random').addEventListener('click', () => createRoom(null, false, 'random'));
+  $('#party-tournament').addEventListener('click', () => createRoom(null, false, 'tournament'));
 
   const games = Object.values(CATALOG).sort((a, b) => Number(b.available) - Number(a.available) || a.phase - b.phase);
   const playable = $('#games-playable');

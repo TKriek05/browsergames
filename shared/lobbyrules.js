@@ -10,6 +10,7 @@ export function checkCanStart(room) {
   const game = getGame(room.game);
   if (!game || !game.available) return { ok: false, reason: 'Dit spel is nog niet speelbaar.' };
   if (room.state !== 'lobby') return { ok: false, reason: 'Er loopt al een spel.' };
+  if (room.party?.tournament?.done) return { ok: false, reason: 'Het toernooi is klaar. Begin een nieuw toernooi.' };
 
   const seated = seatedPlayers(room);
   if (seated.length < game.min) {

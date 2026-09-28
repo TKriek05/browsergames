@@ -6,6 +6,7 @@ import { chooseMove, hasEngine } from '../ai/index.js';
 
 // Tuning
 const BOT_DELAY_S = { easy: 0.9, normal: 0.7, hard: 0.5 }; // "thinking" pause so moves are followable
+const AUTO_RETURN_S = 6; // party modes: back to the lobby this long after a match
 const HISTORY_MAX = 300;
 const MAX_LEGAL_IN_SNAPSHOT = 400;
 
@@ -45,6 +46,7 @@ class BoardGame {
     this.rematch = new Set();
     this.thinking = new Set(); // seats with a pending bot move
     this.botWait = new Map(); // seat → seconds waited
+    this.backIn = AUTO_RETURN_S;
     this.epoch = (this.epoch ?? 0) + 1; // changes on every move/undo/round: stale bot answers are ignored
     this.dirty = true;
   }
@@ -202,6 +204,12 @@ class BoardGame {
     if (this.undoReq && this._undoAgreed()) this._performUndo();
 
     if (this.over) {
+      // Random or tournament party: one match, then on to the next game.
+      if (this.room.autoReturn) {
+        this.backIn -= dt;
+        if (this.backIn <= 0) this.room.endGame(this.finalResults());
+        return;
+      }
       const humans = this.seatIds.map((_, i) => i).filter((i) => !this._isBotSeat(i));
       if (humans.length && humans.every((s) => this.rematch.has(s))) {
         this.round++;
@@ -266,13 +274,14 @@ class BoardGame {
       undo: this.undoReq ? { by: this.undoReq.by, yes: [...this.undoReq.yes] } : null,
       canUndo: !!this.rules.undo && this.history.length > 0 && !this.over,
       rematch: [...this.rematch],
+      autoReturn: !!this.room.autoReturn, // no rematch: the party goes on by itself
       score: this.seatIds.map((id) => this.score.get(id) ?? { wins: 0, draws: 0, points: 0 }),
     };
   }
 
-  // Results for the lobby when the host goes back.
+  // Results for the lobby when the host goes back (only after a finished match).
   finalResults() {
-    if (!this.moveNo && !this.round) return null;
+    if (!this.over && !this.round) return null;
     const rows = this.baseSeats
       .map((id) => {
         const p = this.room.players.find((x) => x.id === id);
@@ -284,11 +293,11 @@ class BoardGame {
     return {
       title: `Uitslag na ${this.round + (this.over ? 1 : 0)} ${this.round + (this.over ? 1 : 0) === 1 ? 'potje' : 'potjes'}`,
       columns: usesPoints ? ['Punten', 'Gewonnen'] : ['Gewonnen', 'Gelijk'],
-      rows: rows.map((r, i) => ({
+      rows: rows.map((r) => ({
         id: r.id,
         name: r.name,
         color: r.color,
-        rank: i + 1,
+        rank: 1 + rows.filter((o) => o.s.points > r.s.points || (o.s.points === r.s.points && o.s.wins > r.s.wins)).length,
         values: usesPoints ? [String(r.s.points), String(r.s.wins)] : [String(r.s.wins), String(r.s.draws)],
       })),
     };
