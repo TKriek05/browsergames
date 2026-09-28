@@ -98,8 +98,10 @@ Node 22 of nieuwer is nodig (`node -v`). Met nvm: `nvm install 22 && nvm use 22`
 
 Zie **[CLOUDPANEL.md](CLOUDPANEL.md)**. Kort: één keer `deploy/cloudpanel-setup.sh` draaien.
 
-- **Route A (aanbevolen):** de server haalt de code met git van GitHub. Updaten = het setup-script
-  opnieuw draaien. Voor een privé-repo maakt het script een *deploy key* aan (alleen lezen).
+- **Route A (aanbevolen):** de server haalt de code met git van GitHub. Je hebt de repo niet lokaal
+  nodig: log in op de server en draai het `curl … | bash`-commando uit CLOUDPANEL.md, stap 4.
+  Updaten = het setup-script opnieuw draaien. Voor een privé-repo maakt het script een
+  *deploy key* aan (alleen lezen).
 - **Route B:** `./deploy/deploy.sh` uploadt de code met rsync vanaf je eigen computer.
 
 **Later (optioneel): automatisch deployen met GitHub Actions** na een merge naar `main`.

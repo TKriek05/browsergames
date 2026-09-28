@@ -129,10 +129,11 @@ Het volledige stappenplan staat in **[docs/CLOUDPANEL.md](docs/CLOUDPANEL.md)**.
 
 1. **Cloudflare:** A-record `games` → VPS-IP (oranje wolk), SSL/TLS op *Full*.
 2. **CloudPanel:** *Add Site → Create a Node.js Site* (Node 22+, App Port `3000`, site-user `tkriek-games`).
-3. **SSH-key** voor de site-user (`ssh-copy-id tkriek-games@<IP>`).
-4. **Setup-script** vanaf je computer. Het regelt Node, code, `.env`, `npm ci`, pm2 en herstart na een reboot:
+3. **Inloggen** als site-user: SSH (`ssh tkriek-games@<IP>`), een app als Termius, of de webconsole
+   van je VPS + `su - tkriek-games`. De repo hoeft niet op je eigen computer te staan.
+4. **Setup-script** op de server. Het regelt Node, code, `.env`, `npm ci`, pm2 en herstart na een reboot:
    ```bash
-   ssh tkriek-games@<IP> 'bash -s -- --domain games.tkriek.dev --port 3000 --branch main' < deploy/cloudpanel-setup.sh
+   curl -fsSL https://raw.githubusercontent.com/TKriek05/browsergames/HEAD/deploy/cloudpanel-setup.sh | bash -s -- --domain games.tkriek.dev --port 3000
    ```
 5. **Vhost:** vervang `location /` door `~/arcade-vhost-snippet.conf` (het script zet hem klaar).
 6. **SSL:** Let's Encrypt in CloudPanel, daarna Cloudflare op *Full (strict)*.
@@ -144,6 +145,9 @@ Let op: kamers staan in het geheugen. **Een deploy of herstart beëindigt lopend
 
 **Logs:** `pm2 logs timons-arcade`. Elke minuut logt de server de tick-duur (`tick stats`) als er
 gespeeld wordt; boven 10 ms wordt het een waarschuwing.
+
+**Zoekmachines:** de site is *noindex*. Elke response heeft `X-Robots-Tag: noindex, nofollow, noarchive`
+en de pagina een robots-meta-tag. Bewust geen `robots.txt`-blokkade, anders zien crawlers de noindex niet.
 
 Liever systemd zonder pm2? Zie het voorbeeld in [`deploy/timons-arcade.service`](deploy/timons-arcade.service).
 

@@ -25,6 +25,9 @@ const MIME = {
 };
 
 const MAX_CACHED_FILE = 512 * 1024;
+// Keep the whole site out of search engines. Sent on every response (pages,
+// assets, errors), so crawlers must be allowed to fetch: no robots.txt block.
+const ROBOTS_TAG = 'noindex, nofollow, noarchive';
 const cache = new Map(); // path -> { mtimeMs, size, body, etag }
 
 // Map a URL path to a file on disk, or null when it is not allowed.
@@ -143,6 +146,7 @@ export function createHttpHandler({ config, log, getStats }) {
 
   return async function handle(req, res) {
     try {
+      res.setHeader('X-Robots-Tag', ROBOTS_TAG);
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         res.statusCode = 405;
         res.setHeader('Allow', 'GET, HEAD');

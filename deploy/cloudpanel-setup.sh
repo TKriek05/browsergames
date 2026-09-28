@@ -4,6 +4,10 @@
 # =============================================================================
 # Run as the SITE USER (never as root). Safe to run again: it then updates.
 #
+#   On the server, no local copy of the repo needed (public repo):
+#     curl -fsSL https://raw.githubusercontent.com/TKriek05/browsergames/HEAD/deploy/cloudpanel-setup.sh \
+#       | bash -s -- --domain games.tkriek.dev --port 3000
+#
 #   From your own computer (repo checked out):
 #     ssh tkriek-games@<IP> 'bash -s -- --domain games.tkriek.dev' < deploy/cloudpanel-setup.sh
 #
@@ -71,7 +75,7 @@ parse_args() {
       --branch) BRANCH="${2:-}"; shift 2 ;;
       --no-git) USE_GIT=0; shift ;;
       --node) NODE_MAJOR="${2:-}"; shift 2 ;;
-      -h|--help) sed -n '2,31p' "$0" 2>/dev/null || true; exit 0 ;;
+      -h|--help) sed -n '2,35p' "$0" 2>/dev/null || true; exit 0 ;;
       *) die "Onbekende optie: $1 (zie --help)" ;;
     esac
   done
@@ -243,7 +247,7 @@ EOF
 
  Handig:
   pm2 status · pm2 logs $PM2_APP · pm2 reload $PM2_APP
-  Updaten: dit script opnieuw draaien (of ./deploy/deploy.sh vanaf je pc)
+  Updaten: bash $site_dir/deploy/cloudpanel-setup.sh --domain $DOMAIN
 ────────────────────────────────────────────────────────────────────
 EOF
 }

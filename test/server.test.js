@@ -39,6 +39,18 @@ test('serves the hub with build id, CSP and correct MIME types', async () => {
   assert.equal(again.status, 304);
 });
 
+test('every response tells search engines not to index', async () => {
+  for (const [path, status] of [['/', 200], ['/js/hub.js', 200], ['/css/base.css?v=testbuild', 200], ['/healthz', 200], ['/nope.html', 404], ['/ws', 426]]) {
+    const res = await fetch(`${server.base}${path}`);
+    assert.equal(res.status, status, path);
+    assert.equal(res.headers.get('x-robots-tag'), 'noindex, nofollow, noarchive', path);
+  }
+  const post = await fetch(`${server.base}/`, { method: 'POST' });
+  assert.equal(post.headers.get('x-robots-tag'), 'noindex, nofollow, noarchive');
+  const html = await (await fetch(`${server.base}/`)).text();
+  assert.match(html, /<meta name="robots" content="noindex, nofollow, noarchive">/);
+});
+
 test('blocks path traversal, dotfiles and unknown extensions', async () => {
   for (const path of ['/../server/config.js', '/%2e%2e/server/config.js', '/shared/../server/app.js', '/.env', '/%2e%2e%2fpackage.json', '/js/core', '/nope.exe']) {
     const res = await fetch(`${server.base}${path}`);

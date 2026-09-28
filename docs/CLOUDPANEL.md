@@ -24,8 +24,10 @@ Speler ──https/wss──▶ Cloudflare ──▶ nginx van CloudPanel (:443)
 
 - Een VPS met **CloudPanel v2** (bijv. Hetzner), Ubuntu of Debian.
 - Een domein in **Cloudflare**, bijvoorbeeld `games.tkriek.dev`.
-- SSH op je eigen computer (Linux/macOS, of op Windows: WSL of de ingebouwde OpenSSH).
-- De code op GitHub: `TKriek05/browsergames` (zie [SETUP.md](SETUP.md)).
+- Een manier om in te loggen op de server: SSH (Windows: PowerShell of Terminal, macOS/Linux:
+  Terminal, telefoon/Chromebook: een app zoals Termius) of de webconsole van je VPS-provider.
+- De code op GitHub: `TKriek05/browsergames` (zie [SETUP.md](SETUP.md)). Je hoeft de repo
+  **niet** op je eigen computer te hebben: de server haalt hem zelf op.
 
 In de voorbeelden: domein `games.tkriek.dev`, site-user `tkriek-games`, App Port `3000`.
 Vervang die door je eigen waarden.
@@ -64,7 +66,10 @@ clpctl site:add:nodejs --domainName=games.tkriek.dev --nodejsVersion=22 --appPor
 CloudPanel maakt de map `/home/tkriek-games/htdocs/games.tkriek.dev` en een nginx-vhost
 die doorstuurt naar poort 3000.
 
-## Stap 3 – Inloggen met een SSH-key
+## Stap 3 – Inloggen met een SSH-key (aanbevolen)
+
+Inloggen met het site-user-wachtwoord werkt ook, maar een key is veiliger en sneller.
+Sla deze stap over als je alleen de webconsole van je provider gebruikt.
 
 Op je eigen computer:
 
@@ -84,21 +89,45 @@ Geen `ssh-copy-id` (Windows)? Plak de inhoud van `~/.ssh/id_ed25519.pub` in Clou
 
 Kies één route en blijf daarbij.
 
-### Route A (aanbevolen): git op de server
+### Route A (aanbevolen): git op de server, zonder de repo op je computer
 
-De server haalt de code zelf van GitHub. Werkt ook vanaf Windows, want je hebt geen rsync nodig.
+De server haalt de code zelf van GitHub. Je hebt lokaal niets nodig: geen git, geen kopie van de
+repo, geen rsync.
 
-Vanuit je lokale map met de repo:
+**1. Log in op de server als site-user.** Kies wat je hebt:
+
+- **SSH** vanaf Windows (PowerShell), macOS of Linux:
+  `ssh tkriek-games@<IP-VAN-JE-VPS>` en typ het site-user-wachtwoord (of gebruik je key uit stap 3).
+- **Termius** (of een andere SSH-app) op je telefoon of Chromebook: host = IP, user = `tkriek-games`.
+- **Webconsole** van je VPS-provider (bij Hetzner: *Cloud Console → server → >_ Console*).
+  Die logt in als `root`. Wissel daarna naar de site-user: `su - tkriek-games`.
+  Het script weigert als root te draaien, dus die stap is nodig.
+
+**2. Plak dit commando** (één regel; pas domein en poort aan):
 
 ```bash
-ssh tkriek-games@<IP> 'bash -s -- --domain games.tkriek.dev --port 3000 --branch main' < deploy/cloudpanel-setup.sh
+curl -fsSL https://raw.githubusercontent.com/TKriek05/browsergames/HEAD/deploy/cloudpanel-setup.sh | bash -s -- --domain games.tkriek.dev --port 3000
 ```
 
+`curl` downloadt het setup-script van GitHub en `bash` voert het meteen uit. Het script haalt
+daarna de rest van de code op met git.
+
+- **Branch:** laat `--branch` weg. Het script pakt dan de *default branch* van de repo (zie
+  *Settings → General* op GitHub). Zet je later `main` als default, dan volgt de server vanzelf bij
+  de volgende update. Een andere branch testen kan met `--branch naam-van-branch`.
 - **Publieke repo:** dit werkt meteen.
-- **Privé-repo:** voeg `--repo git@github.com:TKriek05/browsergames.git` toe. De eerste keer maakt het
-  script een sleutel aan en toont hem. Zet die op GitHub (*repo → Settings → Deploy keys →
-  Add deploy key*, alleen lezen) en draai het commando opnieuw.
-- `--branch main` gaat ervan uit dat je `main` hebt aangemaakt (zie [SETUP.md](SETUP.md), stap 2).
+- **Privé-repo:** dan kan `raw.githubusercontent.com` het script niet leveren. Maak de repo tijdelijk
+  publiek, of kopieer de inhoud van `deploy/cloudpanel-setup.sh` via GitHub naar
+  `~/setup.sh` op de server (`nano ~/setup.sh`, plakken, opslaan) en draai
+  `bash ~/setup.sh --domain games.tkriek.dev --repo git@github.com:TKriek05/browsergames.git`.
+  De eerste keer maakt het script een sleutel aan en toont hem. Zet die op GitHub (*repo →
+  Settings → Deploy keys → Add deploy key*, alleen lezen) en draai het commando opnieuw.
+
+**Heb je de repo wél lokaal?** Dan kan het ook in één keer vanaf je eigen computer:
+
+```bash
+ssh tkriek-games@<IP> 'bash -s -- --domain games.tkriek.dev --port 3000' < deploy/cloudpanel-setup.sh
+```
 
 ### Route B: code uploaden met rsync vanaf je computer
 
@@ -142,7 +171,8 @@ Het script mag je altijd opnieuw draaien. Dat is meteen je update-commando.
    `gzip…`-regels uit de snippet.
 
 De snippet regelt: `/ws` met `Upgrade`/`Connection`-headers en lange timeouts, gzip,
-security headers + CSP (zonder dubbele headers van Node) en geen extra caching.
+security headers + CSP (zonder dubbele headers van Node), `X-Robots-Tag: noindex` en geen extra
+caching.
 
 ## Stap 6 – SSL
 
@@ -179,6 +209,7 @@ In **Cloudflare**:
 
 ```bash
 curl -s https://games.tkriek.dev/healthz        # {"status":"ok",…}
+curl -sI https://games.tkriek.dev | grep -i robots   # x-robots-tag: noindex, nofollow, noarchive
 ```
 
 1. Open `https://games.tkriek.dev`, kies een bijnaam en klik **Maak kamer**.
@@ -192,7 +223,7 @@ curl -s https://games.tkriek.dev/healthz        # {"status":"ok",…}
 
 | Wat | Commando (als site-user op de server, tenzij anders vermeld) |
 |---|---|
-| Updaten, route A | `ssh tkriek-games@<IP> 'bash ~/htdocs/games.tkriek.dev/deploy/cloudpanel-setup.sh --domain games.tkriek.dev --branch main'` |
+| Updaten, route A | `bash ~/htdocs/games.tkriek.dev/deploy/cloudpanel-setup.sh --domain games.tkriek.dev` |
 | Updaten, route B | `./deploy/deploy.sh` (op je eigen computer) |
 | Status | `pm2 status` |
 | Live logs | `pm2 logs timons-arcade` |
@@ -226,6 +257,22 @@ MAX_ROOMS_PER_IP=8
 Poort wijzigen? Pas zowel `PORT` in `.env` aan als de **App Port** in CloudPanel
 (*Sites → games.tkriek.dev → Settings*), en reload.
 
+## Niet in zoekmachines (noindex)
+
+De site staat standaard **niet** in Google en andere zoekmachines:
+
+- Elke response van de app (pagina's, bestanden, fouten, `/healthz`) heeft de header
+  `X-Robots-Tag: noindex, nofollow, noarchive`. De nginx-snippet zet dezelfde header, zodat ook
+  nginx' eigen foutpagina's (502) hem hebben.
+- `index.html` heeft ook `<meta name="robots" content="noindex, nofollow, noarchive">`.
+
+Er is bewust **geen** `robots.txt` met `Disallow: /`. Een zoekmachine die een pagina niet mag
+ophalen, ziet de noindex ook niet, en kan de URL dan toch tonen (zonder beschrijving). Staat de site
+al in Google? Dan verdwijnt hij na de volgende crawl. Sneller: *Google Search Console → Verwijderingen*.
+
+Wil je later wél gevonden worden? Haal de header weg in `server/http.js` (`ROBOTS_TAG`), in de
+Vhost (`X-Robots-Tag`) en de meta-tag in `public/index.html`.
+
 ## Als het niet werkt
 
 | Symptoom | Oorzaak en oplossing |
@@ -245,8 +292,8 @@ Meer oplossingen: [README → Troubleshooting](../README.md#troubleshooting).
 
 - [ ] DNS-record `games` → VPS-IP, oranje wolk
 - [ ] Node.js-site in CloudPanel, App Port 3000
-- [ ] Inloggen met SSH-key werkt
-- [ ] `cloudpanel-setup.sh` gedraaid: health check groen
+- [ ] Inloggen als site-user werkt (SSH, Termius of webconsole + `su - tkriek-games`)
+- [ ] Setup-script gedraaid (curl-commando uit stap 4): health check groen
 - [ ] Vhost: `location /` vervangen, `/ws` erin, statische-bestanden-blok weg
 - [ ] Let's Encrypt-certificaat, Cloudflare op Full (strict), Always Use HTTPS
 - [ ] Allow traffic from Cloudflare only aan; CloudPanel-beheer afgeschermd
