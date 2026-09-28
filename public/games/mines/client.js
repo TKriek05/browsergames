@@ -1,11 +1,12 @@
 // Mijnenveger, samen: everybody clicks at the same time. Left click / Enter
 // reveals, right click / long press / F places a flag in your colour.
 import { createBoardModule } from '../board/kit.js';
-import { THEME, clearBoard, roundRect } from '../board/draw.js';
+import { roundRect } from '../board/draw.js';
 
 const W = 760;
 const H = 480;
-const NUM_COLORS = ['', '#3ec5ff', '#5dff8a', '#ff4d6d', '#c77dff', '#ff9a3e', '#3ef0ff', '#ffe14d', '#eef0ff'];
+// A grass field you dig into: classic number colours on the soil.
+const NUM_COLORS = ['', '#1976d2', '#2e7d32', '#d32f2f', '#7b1fa2', '#e65100', '#00838f', '#37474f', '#757575'];
 const L = { cols: 16, rows: 12, size: 30, x0: 0, y0: 0 };
 
 function fit(v) {
@@ -30,12 +31,12 @@ function drawMine(ctx, x, y, s, color) {
     ctx.lineTo(x + Math.cos(a) * s * 0.38, y + Math.sin(a) * s * 0.38);
     ctx.stroke();
   }
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
   ctx.fillRect(x - s * 0.1, y - s * 0.1, s * 0.07, s * 0.07);
 }
 
 function drawFlag(ctx, x, y, s, color) {
-  ctx.fillStyle = '#d8d8f0';
+  ctx.fillStyle = '#3a2a1c';
   ctx.fillRect(x - s * 0.04, y - s * 0.3, s * 0.08, s * 0.58);
   ctx.fillRect(x - s * 0.18, y + s * 0.24, s * 0.36, s * 0.07);
   ctx.fillStyle = color;
@@ -99,12 +100,13 @@ export const { meta, createGame } = createBoardModule({
   draw(ctx, f) {
     const v = f.view;
     fit(v);
-    clearBoard(ctx, W, H);
+    ctx.fillStyle = '#4a7a34';
+    ctx.fillRect(0, 0, W, H);
     const s = L.size;
     // Top bar: lives + mines left
     ctx.font = '600 18px system-ui, sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = THEME.text;
+    ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'left';
     ctx.fillText(`Levens: ${'♥'.repeat(Math.max(0, v.lives))}${'♡'.repeat(Math.max(0, v.livesMax - v.lives))}`, 20, 20);
     ctx.textAlign = 'right';
@@ -121,22 +123,22 @@ export const { meta, createGame } = createBoardModule({
       const cell = v.cells[c];
       if (cell === null || cell === 'm') {
         // Raised tile
-        ctx.fillStyle = (c + Math.floor(c / L.cols)) % 2 ? '#2a2766' : '#302c72';
-        ctx.fillRect(x + 1, y + 1, s - 2, s - 2);
-        ctx.fillStyle = 'rgba(255,255,255,0.08)';
-        ctx.fillRect(x + 1, y + 1, s - 2, 3);
-        if (cell === 'm') drawMine(ctx, x + s / 2, y + s / 2, s, '#a6abd8');
+        ctx.fillStyle = (c + Math.floor(c / L.cols)) % 2 ? '#8cc152' : '#81b84a';
+        ctx.fillRect(x, y, s, s);
+        ctx.fillStyle = 'rgba(255,255,255,0.14)';
+        ctx.fillRect(x, y, s, 2);
+        if (cell === 'm') drawMine(ctx, x + s / 2, y + s / 2, s, '#2a2a2a');
         if (v.flags[c] !== -1) drawFlag(ctx, x + s / 2, y + s / 2, s, f.colorOf(v.flags[c]));
       } else {
         const who = v.revealed[c];
-        ctx.fillStyle = cell === 'M' ? '#5a1024' : '#12122c';
-        ctx.fillRect(x + 1, y + 1, s - 2, s - 2);
+        ctx.fillStyle = cell === 'M' ? '#d8604a' : (c + Math.floor(c / L.cols)) % 2 ? '#e5c29f' : '#d7b899';
+        ctx.fillRect(x, y, s, s);
         // A thin line in the colour of who revealed it.
         ctx.fillStyle = f.colorOf(who);
         ctx.globalAlpha = 0.35;
         ctx.fillRect(x + 1, y + s - 3, s - 2, 2);
         ctx.globalAlpha = 1;
-        if (cell === 'M') drawMine(ctx, x + s / 2, y + s / 2, s, '#ff4d6d');
+        if (cell === 'M') drawMine(ctx, x + s / 2, y + s / 2, s, '#1a1a1a');
         else if (cell > 0) {
           ctx.fillStyle = NUM_COLORS[cell];
           ctx.font = `700 ${Math.round(s * 0.62)}px system-ui, sans-serif`;
@@ -151,7 +153,7 @@ export const { meta, createGame } = createBoardModule({
       const x = L.x0 + (target % L.cols) * s;
       const y = L.y0 + Math.floor(target / L.cols) * s;
       roundRect(ctx, x, y, s, s, 4);
-      ctx.strokeStyle = THEME.yellow;
+      ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 3;
       ctx.stroke();
     }

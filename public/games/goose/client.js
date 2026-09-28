@@ -2,7 +2,9 @@
 // own drawings for the goose and the special squares. Pawns hop square by square.
 import { createBoardModule } from '../board/kit.js';
 import { h } from '../../js/core/ui.js';
-import { THEME, clearBoard, roundRect, circle, clamp01, lerp } from '../board/draw.js';
+import { roundRect, circle, clamp01, lerp, woodTable, dropShadow } from '../board/draw.js';
+
+const INK = '#4a2e18'; // sepia ink on parchment
 import { GEESE, SPECIAL, FINISH } from '../../../shared/rules/goose.js';
 
 const W = 920;
@@ -47,7 +49,20 @@ function drawGoose(ctx, x, y, s) {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(s, s);
-  ctx.fillStyle = '#f5f6ff';
+  // Outline first (sepia), then the white goose on top.
+  ctx.fillStyle = INK;
+  ctx.strokeStyle = INK;
+  ctx.beginPath();
+  ctx.ellipse(-2, 6, 14.5, 10.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(6, 2);
+  ctx.quadraticCurveTo(14, -6, 9, -16);
+  ctx.lineWidth = 8;
+  ctx.stroke();
+  circle(ctx, 9, -17, 6);
+  ctx.fill();
+  ctx.fillStyle = '#fbf8f0';
   ctx.beginPath();
   ctx.ellipse(-2, 6, 13, 9, 0, 0, Math.PI * 2); // body
   ctx.fill();
@@ -55,7 +70,7 @@ function drawGoose(ctx, x, y, s) {
   ctx.moveTo(6, 2);
   ctx.quadraticCurveTo(14, -6, 9, -16); // neck
   ctx.lineWidth = 5;
-  ctx.strokeStyle = '#f5f6ff';
+  ctx.strokeStyle = '#fbf8f0';
   ctx.stroke();
   circle(ctx, 9, -17, 4.5); // head
   ctx.fill();
@@ -73,8 +88,8 @@ function drawGoose(ctx, x, y, s) {
 
 function drawSpecial(ctx, sq, x, y) {
   ctx.save();
-  ctx.strokeStyle = THEME.text;
-  ctx.fillStyle = THEME.text;
+  ctx.strokeStyle = INK;
+  ctx.fillStyle = INK;
   ctx.lineWidth = 3;
   switch (sq) {
     case 6: // bridge
@@ -91,7 +106,7 @@ function drawSpecial(ctx, sq, x, y) {
       ctx.closePath();
       ctx.fill();
       ctx.fillRect(x - 12, y, 24, 16);
-      ctx.fillStyle = '#10102a';
+      ctx.fillStyle = '#f1e3c0';
       ctx.fillRect(x - 4, y + 5, 8, 11);
       break;
     case 31: // well
@@ -115,7 +130,7 @@ function drawSpecial(ctx, sq, x, y) {
       circle(ctx, x, y, 14);
       ctx.fill();
       ctx.fillRect(x - 8, y + 8, 16, 9);
-      ctx.fillStyle = '#10102a';
+      ctx.fillStyle = '#e8c8b8';
       circle(ctx, x - 5, y - 1, 3.5); ctx.fill();
       circle(ctx, x + 5, y - 1, 3.5); ctx.fill();
       break;
@@ -125,10 +140,10 @@ function drawSpecial(ctx, sq, x, y) {
 }
 
 const SQUARE_COLOR = (sq) => {
-  if (sq === FINISH) return '#6b4dff';
-  if (GEESE.includes(sq)) return '#1f7a55';
-  if (SPECIAL[sq]) return sq === 58 ? '#7a1f3a' : '#7a4a1f';
-  return sq % 2 ? '#23234c' : '#2b2b5c';
+  if (sq === FINISH) return '#e8c04a';
+  if (GEESE.includes(sq)) return '#b8cf9a';
+  if (SPECIAL[sq]) return sq === 58 ? '#c9786a' : '#dcae6a';
+  return sq % 2 ? '#f1e3c0' : '#eadab2';
 };
 
 export const { meta, createGame } = createBoardModule({
@@ -173,37 +188,46 @@ export const { meta, createGame } = createBoardModule({
 
   draw(ctx, f) {
     const v = f.view;
-    clearBoard(ctx, W, H);
-    roundRect(ctx, X0 - 12, Y0 - 12, COLS * CELL + 24, ROWS * CELL + 24, 20);
-    ctx.fillStyle = '#131334';
+    // An old printed board on a walnut table.
+    woodTable(ctx, 0, 0, W, H, 'walnut');
+    dropShadow(ctx, X0 - 14, Y0 - 14, COLS * CELL + 28, ROWS * CELL + 28, 8);
+    roundRect(ctx, X0 - 14, Y0 - 14, COLS * CELL + 28, ROWS * CELL + 28, 8);
+    ctx.fillStyle = '#8a3a2a';
     ctx.fill();
+    ctx.strokeStyle = '#e8c04a';
+    ctx.lineWidth = 2;
+    roundRect(ctx, X0 - 8, Y0 - 8, COLS * CELL + 16, ROWS * CELL + 16, 6);
+    ctx.stroke();
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
     for (let sq = 1; sq <= FINISH; sq++) {
       const p = cellXY(sq);
-      roundRect(ctx, p.x - CELL / 2 + 3, p.y - CELL / 2 + 3, CELL - 6, CELL - 6, 12);
+      roundRect(ctx, p.x - CELL / 2 + 3, p.y - CELL / 2 + 3, CELL - 6, CELL - 6, 6);
       ctx.fillStyle = SQUARE_COLOR(sq);
       ctx.fill();
+      ctx.strokeStyle = 'rgba(74, 46, 24, 0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
       if (GEESE.includes(sq)) drawGoose(ctx, p.x, p.y + 6, 1.2);
       else if (SPECIAL[sq]) drawSpecial(ctx, sq, p.x, p.y + 4);
       else if (sq === FINISH) {
-        ctx.fillStyle = THEME.yellow;
+        ctx.fillStyle = INK;
         ctx.font = '800 30px system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('★', p.x, p.y - 12);
         ctx.textAlign = 'left';
       }
-      ctx.fillStyle = 'rgba(238,240,255,0.8)';
-      ctx.font = '700 14px system-ui, sans-serif';
+      ctx.fillStyle = INK;
+      ctx.font = '700 14px Georgia, serif';
       ctx.fillText(String(sq), p.x - CELL / 2 + 10, p.y - CELL / 2 + 8);
     }
     // Start area
     roundRect(ctx, START.x - 46, START.y - 30, 250, 60, 14);
-    ctx.fillStyle = '#1c1c40';
+    ctx.fillStyle = '#f1e3c0';
     ctx.fill();
-    ctx.fillStyle = THEME.muted;
-    ctx.font = '800 13px system-ui, sans-serif';
+    ctx.fillStyle = INK;
+    ctx.font = '800 13px Georgia, serif';
     ctx.fillText('START', START.x - 38, START.y - 24);
 
     const last = f.last;
@@ -227,10 +251,10 @@ export const { meta, createGame } = createBoardModule({
       ctx.fillStyle = f.colorOf(seat);
       ctx.fill();
       ctx.lineWidth = seat === f.you ? 4 : 2;
-      ctx.strokeStyle = seat === f.you ? THEME.text : 'rgba(0,0,0,0.5)';
+      ctx.strokeStyle = seat === f.you ? '#ffffff' : 'rgba(0,0,0,0.5)';
       ctx.stroke();
       if (v.stuck[seat] || v.skip[seat]) {
-        ctx.fillStyle = THEME.yellow;
+        ctx.fillStyle = '#ffe14d';
         ctx.font = '800 14px system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(v.stuck[seat] ? '⏳' : 'z', p.x, p.y - 30);

@@ -34,8 +34,8 @@ function getPaths() {
 }
 
 const STYLE = {
-  white: { fill: '#f5f6ff', shade: '#c7cbef', line: '#23233a' },
-  black: { fill: '#23233a', shade: '#121220', line: '#c4c8ee' },
+  white: { fill: '#f6ecd6', shade: '#d6c4a0', line: '#3a2a1c' }, // ivory
+  black: { fill: '#2e2018', shade: '#1a120c', line: '#d8c4a0' }, // ebony
 };
 
 // piece: signed piece code (+ white, - black)

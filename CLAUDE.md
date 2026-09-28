@@ -69,6 +69,16 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 - `meta.gl = true`: `view.glCanvas` (WebGL, lage resolutie, pixelated) met `view.canvas` als 2D-HUD erboven.
 - Spelwereld is 2D (x, y) → 3D (x, 0, y). Fysica blijft 2D en deterministisch in `shared/physics/`.
 - Geen WebGL? `createRenderer3D` geeft `null`: val terug op een eenvoudige 2D-weergave.
+- Lucht: `setColors({ sky, fog, light, sun: { …, retro? }, clouds })`. Zon is standaard gewoon; `retro: true` = synthwave-strepen.
+
+## Stijl per game
+
+- Elke game heeft een eigen sfeer die bij het spel past; neon alleen waar het in de naam zit (Neon Tikkertje).
+  Voorbeelden: Turbo Kart GP = zonnige circuits per thema (`theme` in `shared/maps/kart-tracks.js`),
+  Tank Tumult = legerterreinen per arena (`public/games/tanks/theme.js`), bordspellen = hout/vilt/papier/karton.
+- Bordspellen: gebruik de oppervlakken uit `public/games/board/draw.js` (`woodTable`, `woodSquare`, `boardFrame`,
+  `feltTable`, `dropShadow`) in plaats van een donkere achtergrond met glow.
+- De site zelf (hub, lobby, zijpaneel) houdt de Timon's Arcade-huisstijl.
 
 ## Game-module interface
 
@@ -98,6 +108,6 @@ thumbnail in `public/js/thumbs.js`, server- en clientmodule, tests.
 1. Bordspellen: boter-kaas-en-eieren, vier op een rij, dammen, reversi, schaken, Erger je niet!, ganzenbord, zeeslag ✅
 2. Kwek Kwek Knal (eenden schieten, lag compensation) ✅
 3. Tank Tumult (tanks in 3D) ✅
-4. Neon Kart GP (3D-kartrace met eigen WebGL-engine) ✅
+4. Turbo Kart GP (3D-kartrace met eigen WebGL-engine) ✅
 5. Extra's: Slangenstrijd, Paddle Party, Stenenbreker, Boemstad (3D), Spookjesdoolhof, Blokval, Minigolf (3D),
    Onthoud 'm, Mijnenveger, Ruimtegolf, Rotsregen ✅

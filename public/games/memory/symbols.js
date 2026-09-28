@@ -1,24 +1,24 @@
 // 18 own vector symbols for Onthoud 'm, drawn with canvas paths (no images,
 // no emoji fonts, so they look the same everywhere).
 export const SYMBOLS = [
-  { name: 'ster', color: '#ffe14d' },
-  { name: 'hart', color: '#ff4d6d' },
-  { name: 'maan', color: '#9cc2ff' },
-  { name: 'zon', color: '#ff9a3e' },
-  { name: 'bloem', color: '#ff7ad9' },
-  { name: 'wolk', color: '#eef0ff' },
-  { name: 'bliksem', color: '#ffd23e' },
-  { name: 'muzieknoot', color: '#c77dff' },
-  { name: 'diamant', color: '#3ef0ff' },
-  { name: 'huis', color: '#ff8c5a' },
-  { name: 'boom', color: '#5dff8a' },
-  { name: 'vis', color: '#3e9bff' },
-  { name: 'sleutel', color: '#e8c36a' },
-  { name: 'druppel', color: '#5ab8ff' },
-  { name: 'spookje', color: '#d8d0ff' },
-  { name: 'raket', color: '#ff5c7a' },
-  { name: 'kroon', color: '#ffc83e' },
-  { name: 'paddenstoel', color: '#ff4d4d' },
+  { name: 'ster', color: '#e8a818' },
+  { name: 'hart', color: '#d62839' },
+  { name: 'maan', color: '#5a7ac8' },
+  { name: 'zon', color: '#f08a1e' },
+  { name: 'bloem', color: '#d8489a' },
+  { name: 'wolk', color: '#7aa8d8' },
+  { name: 'bliksem', color: '#e8b010' },
+  { name: 'muzieknoot', color: '#7a4ab8' },
+  { name: 'diamant', color: '#1e9ac8' },
+  { name: 'huis', color: '#c8583a' },
+  { name: 'boom', color: '#3a8a3e' },
+  { name: 'vis', color: '#2a6ad0' },
+  { name: 'sleutel', color: '#b8862a' },
+  { name: 'druppel', color: '#3a98e0' },
+  { name: 'spookje', color: '#8a7ac0' },
+  { name: 'raket', color: '#c83a4a' },
+  { name: 'kroon', color: '#d89a18' },
+  { name: 'paddenstoel', color: '#d83030' },
 ];
 
 // Draw symbol `i` centred at (x, y) within a square of size s.
@@ -32,8 +32,6 @@ export function drawSymbol(ctx, i, x, y, s) {
   ctx.lineWidth = s * 0.08;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.shadowColor = color;
-  ctx.shadowBlur = s * 0.2;
   const P = (...pts) => {
     ctx.beginPath();
     pts.forEach(([px, py], k) => (k ? ctx.lineTo(px * r, py * r) : ctx.moveTo(px * r, py * r)));
@@ -206,8 +204,8 @@ export function drawSymbol(ctx, i, x, y, s) {
   ctx.restore();
 }
 
-// Cached offscreen sprites: the holes (moon, house, key) and the glow are
-// drawn once instead of every frame.
+// Cached offscreen sprites: the holes (moon, house, key) are drawn once
+// instead of every frame.
 const cache = new Map();
 export function symbolSprite(i, s) {
   const size = Math.max(8, Math.round(s));

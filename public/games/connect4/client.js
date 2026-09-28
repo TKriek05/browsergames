@@ -1,7 +1,8 @@
-// Vier op een rij: discs sit BEHIND a panel with holes, so a new disc
-// visibly drops through the board and bounces into place.
+// Vier op een rij: the classic blue plastic rack on a wooden table. Discs
+// sit BEHIND the panel with holes, so a new disc visibly drops through the
+// board and bounces into place.
 import { createBoardModule } from '../board/kit.js';
-import { THEME, glow, clearBoard, roundRect, disc, circle, easeOutBounce, lerp } from '../board/draw.js';
+import { roundRect, disc, circle, easeOutBounce, lerp, woodTable } from '../board/draw.js';
 import { COLS, ROWS } from '../../../shared/rules/connect4.js';
 
 const W = 700;
@@ -24,14 +25,26 @@ function drawPanel(ctx) {
       ctx.arc(cx(c), cy(r), R + 4, 0, Math.PI * 2);
     }
   }
-  ctx.fillStyle = '#1d2fa0';
+  ctx.fillStyle = '#1f55c4';
   ctx.fill('evenodd');
-  glow(ctx, THEME.cyan, 16, () => {
-    roundRect(ctx, X0 - 14, Y0 - 14, COLS * CELL + 28, ROWS * CELL + 28, 18);
-    ctx.strokeStyle = THEME.cyan;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-  });
+  // Moulded look: a dark rim inside every hole and a light top edge.
+  ctx.strokeStyle = 'rgba(10, 30, 90, 0.55)';
+  ctx.lineWidth = 4;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      circle(ctx, cx(c), cy(r), R + 5);
+      ctx.stroke();
+    }
+  }
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+  ctx.fillRect(X0 - 14, Y0 - 14, COLS * CELL + 28, 5);
+  roundRect(ctx, X0 - 14, Y0 - 14, COLS * CELL + 28, ROWS * CELL + 28, 10);
+  ctx.strokeStyle = '#163f94';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  // Feet
+  ctx.fillStyle = '#163f94';
+  for (const x of [X0 - 30, X0 + COLS * CELL - 20]) ctx.fillRect(x, Y0 + ROWS * CELL + 8, 50, 16);
 }
 
 export const { meta, createGame } = createBoardModule({
@@ -57,7 +70,10 @@ export const { meta, createGame } = createBoardModule({
   sound: () => 'hit',
 
   draw(ctx, f) {
-    clearBoard(ctx, W, H);
+    woodTable(ctx, 0, 0, W, H, 'oak');
+    // The slot behind the panel is dark (you look through the holes at the room).
+    ctx.fillStyle = '#3a2a1e';
+    ctx.fillRect(X0 - 10, Y0 - 10, COLS * CELL + 20, ROWS * CELL + 20);
     const board = f.view.board;
     const last = f.last?.info;
     const animating = last && f.anim < 1;
@@ -84,24 +100,26 @@ export const { meta, createGame } = createBoardModule({
       ctx.restore();
       if (f.cursor) {
         roundRect(ctx, X0 + col * CELL + 4, Y0 - 10, CELL - 8, ROWS * CELL + 20, 14);
-        ctx.strokeStyle = THEME.yellow;
+        ctx.setLineDash([12, 8]);
+        ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 3;
         ctx.stroke();
+        ctx.setLineDash([]);
       }
     }
 
     // Winning four: pulsing rings.
     if (f.view.line && !animating) {
       const pulse = f.reduced ? 1 : 0.6 + 0.4 * Math.sin(f.time * 6);
-      glow(ctx, THEME.yellow, 20, () => {
-        ctx.strokeStyle = THEME.yellow;
-        ctx.lineWidth = 6;
-        ctx.globalAlpha = pulse;
-        for (const i of f.view.line) {
-          circle(ctx, cx(i % COLS), cy(Math.floor(i / COLS)), R + 2);
-          ctx.stroke();
-        }
-      });
+      ctx.save();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 6;
+      ctx.globalAlpha = pulse;
+      for (const i of f.view.line) {
+        circle(ctx, cx(i % COLS), cy(Math.floor(i / COLS)), R - 6);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
   },
 });

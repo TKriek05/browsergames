@@ -1,7 +1,8 @@
-// Dammen (10×10): select a piece, click where it should go; the piece walks
-// its capture path and the captured pieces vanish at the end.
+// Dammen (10×10) on a wooden board with ivory and ebony pieces: select a
+// piece, click where it should go; the piece walks its capture path and the
+// captured pieces vanish at the end.
 import { createBoardModule } from '../board/kit.js';
-import { THEME, glow, clearBoard, roundRect, disc, circle, clamp01, easeInOut, lerp } from '../board/draw.js';
+import { roundRect, disc, circle, clamp01, easeInOut, lerp, woodTable, woodSquare, boardFrame } from '../board/draw.js';
 import { rc, sqAt, owner, isKing, EMPTY } from '../../../shared/rules/checkers.js';
 
 const W = 800;
@@ -10,8 +11,8 @@ const X0 = (W - CELL * 10) / 2;
 const Y0 = X0;
 const R = CELL * 0.38;
 const COLORS = [
-  { fill: '#f2f3ff', rim: '#9aa0c8', ring: '#c9cdf0' },
-  { fill: '#1b1b28', rim: '#000', ring: '#3a3a55' },
+  { fill: '#f4e8d0', rim: '#a88a60', ring: '#d8c4a0' },
+  { fill: '#2a1c14', rim: '#000', ring: '#4a3426' },
 ];
 
 // Screen position of a square; the board is turned around for black.
@@ -42,7 +43,7 @@ function drawPiece(ctx, x, y, piece, alpha = 1) {
     ctx.lineTo(x + s, y - s * 0.35);
     ctx.lineTo(x + s, y + s * 0.45);
     ctx.closePath();
-    ctx.fillStyle = THEME.yellow;
+    ctx.fillStyle = '#e8b422';
     ctx.fill();
   }
   ctx.restore();
@@ -127,15 +128,8 @@ export const { meta, createGame } = createBoardModule({
 
   draw(ctx, f) {
     const flip = f.you === 1;
-    clearBoard(ctx, W, W);
-    roundRect(ctx, X0 - 16, Y0 - 16, CELL * 10 + 32, CELL * 10 + 32, 18);
-    ctx.fillStyle = '#26264a';
-    ctx.fill();
-    glow(ctx, THEME.cyan, 12, () => {
-      ctx.strokeStyle = THEME.cyan;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    });
+    woodTable(ctx, 0, 0, W, W, 'oak');
+    boardFrame(ctx, X0, Y0, CELL * 10, 20);
     // Squares + numbers
     ctx.font = '600 11px system-ui, sans-serif';
     ctx.textAlign = 'left';
@@ -143,13 +137,12 @@ export const { meta, createGame } = createBoardModule({
     for (let r = 0; r < 10; r++) {
       for (let c = 0; c < 10; c++) {
         const dark = (r + c) % 2 === 1;
-        ctx.fillStyle = dark ? '#121230' : '#34345f';
-        ctx.fillRect(X0 + c * CELL, Y0 + r * CELL, CELL, CELL);
+        woodSquare(ctx, X0 + c * CELL, Y0 + r * CELL, CELL, !dark, r * 10 + c);
       }
     }
     for (let sq = 0; sq < 50; sq++) {
       const p = pos(sq, flip);
-      ctx.fillStyle = 'rgba(166,171,216,0.45)';
+      ctx.fillStyle = 'rgba(255, 236, 200, 0.55)';
       ctx.fillText(String(sq + 1), p.x - CELL / 2 + 4, p.y - CELL / 2 + 3);
     }
 
@@ -208,18 +201,16 @@ export const { meta, createGame } = createBoardModule({
         }
       } else {
         const p = pos(sel, flip);
-        glow(ctx, THEME.yellow, 14, () => {
-          circle(ctx, p.x, p.y, R + 5);
-          ctx.strokeStyle = THEME.yellow;
-          ctx.lineWidth = 4;
-          ctx.stroke();
-        });
+        circle(ctx, p.x, p.y, R + 5);
+        ctx.strokeStyle = '#ffd23e';
+        ctx.lineWidth = 4;
+        ctx.stroke();
         const cand = candidates(f);
         const step = f.local.route.length + 1;
         for (const s of f.local.route) {
           const q = pos(s, flip);
           circle(ctx, q.x, q.y, 8);
-          ctx.fillStyle = THEME.yellow;
+          ctx.fillStyle = '#ffd23e';
           ctx.fill();
         }
         for (const m of cand) {
@@ -232,7 +223,7 @@ export const { meta, createGame } = createBoardModule({
         const target = f.hover;
         const preview = cand.find((m) => m.path[m.path.length - 1] === target || m.path[step] === target);
         if (preview) {
-          ctx.strokeStyle = THEME.red;
+          ctx.strokeStyle = '#e63946';
           ctx.lineWidth = 5;
           for (const c of preview.caps) {
             const q = pos(c, flip);
@@ -248,7 +239,7 @@ export const { meta, createGame } = createBoardModule({
     }
     if (f.cursor) {
       roundRect(ctx, X0 + f.cursor.col * CELL + 3, Y0 + f.cursor.row * CELL + 3, CELL - 6, CELL - 6, 8);
-      ctx.strokeStyle = THEME.yellow;
+      ctx.strokeStyle = '#ffd23e';
       ctx.lineWidth = 4;
       ctx.stroke();
     }

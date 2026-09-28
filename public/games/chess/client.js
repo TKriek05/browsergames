@@ -1,8 +1,9 @@
-// Schaken: select a piece to see where it may go, click the target square.
+// Schaken on a classic wooden board (maple and walnut) with ivory and ebony
+// pieces: select a piece to see where it may go, click the target square.
 // Promotion choice appears in the side panel. The board turns for black.
 import { createBoardModule } from '../board/kit.js';
 import { h } from '../../js/core/ui.js';
-import { THEME, glow, clearBoard, roundRect, circle, clamp01, easeInOut, lerp } from '../board/draw.js';
+import { roundRect, circle, clamp01, easeInOut, lerp, woodTable, woodSquare, boardFrame } from '../board/draw.js';
 import { Position, sqName, sqFromName, WHITE } from '../../../shared/chess/position.js';
 import { drawPiece } from './pieces.js';
 
@@ -10,8 +11,6 @@ const W = 760;
 const CELL = 84;
 const X0 = (W - CELL * 8) / 2;
 const Y0 = X0;
-const LIGHT = '#3a3a6e';
-const DARK = '#23234a';
 const PROMO = [['q', 'Dame'], ['r', 'Toren'], ['b', 'Loper'], ['n', 'Paard']];
 
 // 0x88 square → screen centre (board flipped for black).
@@ -115,20 +114,10 @@ export const { meta, createGame } = createBoardModule({
     const flip = f.you === 1;
     const board = parse(f.view.fen);
     const prevBoard = parse(f.prev.fen);
-    clearBoard(ctx, W, W);
-    roundRect(ctx, X0 - 14, Y0 - 14, CELL * 8 + 28, CELL * 8 + 28, 16);
-    ctx.fillStyle = '#15153a';
-    ctx.fill();
-    glow(ctx, THEME.pink, 12, () => {
-      ctx.strokeStyle = THEME.pink;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    });
+    woodTable(ctx, 0, 0, W, W, 'oak');
+    boardFrame(ctx, X0, Y0, CELL * 8, 40);
     for (let r = 0; r < 8; r++) {
-      for (let c = 0; c < 8; c++) {
-        ctx.fillStyle = (r + c) % 2 === 0 ? LIGHT : DARK;
-        ctx.fillRect(X0 + c * CELL, Y0 + r * CELL, CELL, CELL);
-      }
+      for (let c = 0; c < 8; c++) woodSquare(ctx, X0 + c * CELL, Y0 + r * CELL, CELL, (r + c) % 2 === 0, r * 8 + c);
     }
 
     const last = f.last?.info;
@@ -150,7 +139,7 @@ export const { meta, createGame } = createBoardModule({
       ctx.fillStyle = g;
       ctx.fillRect(k.x - CELL / 2, k.y - CELL / 2, CELL, CELL);
     }
-    if (f.local.sel !== null) tint(f.local.sel, 'rgba(62,240,255,0.3)');
+    if (f.local.sel !== null) tint(f.local.sel, 'rgba(90,168,74,0.45)');
 
     // Pieces (during the animation: the old board, with the mover sliding)
     const animating = last && f.anim < 1;
@@ -208,28 +197,28 @@ export const { meta, createGame } = createBoardModule({
       if (f.legal.some((m) => m.from === sqName(f.hover))) {
         const p = pos(f.hover, flip);
         roundRect(ctx, p.x - CELL / 2 + 3, p.y - CELL / 2 + 3, CELL - 6, CELL - 6, 8);
-        ctx.strokeStyle = 'rgba(62,240,255,0.7)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.75)';
         ctx.lineWidth = 3;
         ctx.stroke();
       }
     }
     if (f.cursor) {
       roundRect(ctx, X0 + f.cursor.col * CELL + 3, Y0 + f.cursor.row * CELL + 3, CELL - 6, CELL - 6, 8);
-      ctx.strokeStyle = THEME.yellow;
+      ctx.strokeStyle = '#ffd23e';
       ctx.lineWidth = 4;
       ctx.stroke();
     }
 
     // Coordinates
-    ctx.fillStyle = THEME.muted;
-    ctx.font = '600 14px system-ui, sans-serif';
+    ctx.fillStyle = '#f4e4c8';
+    ctx.font = '700 15px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (let i = 0; i < 8; i++) {
       const file = flip ? 7 - i : i;
       const rank = flip ? i + 1 : 8 - i;
-      ctx.fillText('abcdefgh'[file], X0 + i * CELL + CELL / 2, Y0 + 8 * CELL + 26);
-      ctx.fillText(String(rank), X0 - 26, Y0 + i * CELL + CELL / 2);
+      ctx.fillText('abcdefgh'[file], X0 + i * CELL + CELL / 2, Y0 + 8 * CELL + 21);
+      ctx.fillText(String(rank), X0 - 21, Y0 + i * CELL + CELL / 2);
     }
   },
 });

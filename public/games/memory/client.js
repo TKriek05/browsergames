@@ -2,7 +2,7 @@
 // pairs get the finder's colour, the last mismatch stays visible until the
 // next flip.
 import { createBoardModule } from '../board/kit.js';
-import { THEME, clearBoard, roundRect, easeOutCubic, clamp01 } from '../board/draw.js';
+import { roundRect, easeOutCubic, clamp01, feltTable } from '../board/draw.js';
 import { SYMBOLS, blitSymbol } from './symbols.js';
 
 const W = 720;
@@ -27,36 +27,43 @@ const cardRect = (c) => {
   return { x: layout.x0 + col * (layout.cw + GAP), y: layout.y0 + row * (layout.ch + GAP) };
 };
 
-function drawBack(ctx, x, y, w, h, t) {
-  roundRect(ctx, x, y, w, h, 10);
-  ctx.fillStyle = '#2a1f5e';
+// Classic playing-card back: white edge, red lattice.
+function drawBack(ctx, x, y, w, h) {
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  roundRect(ctx, x + 2, y + 3, w, h, 8);
+  ctx.fill();
+  roundRect(ctx, x, y, w, h, 8);
+  ctx.fillStyle = '#fbf8f0';
+  ctx.fill();
+  const m = Math.max(4, w * 0.07);
+  roundRect(ctx, x + m, y + m, w - m * 2, h - m * 2, 5);
+  ctx.fillStyle = '#b8302a';
   ctx.fill();
   ctx.save();
   ctx.clip();
-  ctx.strokeStyle = 'rgba(199,125,255,0.35)';
-  ctx.lineWidth = 2;
-  for (let k = -h; k < w + h; k += 14) {
+  ctx.strokeStyle = 'rgba(255, 220, 210, 0.35)';
+  ctx.lineWidth = 1.5;
+  for (let k = -h; k < w + h; k += 10) {
     ctx.beginPath();
     ctx.moveTo(x + k, y);
     ctx.lineTo(x + k - h, y + h);
+    ctx.moveTo(x + k - h, y);
+    ctx.lineTo(x + k, y + h);
     ctx.stroke();
   }
   ctx.restore();
-  roundRect(ctx, x + 1, y + 1, w - 2, h - 2, 10);
-  ctx.strokeStyle = THEME.pink;
-  ctx.lineWidth = 2;
-  ctx.globalAlpha = 0.7 + Math.sin(t * 2 + x * 0.02) * 0.1;
-  ctx.stroke();
-  ctx.globalAlpha = 1;
 }
 
 function drawFace(ctx, x, y, w, h, sym, rim) {
-  roundRect(ctx, x, y, w, h, 10);
-  ctx.fillStyle = '#10102a';
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  roundRect(ctx, x + 2, y + 3, w, h, 8);
   ctx.fill();
-  roundRect(ctx, x + 1, y + 1, w - 2, h - 2, 10);
+  roundRect(ctx, x, y, w, h, 8);
+  ctx.fillStyle = '#fbf8f0';
+  ctx.fill();
+  roundRect(ctx, x + 2, y + 2, w - 4, h - 4, 7);
   ctx.strokeStyle = rim;
-  ctx.lineWidth = rim === THEME.line ? 2 : 4;
+  ctx.lineWidth = 4;
   ctx.stroke();
   blitSymbol(ctx, sym, x + w / 2, y + h / 2, Math.min(w, h) * 0.62);
 }
@@ -107,7 +114,7 @@ export const { meta, createGame } = createBoardModule({
   draw(ctx, f) {
     const v = f.view;
     fit(v);
-    clearBoard(ctx, W, H);
+    feltTable(ctx, 0, 0, W, H, '#1f6a45');
     const lastC = f.last?.info?.c;
     const hideT = f.reduced ? 1 : clamp01((f.time - f.local.hideAt) / 0.25);
     for (let c = 0; c < v.cards.length; c++) {
@@ -133,19 +140,19 @@ export const { meta, createGame } = createBoardModule({
       const faceSym = sym ?? f.prev.cards?.[c] ?? null;
       if (showFace && faceSym !== null) {
         const owner = v.owner[c];
-        const rim = owner >= 0 ? f.colorOf(owner) : v.shown.includes(c) ? THEME.red : THEME.cyan;
+        const rim = owner >= 0 ? f.colorOf(owner) : v.shown.includes(c) ? '#d62839' : '#c8c2b4';
         if (owner >= 0) ctx.globalAlpha = 0.8;
         drawFace(ctx, x, y, w, h, faceSym, rim);
         ctx.globalAlpha = 1;
       } else {
-        drawBack(ctx, x, y, w, h, f.time);
+        drawBack(ctx, x, y, w, h);
       }
       ctx.restore();
 
       const hovered = f.cursor ? f.cursor.row * layout.cols + f.cursor.col === c : f.hover === c;
       if (hovered && f.myTurn && v.owner[c] === -1 && sym === null) {
-        roundRect(ctx, x - 3, y - 3, w + 6, h + 6, 12);
-        ctx.strokeStyle = THEME.yellow;
+        roundRect(ctx, x - 3, y - 3, w + 6, h + 6, 10);
+        ctx.strokeStyle = '#ffe14d';
         ctx.lineWidth = 3;
         ctx.stroke();
       }

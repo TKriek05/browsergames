@@ -304,6 +304,10 @@ function renderHub() {
   const playable = $('#games-playable');
   const soon = $('#games-soon');
   for (const game of games) (game.available ? playable : soon).append(gameCard(game));
+  // Nothing left to announce: hide the empty "Binnenkort" section.
+  const nothingSoon = !soon.children.length;
+  soon.hidden = nothingSoon;
+  $('#soon-title').hidden = nothingSoon;
 
   const mute = $('#mute');
   const syncMute = (m) => {

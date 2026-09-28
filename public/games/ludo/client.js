@@ -1,8 +1,8 @@
 // Erger je niet!: classic cross-shaped board in the players' colours. Roll
-// with the button (or space), then click a glowing pawn (or press 1-4).
+// with the button (or space), then click a ringed pawn (or press 1-4).
 import { createBoardModule } from '../board/kit.js';
 import { h } from '../../js/core/ui.js';
-import { THEME, clearBoard, roundRect, circle, clamp01, lerp, glow } from '../board/draw.js';
+import { roundRect, circle, clamp01, lerp, woodTable, dropShadow } from '../board/draw.js';
 import { TRACK, abs } from '../../../shared/rules/ludo.js';
 
 const W = 770;
@@ -45,12 +45,10 @@ function drawPawn(ctx, x, y, color, { ring = false, pulse = 1, alpha = 1 } = {})
   ctx.save();
   ctx.globalAlpha = alpha;
   if (ring) {
-    glow(ctx, THEME.yellow, 14, () => {
-      circle(ctx, x, y, R + 6);
-      ctx.strokeStyle = `rgba(255,225,77,${pulse})`;
-      ctx.lineWidth = 4;
-      ctx.stroke();
-    });
+    circle(ctx, x, y, R + 6);
+    ctx.strokeStyle = `rgba(40,30,20,${pulse})`;
+    ctx.lineWidth = 4;
+    ctx.stroke();
   }
   // Pawn seen from above-ish: base + head.
   circle(ctx, x, y + 4, R * 0.95);
@@ -148,14 +146,19 @@ export const { meta, createGame } = createBoardModule({
 
   draw(ctx, f) {
     const v = f.view;
-    clearBoard(ctx, W, W);
-    roundRect(ctx, 4, 4, W - 8, W - 8, 24);
-    ctx.fillStyle = '#17173a';
+    // A classic cardboard board on the table.
+    woodTable(ctx, 0, 0, W, W, 'oak');
+    dropShadow(ctx, 4, 4, W - 8, W - 8, 10);
+    roundRect(ctx, 4, 4, W - 8, W - 8, 10);
+    ctx.fillStyle = '#f3e3b5';
     ctx.fill();
+    ctx.strokeStyle = '#8a6a3a';
+    ctx.lineWidth = 3;
+    ctx.stroke();
 
     const quadColor = (q) => {
       const seat = seatOfQuad(v, q);
-      return seat >= 0 ? f.colorOf(seat) : '#4a4a70';
+      return seat >= 0 ? f.colorOf(seat) : '#b8a888';
     };
     // Bases
     BASES.forEach((cells, q) => {
@@ -163,12 +166,17 @@ export const { meta, createGame } = createBoardModule({
       const pad = R + 12;
       roundRect(ctx, px(c0) - pad, px(r0) - pad, CELL + pad * 2, CELL + pad * 2, 18);
       ctx.fillStyle = quadColor(q);
-      ctx.globalAlpha = 0.18;
+      ctx.globalAlpha = 0.45;
       ctx.fill();
       ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#3a2a1c';
+      ctx.lineWidth = 2;
+      ctx.stroke();
       for (const [c, r] of cells) {
         circle(ctx, px(c), px(r), R);
-        ctx.strokeStyle = quadColor(q);
+        ctx.fillStyle = '#fbf4e0';
+        ctx.fill();
+        ctx.strokeStyle = '#3a2a1c';
         ctx.lineWidth = 2;
         ctx.stroke();
       }
@@ -177,11 +185,9 @@ export const { meta, createGame } = createBoardModule({
     TRACK_CELLS.forEach(([c, r], i) => {
       const start = i % 10 === 0;
       circle(ctx, px(c), px(r), R + 2);
-      ctx.fillStyle = start ? quadColor(i / 10) : '#26264f';
-      ctx.globalAlpha = start ? 0.55 : 1;
+      ctx.fillStyle = start ? quadColor(i / 10) : '#fbf4e0';
       ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.strokeStyle = '#4b4b86';
+      ctx.strokeStyle = '#3a2a1c';
       ctx.lineWidth = 2;
       ctx.stroke();
     });
@@ -190,15 +196,25 @@ export const { meta, createGame } = createBoardModule({
       for (const [c, r] of cells) {
         circle(ctx, px(c), px(r), R + 2);
         ctx.fillStyle = quadColor(q);
-        ctx.globalAlpha = 0.35;
+        ctx.globalAlpha = 0.75;
         ctx.fill();
         ctx.globalAlpha = 1;
+        ctx.strokeStyle = '#3a2a1c';
+        ctx.lineWidth = 2;
+        ctx.stroke();
       }
     });
     // Centre star
-    circle(ctx, px(5), px(5), R * 0.9);
-    ctx.fillStyle = THEME.yellow;
-    ctx.fill();
+    // Centre: four coloured triangles
+    for (let q = 0; q < 4; q++) {
+      const a = (q / 4) * Math.PI * 2 + Math.PI / 4;
+      ctx.beginPath();
+      ctx.moveTo(px(5), px(5));
+      ctx.arc(px(5), px(5), R * 1.2, a - Math.PI / 4 - Math.PI / 2, a - Math.PI / 4);
+      ctx.closePath();
+      ctx.fillStyle = quadColor(q);
+      ctx.fill();
+    }
 
     // Pawns
     const last = f.last?.info;
@@ -233,7 +249,7 @@ export const { meta, createGame } = createBoardModule({
     if (f.hover !== null && f.hover !== undefined && movable.has(f.hover)) {
       const p = pawnXY(v.quad[f.you], v.pawns[f.you][f.hover], f.hover);
       circle(ctx, p.x, p.y, R + 10);
-      ctx.strokeStyle = THEME.cyan;
+      ctx.strokeStyle = '#3a2a1c';
       ctx.lineWidth = 3;
       ctx.stroke();
     }

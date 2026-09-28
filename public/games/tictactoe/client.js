@@ -1,6 +1,7 @@
-// Boter-kaas-en-eieren: neon grid, marks draw themselves, glowing win line.
+// Boter-kaas-en-eieren: a pencil grid on notebook paper, marks drawn in
+// ink (they draw themselves), the winning line in highlighter.
 import { createBoardModule } from '../board/kit.js';
-import { THEME, glow, clearBoard, roundRect, easeOutCubic, clamp01 } from '../board/draw.js';
+import { roundRect, easeOutCubic, clamp01, woodTable, dropShadow } from '../board/draw.js';
 
 const SIZE = 600;
 const PAD = 60;
@@ -15,10 +16,8 @@ function drawMark(ctx, seat, c, color, progress, alpha = 1) {
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.strokeStyle = color;
-  ctx.lineWidth = 16;
+  ctx.lineWidth = 11;
   ctx.lineCap = 'round';
-  ctx.shadowColor = color;
-  ctx.shadowBlur = alpha < 1 ? 0 : 18;
   if (seat === 0) {
     // X: two strokes, the second starts halfway.
     const p1 = clamp01(progress * 2);
@@ -70,25 +69,29 @@ export const { meta, createGame } = createBoardModule({
   sound: () => 'click',
 
   draw(ctx, f) {
-    clearBoard(ctx, SIZE, SIZE);
-    roundRect(ctx, 20, 20, SIZE - 40, SIZE - 40, 28);
-    ctx.fillStyle = THEME.board;
-    ctx.fill();
+    // A sheet of lined paper on a desk.
+    woodTable(ctx, 0, 0, SIZE, SIZE, 'oak');
+    dropShadow(ctx, 22, 22, SIZE - 44, SIZE - 44, 4);
+    ctx.fillStyle = '#fbf7ea';
+    ctx.fillRect(22, 22, SIZE - 44, SIZE - 44);
+    ctx.fillStyle = 'rgba(80, 130, 200, 0.28)';
+    for (let y = 70; y < SIZE - 30; y += 28) ctx.fillRect(22, y, SIZE - 44, 1.5);
+    ctx.fillStyle = 'rgba(220, 60, 60, 0.45)';
+    ctx.fillRect(74, 22, 2, SIZE - 44);
 
-    // Grid
-    glow(ctx, THEME.cyan, 14, () => {
-      ctx.strokeStyle = THEME.cyan;
-      ctx.lineWidth = 6;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      for (let i = 1; i < 3; i++) {
-        ctx.moveTo(PAD + i * CELL, PAD + 10);
-        ctx.lineTo(PAD + i * CELL, SIZE - PAD - 10);
-        ctx.moveTo(PAD + 10, PAD + i * CELL);
-        ctx.lineTo(SIZE - PAD - 10, PAD + i * CELL);
-      }
-      ctx.stroke();
-    });
+    // Pencil grid, a little wobbly like drawn by hand.
+    ctx.strokeStyle = '#3a3a44';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let i = 1; i < 3; i++) {
+      const at = PAD + i * CELL;
+      ctx.moveTo(at - 3, PAD + 10);
+      ctx.quadraticCurveTo(at + 5, SIZE / 2, at + 1, SIZE - PAD - 10);
+      ctx.moveTo(PAD + 10, at + 2);
+      ctx.quadraticCurveTo(SIZE / 2, at - 5, SIZE - PAD - 10, at);
+    }
+    ctx.stroke();
 
     const board = f.view.board;
     const lastC = f.last?.info?.c;
@@ -106,9 +109,11 @@ export const { meta, createGame } = createBoardModule({
       if (f.myTurn && board[target] === -1) drawMark(ctx, f.you, target, f.colorOf(f.you), 1, 0.25);
       if (f.cursor) {
         roundRect(ctx, PAD + col * CELL + 8, PAD + row * CELL + 8, CELL - 16, CELL - 16, 16);
-        ctx.strokeStyle = THEME.yellow;
-        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 8]);
+        ctx.strokeStyle = '#5a5a66';
+        ctx.lineWidth = 3;
         ctx.stroke();
+        ctx.setLineDash([]);
       }
     }
 
@@ -118,15 +123,17 @@ export const { meta, createGame } = createBoardModule({
       const a = center(line[0]);
       const b = center(line[2]);
       const t = f.reduced ? 1 : easeOutCubic(clamp01((f.time - f.local.lineAt) * 3));
-      glow(ctx, THEME.yellow, 24, () => {
-        ctx.strokeStyle = THEME.yellow;
-        ctx.lineWidth = 12;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
-        ctx.stroke();
-      });
+      // Highlighter stroke
+      ctx.save();
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = '#ffe14d';
+      ctx.lineWidth = 34;
+      ctx.lineCap = 'butt';
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+      ctx.stroke();
+      ctx.restore();
     }
   },
 });

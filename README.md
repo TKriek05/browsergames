@@ -61,11 +61,11 @@ Veel kamers vanaf één IP? Start de server dan met ruimere limieten:
 | Erger je niet! | 2-4 | Geïnspireerd op mens-erger-je-niet, eigen naam |
 | Ganzenbord | 2-6 | Klassieke vakjes: ganzen, brug, herberg, put, doolhof, gevangenis, dood |
 | Zeeslag | 2 | Verborgen vloot per speler, slimme bot met kansenkaart |
-| Neon Kart GP | 1-6 | 3D-racer met achtervolgcamera, drift + mini-turbo, boost-pads, items (turbo, neonbol, olievlek, schild), 3 circuits of een Grand Prix met punten |
+| Turbo Kart GP | 1-6 | 3D-racer met achtervolgcamera, drift + mini-turbo, boost-pads, items (turbo, stuiterbal, olievlek, schild), 3 circuits (Groene Vallei, Herfstbos, Strandboulevard) of een Grand Prix met punten |
 | Tank Tumult | 2-6 | 3D (eigen WebGL-engine), stuiterende kogels, kapotschietbare kratten, power-ups, op tijd of laatste tank |
 | Kwek Kwek Knal | 1-6 | Eenden schieten met muis, touch of toetsen. Lag compensation: de server spoelt terug naar wat jij zag. Tegen elkaar of samen (quotum per ronde) |
-| Boemstad | 2-6 | **3D.** Bommen leggen in een neon-stad, power-ups, kettingreacties; na 90 s krimpt de stad. Eerst N rondes |
-| Minigolf | 1-6 | **3D.** Negen holes (zand, water, bumpers, heuvel), iedereen tegelijk. Sleep terug en laat los, of pijltjes + spatie |
+| Boemstad | 2-6 | **3D.** Bommen leggen in een Hollands dorpje, power-ups, kettingreacties; na 90 s krimpt het dorp. Eerst N rondes |
+| Minigolf | 1-6 | **3D.** Negen holes in een zonnig park (zand, water, bumpers, heuvel), iedereen tegelijk. Sleep terug en laat los, of pijltjes + spatie |
 | Slangenstrijd | 2-6 | Battle royale met slangen, laatste die overblijft wint de ronde |
 | Paddle Party | 2-4 | Pong met een batje aan elke kant, levens per speler |
 | Stenenbreker | 1-4 | Samen de muur kapot kaatsen, power-up capsules, drie levels |

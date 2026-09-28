@@ -1,7 +1,7 @@
 // Reversi: dark felt board, discs flip over in a wave, dots show your moves.
 import { createBoardModule } from '../board/kit.js';
 import { h } from '../../js/core/ui.js';
-import { THEME, glow, clearBoard, roundRect, disc, circle, clamp01, easeOutCubic } from '../board/draw.js';
+import { roundRect, disc, circle, clamp01, easeOutCubic, woodTable, feltTable, dropShadow } from '../board/draw.js';
 import { SIZE } from '../../../shared/rules/reversi.js';
 
 const W = 720;
@@ -59,16 +59,15 @@ export const { meta, createGame } = createBoardModule({
   },
 
   draw(ctx, f) {
-    clearBoard(ctx, W, W);
-    roundRect(ctx, X0 - 18, Y0 - 18, SIZE * CELL + 36, SIZE * CELL + 36, 20);
-    ctx.fillStyle = '#0f3a2d';
-    ctx.fill();
-    glow(ctx, THEME.green, 14, () => {
-      ctx.strokeStyle = THEME.green;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    });
-    ctx.strokeStyle = '#1f5a45';
+    // Green felt board in a dark wooden frame, on a walnut table.
+    woodTable(ctx, 0, 0, W, W, 'walnut');
+    const B = SIZE * CELL;
+    dropShadow(ctx, X0 - 44, Y0 - 44, B + 88, B + 88, 10);
+    woodTable(ctx, X0 - 44, Y0 - 44, B + 88, B + 88, 'oak', 30);
+    ctx.fillStyle = 'rgba(40, 20, 8, 0.35)';
+    ctx.fillRect(X0 - 44, Y0 - 44, B + 88, B + 88);
+    feltTable(ctx, X0, Y0, B, B, '#1d7a4c');
+    ctx.strokeStyle = '#0d3a22';
     ctx.lineWidth = 2;
     ctx.beginPath();
     for (let i = 1; i < SIZE; i++) {
@@ -80,7 +79,7 @@ export const { meta, createGame } = createBoardModule({
     ctx.stroke();
     for (const [x, y] of [[2, 2], [6, 2], [2, 6], [6, 6]]) {
       circle(ctx, X0 + x * CELL, Y0 + y * CELL, 5);
-      ctx.fillStyle = '#1f5a45';
+      ctx.fillStyle = '#0d3a22';
       ctx.fill();
     }
 
@@ -122,7 +121,7 @@ export const { meta, createGame } = createBoardModule({
       }
       if (f.cursor) {
         roundRect(ctx, X0 + (target % 8) * CELL + 4, Y0 + Math.floor(target / 8) * CELL + 4, CELL - 8, CELL - 8, 10);
-        ctx.strokeStyle = THEME.yellow;
+        ctx.strokeStyle = '#ffe14d';
         ctx.lineWidth = 4;
         ctx.stroke();
       }
@@ -130,18 +129,18 @@ export const { meta, createGame } = createBoardModule({
     // Mark the last placed disc.
     if (last && !flipping) {
       circle(ctx, cx(last.sq), cy(last.sq), 5);
-      ctx.fillStyle = THEME.pink;
+      ctx.fillStyle = '#e63946';
       ctx.fill();
     }
 
     // Coordinates
-    ctx.fillStyle = THEME.muted;
-    ctx.font = '600 14px system-ui, sans-serif';
+    ctx.fillStyle = '#f4e4c8';
+    ctx.font = '700 15px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (let i = 0; i < 8; i++) {
-      ctx.fillText(FILES[i], X0 + i * CELL + CELL / 2, Y0 + SIZE * CELL + 30);
-      ctx.fillText(String(8 - i), X0 - 30, Y0 + i * CELL + CELL / 2);
+      ctx.fillText(FILES[i], X0 + i * CELL + CELL / 2, Y0 + SIZE * CELL + 24);
+      ctx.fillText(String(8 - i), X0 - 24, Y0 + i * CELL + CELL / 2);
     }
   },
 });
