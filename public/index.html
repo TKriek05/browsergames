@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="nl" data-build="__BUILD__">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a0a16">
+  <meta name="description" content="Timon's Arcade: klassiekers-geïnspireerde multiplayer browsergames voor 2 t/m 6 spelers. Maak een kamer, deel de code en speel.">
+  <title>Timon's Arcade</title>
+  <link rel="icon" href="/favicon.svg?v=__BUILD__" type="image/svg+xml">
+  <link rel="stylesheet" href="/css/base.css?v=__BUILD__">
+  <link rel="stylesheet" href="/css/hub.css?v=__BUILD__">
+  <link rel="stylesheet" href="/css/lobby.css?v=__BUILD__">
+  <link rel="stylesheet" href="/css/game.css?v=__BUILD__">
+  <script type="module" src="/js/hub.js?v=__BUILD__"></script>
+</head>
+<body data-view="hub">
+  <a class="skip-link" href="#main">Naar de inhoud</a>
+
+  <header class="topbar">
+    <a class="topbar__brand" href="/" aria-label="Timon's Arcade, naar de startpagina">
+      <canvas id="logo" class="logo" width="86" height="11" aria-hidden="true"></canvas>
+    </a>
+    <button id="mute" class="icon-btn" type="button" aria-label="Geluid aan/uit" aria-pressed="false">🔊</button>
+  </header>
+
+  <main id="main">
+    <!-- Hub -->
+    <section id="view-hub" class="view view--hub" aria-labelledby="hub-title">
+      <div class="hero">
+        <div class="hero__text">
+          <p class="eyebrow">Multiplayer browser-arcade</p>
+          <h1 id="hub-title" class="hero__title">Speel samen. <span class="neon">Deel een code.</span></h1>
+          <p class="hero__lead">Kies een spel, maak een kamer en stuur de link naar je vrienden. 2 t/m 6 spelers, lege plekken vul je met bots.</p>
+        </div>
+        <div class="hero__forms">
+          <div class="field">
+            <label for="nickname">Jouw bijnaam</label>
+            <input id="nickname" class="input" type="text" autocomplete="nickname" placeholder="Bijvoorbeeld Timon" spellcheck="false">
+          </div>
+          <form id="join-form" class="join" autocomplete="off">
+            <label for="join-code">Heb je een code?</label>
+            <div class="join__row">
+              <input id="join-code" class="input input--code" type="text" inputmode="text" autocapitalize="characters"
+                     maxlength="4" placeholder="KXQF" spellcheck="false" aria-describedby="join-help">
+              <button class="btn btn--primary" type="submit">Join</button>
+            </div>
+            <p id="join-help" class="muted small">4 letters, zonder I, L en O.</p>
+          </form>
+        </div>
+      </div>
+
+      <h2 id="games-title" class="section-title" tabindex="-1">Nu speelbaar</h2>
+      <ul id="games-playable" class="cards" aria-labelledby="games-title"></ul>
+
+      <h2 id="soon-title" class="section-title section-title--soon">Binnenkort</h2>
+      <ul id="games-soon" class="cards cards--soon" aria-labelledby="soon-title"></ul>
+
+      <footer class="footer muted small">
+        <p>Eigen pixel art en eigen geluiden. Geen cookies, geen tracking. Je bijnaam blijft op dit apparaat.</p>
+      </footer>
+    </section>
+
+    <!-- Lobby (rendered by lobby.js) -->
+    <section id="view-lobby" class="view view--lobby" aria-label="Lobby" hidden></section>
+
+    <!-- Game (rendered by gamehost.js) -->
+    <section id="view-game" class="view view--game" aria-label="Spel" hidden></section>
+
+    <!-- Messages: errors, invites -->
+    <section id="view-message" class="view view--message" aria-live="polite" hidden></section>
+  </main>
+
+  <div id="conn-overlay" class="overlay" hidden></div>
+
+  <noscript>
+    <p class="noscript">Timon's Arcade heeft JavaScript nodig om te spelen.</p>
+  </noscript>
+</body>
+</html>

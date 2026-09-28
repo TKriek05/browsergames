@@ -1,0 +1,31 @@
+# Alternative to pm2: a systemd unit (example).
+# Install:  sudo cp deploy/timons-arcade.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now timons-arcade
+# Logs:     journalctl -u timons-arcade -f
+#
+# Adjust User, WorkingDirectory and the node path (CloudPanel installs Node
+# per site user via nvm: check with `which node` as the site user).
+[Unit]
+Description=Timon's Arcade (Node.js game server)
+After=network.target
+
+[Service]
+Type=simple
+User=tkriek-games
+WorkingDirectory=/home/tkriek-games/htdocs/games.tkriek.dev
+ExecStart=/home/tkriek-games/.nvm/versions/node/v22.12.0/bin/node server/index.js
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOST=127.0.0.1
+Environment=ALLOWED_ORIGINS=https://games.tkriek.dev
+Environment=LOG_LEVEL=info
+Restart=always
+RestartSec=2
+TimeoutStopSec=8
+# Basic hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,75 @@
+# CLAUDE.md – afspraken voor dit project
+
+Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén Node.js-app serveert
+`public/` en handelt WebSockets af op dezelfde poort.
+
+## Commando's
+
+- `npm run dev` – server met auto-restart (poort 3000)
+- `npm test` – alle tests (`node --test "test/**/*.test.js"`)
+- `node tools/botclients.js [--chaos] [--rooms N] [--duration S]` – stresstest tegen een draaiende server
+- Browsercheck: Playwright staat globaal; start de server en open twee pages (zie README "Testen").
+
+## Harde regels
+
+- **Frontend:** vanilla JS met ES modules, HTML, CSS, Canvas. Geen framework, geen build-stap, geen bundler.
+- **Backend:** Node.js LTS, enige dependency `ws`. Geen Express/Socket.IO. Ook geen devDependencies.
+- Geen database, geen accounts, geen cookies, geen tracking, geen externe CDN's/fonts/assets.
+- Geen auteursrechtelijk materiaal: eigen namen, eigen pixel art (procedureel of eigen SVG), eigen WebAudio-geluiden.
+- **Comments in het Engels, UI-teksten in het Nederlands.**
+- Nooit `innerHTML` met (speler)data. Gebruik `h()` uit `public/js/core/ui.js` (textContent).
+- CSP is strikt: geen inline `<script>`, geen `style="…"` in HTML. Dynamische stijl via `el.style.x = …`
+  (CSSOM mag) of via data-attributen + CSS (zie `[data-color]` in `base.css`).
+- Bestanden klein en gefocust (richtlijn: max. ± 500 regels; splits zodra een bestand twee taken krijgt). Tuning-waarden als constanten bovenaan het
+  bestand of in `shared/constants.js`.
+
+## Architectuur
+
+- **Server-authoritative.** Clients sturen alleen input; server valideert alles (snelheid, zetten, scores).
+- `shared/` bevat pure modules (geen DOM, geen Node-API's) die client én server importeren.
+  De server serveert `shared/` onder `/shared/`. Imports vanuit `public/` gebruiken paden die zowel
+  als URL als op schijf kloppen, bijv. `../../../shared/x.js` vanuit `public/js/core/`.
+- **Protocol** (`shared/messages.js`): JSON `{ t, v, … }`; binair `[u8 type][u8 version]…`.
+  Wijzig je het wire-formaat → verhoog `PROTOCOL_VERSION` in `shared/constants.js`.
+- **Validatie** (`server/protocol.js`): elk C2S-type heeft een schema; alleen bekende velden worden
+  gekopieerd. Nieuw berichttype = schema toevoegen (en eventueel aan `LOBBY_TYPES`).
+- **Realtime games:** 30 Hz simulatie, 20 Hz binaire snapshots, input via `InputQueue`
+  (credits, geen speedhacks). Client: `Predictor` voor eigen entiteit, `SnapshotBuffer` (100 ms) voor de rest.
+  Gedeelde fysica moet deterministisch zijn: alleen `+ - * /` en `Math.sqrt`, resultaat door `Math.fround`
+  (zelfde precisie als de float32 in de snapshot). Geen `Math.random` in gedeelde fysica.
+- **Bordspellen:** `realtime: false`, 10 Hz tick voor timers/bots, `snapshot(player)` per ontvanger
+  (verborgen info!), `dirty = true` om een snapshot te pushen. Regels als pure modules in `shared/rules/`
+  met `node --test`-tests. Zware AI (minimax) via `worker_threads` of strikt tijdsbudget.
+- **Bots** draaien altijd op de server (`player.isBot`, `player.botLevel`: easy/normal/hard).
+- **Resultaten** voor de lobby: `{ title, columns, rows: [{ id, name, color, rank, values }] }`.
+
+## Game-module interface
+
+Server (`server/games/<id>.js`, registreren in `server/games/index.js`):
+`{ id, realtime, create(room, settings) }` → instance met `onJoin`, `onLeave`, `onReconnect?`,
+`onBotTakeover?`, `onInput(player, msg)`, `tick(dt)`, `snapshot(writerOrPlayer)`, `dispose?`.
+
+Client (`public/games/<id>/client.js`): `export const meta = { width, height, pixelated, step, touchButtons }`
+en `createGame()` → `mount(view, net, ctx)`, `onSnapshot(snap)`, `onEvent?`, `onRoom?`, `onReconnect?`,
+`update?(dt)`, `render(alpha)`, `unmount()`.
+
+Nieuwe game: limiet in `GAME_LIMITS`, catalogus-entry (`available: true`) in `shared/catalog.js`,
+thumbnail in `public/js/thumbs.js`, server- en clientmodule, tests.
+
+## Kwaliteit
+
+- Na elke wijziging: `npm test`. Bij netcode-wijzigingen ook `botclients.js --chaos`.
+- Browser: geen console-errors/warnings in Chrome, Firefox, Safari (ook iOS). Toetsenbord moet overal werken,
+  focus zichtbaar, `prefers-reduced-motion` respecteren (geen shake, minder deeltjes).
+- Performance: geen allocaties in hot loops, pools voor deeltjes/kogels, offscreen canvas voor vaste lagen.
+  Server logt elke minuut de tick-duur.
+- Werk fase voor fase en commit per fase met een duidelijke boodschap.
+
+## Roadmap
+
+0. Fundament + lobby + Neon Tikkertje ✅
+1. Bordspellen: boter-kaas-en-eieren, vier op een rij, dammen, reversi, schaken, mens-erger-je-niet, ganzenbord, zeeslag
+2. Kwek Kwek Knal (eenden schieten, lag compensation)
+3. Tank Tumult (top-down tanks)
+4. Neon Kart GP (Mode 7 kartrace)
+5. Extra's (snake, paddle, breakout, bomber, spoken, blokken, minigolf, memory, mijnenveger, invaders, rotsen)

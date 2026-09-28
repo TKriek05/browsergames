@@ -1,0 +1,21 @@
+{
+  "name": "timons-arcade",
+  "version": "0.1.0",
+  "description": "Multiplayer browser-arcade: klassiekers-geïnspireerde games voor 2 t/m 6 spelers met een kamer-code.",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch-path=server --watch-path=shared server/index.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "bots": "node tools/botclients.js"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

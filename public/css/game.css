@@ -1,0 +1,79 @@
+/* Game view: full-screen stage, HUD bar, scaled canvas, touch controls. */
+body[data-view="game"] { overflow: hidden; }
+body[data-view="game"] .topbar { display: none; }
+body[data-view="game"] main { padding: 0; }
+
+.view--game {
+  position: fixed; inset: 0; z-index: 10; max-width: none;
+  display: flex; flex-direction: column; background: #05050d;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.hud {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  background: rgba(16, 16, 42, 0.9); border-bottom: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+.hud__title { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud__code {
+  font-family: var(--mono); letter-spacing: 0.2em; color: var(--cyan);
+  border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px;
+}
+.hud__spacer { flex: 1; }
+.hud__ping { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.hud__ping::before {
+  content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%;
+  background: var(--muted); vertical-align: 0;
+}
+.hud__ping[data-quality="good"]::before { background: var(--green); }
+.hud__ping[data-quality="ok"]::before { background: var(--yellow); }
+.hud__ping[data-quality="bad"]::before { background: var(--red); }
+.hud__btn {
+  min-width: 40px; height: 36px; padding: 0 10px; border-radius: 8px; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--line);
+}
+.hud__btn:hover { border-color: var(--cyan); }
+.hud__btn--text { font-weight: 650; font-size: 0.85rem; }
+
+.game__stage {
+  flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden;
+}
+.game-canvas { outline: none; border-radius: 4px; box-shadow: 0 0 0 1px var(--line), 0 0 40px rgba(62, 240, 255, 0.12); }
+.game-canvas--pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
+.game__error { padding: 24px; text-align: center; }
+
+/* --- Touch controls ------------------------------------------------------ */
+.touch { position: absolute; inset: 52px 0 0 0; pointer-events: none; z-index: 5; }
+.touch__zone {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 55%;
+  pointer-events: auto; touch-action: none;
+}
+.touch__base {
+  position: absolute; left: 22%; top: 70%; width: 120px; height: 120px; margin: -60px 0 0 -60px;
+  border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.18); background: rgba(255, 255, 255, 0.05);
+  opacity: 0.55; transition: opacity 0.15s ease;
+}
+.touch__base.is-active { opacity: 1; }
+.touch__knob {
+  position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px;
+  border-radius: 50%; background: rgba(62, 240, 255, 0.35); border: 2px solid var(--cyan);
+}
+.touch__buttons {
+  position: absolute; right: max(18px, env(safe-area-inset-right)); bottom: max(28px, env(safe-area-inset-bottom));
+  display: flex; gap: 16px; pointer-events: auto; touch-action: none;
+}
+.touch__btn {
+  width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 800; font-size: 1.3rem; user-select: none; -webkit-user-select: none;
+  background: rgba(255, 62, 165, 0.25); border: 2px solid var(--pink);
+}
+.touch__btn.is-down { background: rgba(255, 62, 165, 0.6); }
+
+.game__rotate-hint { display: none; margin: 0; padding: 8px 12px; text-align: center; font-size: 0.85rem; color: var(--muted); }
+@media (orientation: portrait) and (pointer: coarse) {
+  .game__rotate-hint { display: block; }
+}
+
+@media (max-width: 520px) {
+  .hud__title { display: none; }
+}
