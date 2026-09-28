@@ -6,7 +6,7 @@ build-stap, geen database, geen accounts, geen tracking.
 
 - **Frontend:** vanilla JavaScript (ES modules), HTML, CSS, Canvas
 - **Backend:** Node.js (LTS, ≥ 22) met precies één dependency: [`ws`](https://github.com/websockets/ws)
-- **Status:** Fase 0 klaar (netwerkfundament + lobby + demo-game *Neon Tikkertje*).
+- **Status:** Fase 0 en 1 klaar: netwerkfundament, lobby, *Neon Tikkertje* en acht bordspellen met bots.
 
 > **Nieuw hier of code nog niet op GitHub?** Volg eerst [docs/SETUP.md](docs/SETUP.md):
 > repo vullen, branches, automatische tests en de weg van repo naar server.
@@ -37,7 +37,7 @@ Open <http://localhost:3000>.
 ### Automatische tests
 
 ```bash
-npm test                                   # node --test: regels, protocol, server-integratie
+npm test                                   # node --test: regels (o.a. schaak-perft), protocol, server-integratie
 npm run bots                               # 6 nep-clients, 1 kamer, 20 s (server moet draaien)
 node tools/botclients.js --chaos           # + wegvallen/terugkomen, host vertrekt, rommel sturen, kamer overvol
 node tools/botclients.js --rooms 8 --duration 60
@@ -47,6 +47,24 @@ Veel kamers vanaf één IP? Start de server dan met ruimere limieten:
 `MAX_CONN_PER_IP=500 MAX_ROOMS_PER_IP=100 ROOMS_PER_MINUTE=500 CONNECTS_PER_MINUTE=2000 npm start`.
 
 ---
+
+## Spellen
+
+| Spel | Spelers | Bijzonderheden |
+|---|---|---|
+| Neon Tikkertje | 2-6 | Realtime (30 Hz), prediction + interpolatie, 3 arena's |
+| Boter-kaas-en-eieren | 2 | Perfecte bot op "moeilijk" |
+| Vier op een rij | 2 | Schijven vallen door het bord, alpha-beta-bot |
+| Reversi | 2 | Automatisch passen, omdraai-animatie |
+| Dammen | 2 | 10×10, Nederlandse regels: verplicht meeste slaan, vliegende dam, Turkse slag |
+| Schaken | 2 | Volledige regels, perft-getest, engine in een worker thread |
+| Erger je niet! | 2-4 | Geïnspireerd op mens-erger-je-niet, eigen naam |
+| Ganzenbord | 2-6 | Klassieke vakjes: ganzen, brug, herberg, put, doolhof, gevangenis, dood |
+| Zeeslag | 2 | Verborgen vloot per speler, slimme bot met kansenkaart |
+
+Bij alle bordspellen: beurtindicator, zet-animaties, **zet terugnemen alleen als de ander akkoord gaat**
+(tegen een bot mag het meteen), **nog een potje** (wie begint wisselt), score over alle potjes in de lobby,
+toeschouwers, snelle reacties en volledige bediening met het toetsenbord (pijltjes + Enter, spatie om te gooien).
 
 ## Projectstructuur
 
@@ -82,6 +100,18 @@ test/              node --test
 - **Beveiliging:** origin-check, `maxPayload` 16 KB, schema-validatie van elk bericht,
   rate limits per verbinding en per IP, bijnamen opgeschoond en alleen als tekst getoond,
   strikte CSP (geen inline scripts/styles).
+
+### Een bordspel toevoegen
+
+1. Regels als pure module in `shared/rules/<id>.js` (interface bovenin `shared/rules/tictactoe.js`):
+   `setup`, `toMove`, `legalMoves`, `apply` (muteert niets), `result`, `view` (verborgen info!).
+2. Tests in `test/` met bekende stellingen.
+3. Registreer de module in `BOARD_RULES` in `server/games/index.js`. De adapter `server/games/board.js`
+   regelt beurten, validatie, bots, terugnemen, rematch en score.
+4. Optioneel een bot in `server/ai/<id>.js` (en in `server/ai/engines.js`); `worker: true` voor zware zoekers.
+   Zonder engine doet een bot een willekeurige geldige zet.
+5. Client: `public/games/<id>/client.js` met `createBoardModule({ draw, pick, onPick, … })` uit
+   `public/games/board/kit.js`.
 
 ### Een game toevoegen
 

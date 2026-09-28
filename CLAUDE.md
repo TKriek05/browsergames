@@ -43,6 +43,17 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 - **Bots** draaien altijd op de server (`player.isBot`, `player.botLevel`: easy/normal/hard).
 - **Resultaten** voor de lobby: `{ title, columns, rows: [{ id, name, color, rank, values }] }`.
 
+## Bordspellen (fase 1)
+
+- Regels: `shared/rules/<id>.js`, puur en onveranderlijk (`apply` geeft een nieuwe state terug).
+  `info` uit `apply` is publiek; alles wat geheim is (Zeeslag-vloot) alleen via `view(state, seat)`.
+- Dobbelstenen en ander toeval alleen via de `rng` die de server meegeeft (tests gebruiken een vaste rng).
+- Schaken: `shared/chess/position.js` (0x88, make/unmake). Perft-tests nooit laten verslechteren.
+- Bots: `server/ai/<id>.js` → `pick(state, seat, level, rng)`; `worker: true` = draait in `server/ai/pool.js`.
+  Bots mogen alleen zien wat hun seat mag zien (gebruik `rules.view`).
+- Client: `createBoardModule(spec)` uit `public/games/board/kit.js`; houd lokale UI-state in `f.local`.
+- Merknamen vermijden: "Erger je niet!" i.p.v. het merk mens-erger-je-niet, "Reversi" i.p.v. Othello.
+
 ## Game-module interface
 
 Server (`server/games/<id>.js`, registreren in `server/games/index.js`):
@@ -68,7 +79,7 @@ thumbnail in `public/js/thumbs.js`, server- en clientmodule, tests.
 ## Roadmap
 
 0. Fundament + lobby + Neon Tikkertje ✅
-1. Bordspellen: boter-kaas-en-eieren, vier op een rij, dammen, reversi, schaken, mens-erger-je-niet, ganzenbord, zeeslag
+1. Bordspellen: boter-kaas-en-eieren, vier op een rij, dammen, reversi, schaken, Erger je niet!, ganzenbord, zeeslag ✅
 2. Kwek Kwek Knal (eenden schieten, lag compensation)
 3. Tank Tumult (top-down tanks)
 4. Neon Kart GP (Mode 7 kartrace)
