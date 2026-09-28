@@ -5,12 +5,12 @@ import { BTN } from '../../../shared/messages.js';
 import { BOMB_COLS, BOMB_ROWS, BTILE, BT, ITEM_COLORS, stepWalker } from '../../../shared/games/bomber.js';
 import { createArcadeCore, ARCADE_PHASE, lerp } from '../common/arcade.js';
 import { Predictor } from '../../js/core/predict.js';
-import { drawText } from '../../js/core/pixelfont.js';
+import { drawText, roundRect } from '../../js/core/hudtext.js';
 import { rgb } from '../../js/gl/mesh.js';
 import { createBomberScene } from './scene.js';
 
 export const meta = {
-  width: 480, height: 270, pixelated: true, gl: true, step: 1 / 30,
+  width: 480, height: 270, pixelated: false, gl: true, step: 1 / 30,
   touchButtons: [{ label: 'BOM', bit: BTN.A }],
 };
 
@@ -181,9 +181,13 @@ export function createGame() {
       drawText(ctx, `WINNEN BIJ ${s.winsNeeded}`, 6, 15, { color: '#a3a8d6', shadow: SHADOW });
       let y = 5;
       for (const e of [...s.ents].sort((p, q) => q.wins - p.wins)) {
+        ctx.fillStyle = 'rgba(20,20,26,0.5)';
+        roundRect(ctx, view.width - 96, y - 2, 94, 11, 3);
+        ctx.fill();
         ctx.fillStyle = core.hex(e.slot);
         ctx.globalAlpha = e.alive ? 1 : 0.4;
-        ctx.fillRect(view.width - 92, y, 5, 7);
+        roundRect(ctx, view.width - 92, y, 6, 7, 1.5);
+        ctx.fill();
         ctx.globalAlpha = 1;
         drawText(ctx, core.name(e.slot).slice(0, 9), view.width - 84, y, { color: e.alive ? '#ffffff' : '#8a8fb8', shadow: SHADOW });
         drawText(ctx, String(e.wins), view.width - 6, y, { color: '#ffe14d', align: 'right', shadow: SHADOW });

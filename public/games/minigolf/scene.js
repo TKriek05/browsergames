@@ -155,6 +155,25 @@ function buildGround() {
   let seed = 99;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   b.color('#4a8a3a').box(140, BASE_Y - 2, 80, 1400, 1, 1000);
+  // A pond with a little jetty, benches and lamp posts on the lawn.
+  const pond = [];
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2;
+    pond.push([330 + Math.cos(a) * 46 * (1 + 0.12 * Math.sin(k * 1.7)), BASE_Y - 0.8, -40 + Math.sin(a) * 30]);
+  }
+  b.color('#c8b890').face(pond.map(([x, y, z]) => [330 + (x - 330) * 1.12, y - 0.1, -40 + (z + 40) * 1.12]), [0, 1, 0]);
+  b.color('#3a86c8', { emissive: 0.08 }).face(pond, [0, 1, 0]);
+  b.color('#8a6a44').box(300, BASE_Y - 1, -40, 26, 1, 6);
+  for (const [x, z] of [[-20, 175], [100, 182], [220, 176], [-40, -30]]) {
+    b.color('#8a5a34').box(x, BASE_Y + 1.5, z, 14, 0.8, 4.5);
+    b.color('#8a5a34').box(x, BASE_Y + 2.5, z - 2, 14, 3, 0.8);
+    b.color('#3a3a40').box(x - 6, BASE_Y - 1, z, 0.8, 2.6, 4).box(x + 6, BASE_Y - 1, z, 0.8, 2.6, 4);
+  }
+  for (const [x, z] of [[10, 5], [270, 5], [10, 160], [270, 160]]) {
+    b.color('#2e2e34').box(x, BASE_Y - 1, z, 1.4, 26, 1.4);
+    b.color('#fff2c8', { emissive: 0.6 }).box(x, BASE_Y + 25, z, 3.4, 3, 3.4);
+    b.color('#2e2e34').box(x, BASE_Y + 28, z, 4.4, 0.8, 4.4);
+  }
   const flowers = ['#e63946', '#ffb020', '#f4f4f4', '#d94f9a'];
   for (let i = 0; i < 60; i++) {
     const zone = i % 3; // 0: behind the course, 1: left, 2: right
@@ -198,10 +217,11 @@ function buildCourse(hole, rail) {
   }
   // Stone terrace around the course.
   const PAD = 14;
-  b.color('#c4b9a6').box((x0 + x1) / 2, BASE_Y - 1.5, (y0 + y1) / 2, x1 - x0 + PAD * 2, 0.5, y1 - y0 + PAD * 2, { bottom: false });
+  // (the lawn top is at BASE_Y - 1: the terrace must sit clearly above it)
+  b.color('#c4b9a6').box((x0 + x1) / 2, BASE_Y - 1.2, (y0 + y1) / 2, x1 - x0 + PAD * 2, 0.8, y1 - y0 + PAD * 2, { bottom: false });
   b.color('#aea38f');
-  for (let x = x0 - PAD + 12; x < x1 + PAD; x += 12) b.box(x, BASE_Y - 1, (y0 + y1) / 2, 0.6, 0.1, y1 - y0 + PAD * 2, { bottom: false });
-  for (let y = y0 - PAD + 12; y < y1 + PAD; y += 12) b.box((x0 + x1) / 2, BASE_Y - 1, y, x1 - x0 + PAD * 2, 0.1, 0.6, { bottom: false });
+  for (let x = x0 - PAD + 12; x < x1 + PAD; x += 12) b.box(x, BASE_Y - 0.4, (y0 + y1) / 2, 0.6, 0.1, y1 - y0 + PAD * 2, { bottom: false });
+  for (let y = y0 - PAD + 12; y < y1 + PAD; y += 12) b.box((x0 + x1) / 2, BASE_Y - 0.4, y, x1 - x0 + PAD * 2, 0.1, 0.6, { bottom: false });
   // Green: mown stripes; slopes a lighter shade.
   for (let y = y0; y < y1; y += CELL) {
     for (let x = x0; x < x1; x += CELL) {

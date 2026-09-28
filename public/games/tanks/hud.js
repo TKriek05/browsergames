@@ -1,12 +1,12 @@
 // Tank Tumult HUD on the transparent 2D canvas above the 3D view, plus a
 // simple top-down renderer for devices without WebGL.
-import { drawText } from '../../js/core/pixelfont.js';
+import { drawText, roundRect, heart } from '../../js/core/hudtext.js';
 import { TANK_TILE, TANK_COLS, TANK_ROWS, TANK_WORLD, TILE } from '../../../shared/maps/tank-arenas.js';
 import { TANK_RULES, POWERUPS } from '../../../shared/games/tanks.js';
 import { TANK_PHYS } from '../../../shared/physics/tanks.js';
 import { tankTheme } from './theme.js';
 
-const SHADOW = '#0b0b1e';
+const SHADOW = '#14140f';
 
 export function createTankHud(view) {
   const { ctx, width: W, height: H } = view;
@@ -21,21 +21,25 @@ export function createTankHud(view) {
       const px = Math.round(x);
       const py = Math.round(y);
       drawText(ctx, me ? 'JIJ' : name.slice(0, 10), px, py - 12, { color: me ? '#ffffff' : color, align: 'center', shadow: SHADOW });
-      for (let i = 0; i < TANK_RULES.HP; i++) {
-        ctx.fillStyle = SHADOW;
-        ctx.fillRect(px - 8 + i * 6, py - 3, 5, 3);
-        ctx.fillStyle = i < hp ? (hp === 1 ? '#ff4d6d' : '#5dff8a') : '#2a2a5c';
-        ctx.fillRect(px - 7 + i * 6, py - 2, 3, 1);
-      }
+      // Health bar
+      const bw = 20;
+      roundRect(ctx, px - bw / 2 - 1, py - 3.5, bw + 2, 4, 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fill();
+      roundRect(ctx, px - bw / 2, py - 2.5, (bw * hp) / TANK_RULES.HP, 2, 1);
+      ctx.fillStyle = hp === 1 ? '#e63946' : '#4cc36a';
+      ctx.fill();
     },
 
     scoreboard(players, rounds) {
       let y = 4;
       for (const p of players) {
-        ctx.fillStyle = 'rgba(11,11,30,0.6)';
-        ctx.fillRect(W - 96, y - 2, 94, 11);
+        ctx.fillStyle = 'rgba(20,20,26,0.55)';
+        roundRect(ctx, W - 96, y - 2, 94, 11, 3);
+        ctx.fill();
         ctx.fillStyle = p.color;
-        ctx.fillRect(W - 93, y, 5, 5 + 2);
+        roundRect(ctx, W - 93, y, 6, 7, 1.5);
+        ctx.fill();
         drawText(ctx, p.name.slice(0, 9), W - 85, y, { color: p.alive ? '#ffffff' : '#8a8fb8' });
         drawText(ctx, String(rounds ? p.wins : p.kills), W - 6, y, { color: p.me ? '#ffe14d' : '#ffffff', align: 'right' });
         y += 12;
@@ -48,22 +52,18 @@ export function createTankHud(view) {
 
     status({ hp, powers }) {
       for (let i = 0; i < TANK_RULES.HP; i++) {
-        const x = 6 + i * 13;
-        ctx.fillStyle = SHADOW;
-        ctx.fillRect(x - 1, H - 15, 12, 11);
-        ctx.fillStyle = i < hp ? '#ff4d6d' : '#2a2a5c';
-        // A tiny pixel heart
-        ctx.fillRect(x + 1, H - 14, 3, 2);
-        ctx.fillRect(x + 6, H - 14, 3, 2);
-        ctx.fillRect(x, H - 12, 10, 3);
-        ctx.fillRect(x + 1, H - 9, 8, 2);
-        ctx.fillRect(x + 3, H - 7, 4, 1);
+        heart(ctx, 11 + i * 13, H - 10, 11);
+        ctx.fillStyle = i < hp ? '#e63946' : 'rgba(40,40,48,0.7)';
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.stroke();
       }
       let x = 50;
       for (const p of powers) {
         const w = drawText(ctx, p.name.toUpperCase(), x, H - 13, { color: p.color, shadow: SHADOW });
         ctx.fillStyle = p.color;
-        ctx.fillRect(x, H - 4, Math.round(w * Math.min(1, p.left / p.max)), 1);
+        ctx.fillRect(x, H - 3.5, w * Math.min(1, p.left / p.max), 1.2);
         x += w + 10;
       }
     },
@@ -74,16 +74,20 @@ export function createTankHud(view) {
     },
 
     crosshair(x, y, color) {
-      const px = Math.round(x);
-      const py = Math.round(y);
-      ctx.fillStyle = SHADOW;
-      ctx.fillRect(px - 5, py - 1, 11, 3);
-      ctx.fillRect(px - 1, py - 5, 3, 11);
-      ctx.fillStyle = color;
-      ctx.fillRect(px - 4, py, 3, 1);
-      ctx.fillRect(px + 2, py, 3, 1);
-      ctx.fillRect(px, py - 4, 1, 3);
-      ctx.fillRect(px, py + 2, 1, 3);
+      ctx.save();
+      ctx.lineCap = 'round';
+      for (const [w, c] of [[2.6, 'rgba(0,0,0,0.6)'], [1.2, color]]) {
+        ctx.lineWidth = w;
+        ctx.strokeStyle = c;
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.moveTo(x - 7, y); ctx.lineTo(x - 5, y);
+        ctx.moveTo(x + 5, y); ctx.lineTo(x + 7, y);
+        ctx.moveTo(x, y - 7); ctx.lineTo(x, y - 5);
+        ctx.moveTo(x, y + 5); ctx.lineTo(x, y + 7);
+        ctx.stroke();
+      }
+      ctx.restore();
     },
   };
 }

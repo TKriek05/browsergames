@@ -1,7 +1,7 @@
 // Turbo Kart GP HUD on the 2D canvas above the 3D view: place, lap, time,
 // item slot (with a short roulette), minimap, speed, start lights, banners
 // and the Grand Prix standings. Plus a top-down view when WebGL is missing.
-import { drawText } from '../../js/core/hudtext.js';
+import { drawText, roundRect } from '../../js/core/hudtext.js';
 import { ITEM, ITEMS } from '../../../shared/games/kartrace.js';
 
 const SHADOW = '#0b0b1e';
@@ -208,16 +208,6 @@ function icon(ctx, item, cx, cy) {
       break;
   }
   ctx.restore();
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
 }
 
 // Top-down fallback when WebGL is not available: follows your kart.

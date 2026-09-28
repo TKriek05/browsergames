@@ -16,7 +16,7 @@ import { createTankHud, createFallback2D } from './hud.js';
 export const meta = {
   width: 480,
   height: 270,
-  pixelated: true,
+  pixelated: false, // smooth 3D at screen resolution
   gl: true,
   step: TANK_PHYS.DT,
   touchButtons: [{ label: 'VUUR', bit: BTN.A }],
@@ -217,7 +217,7 @@ export function createGame() {
           else if (msg.by === slot) banner = { text: 'RAAK!', sub: `${playerBySlot(msg.s)?.name ?? '?'} is uitgeschakeld`, color: '#5dff8a', until: performance.now() + 1200 };
           break;
         case 'crate':
-          scene?.particles.burst(msg.x, 6, msg.y, '#b8742a', 18, { speed: 40, life: 0.8, size: 2.5, gravity: -60, up: 0.8 });
+          scene?.debris(msg.x, msg.y, '#b8742a');
           sfx.play('thud');
           break;
         case 'pickup':

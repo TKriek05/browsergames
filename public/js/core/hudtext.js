@@ -41,3 +41,25 @@ export function drawText(ctx, text, x, y, { color = '#fff', scale = 1, align = '
   ctx.restore();
   return w;
 }
+
+// Small vector shapes for smooth HUDs.
+export function roundRect(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+// A heart centred at (x, y), `s` wide.
+export function heart(ctx, x, y, s) {
+  const k = s / 2;
+  ctx.beginPath();
+  ctx.moveTo(x, y + k * 0.9);
+  ctx.bezierCurveTo(x - k * 1.4, y - k * 0.1, x - k * 0.7, y - k * 1.2, x, y - k * 0.45);
+  ctx.bezierCurveTo(x + k * 0.7, y - k * 1.2, x + k * 1.4, y - k * 0.1, x, y + k * 0.9);
+  ctx.closePath();
+}

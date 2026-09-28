@@ -5,12 +5,12 @@
 import { C2S, BTN } from '../../../shared/messages.js';
 import { HOLES, BALL_STATE, CUP_R } from '../../../shared/games/minigolf.js';
 import { createArcadeCore, ARCADE_PHASE, lerp } from '../common/arcade.js';
-import { drawText } from '../../js/core/pixelfont.js';
+import { drawText, roundRect } from '../../js/core/hudtext.js';
 import { rgb } from '../../js/gl/mesh.js';
 import { createGolfScene } from './scene.js';
 
 export const meta = {
-  width: 480, height: 270, pixelated: true, gl: true, step: 1 / 30,
+  width: 480, height: 270, pixelated: false, gl: true, step: 1 / 30,
   touchControls: false, // drag on the course directly
 };
 
@@ -281,22 +281,26 @@ export function createGame() {
       ctx.fillStyle = color;
       for (let d = 5; d <= len; d += 4) {
         const p = this.screen(me.x + dx * d, me.y + dy * d, 0.5);
-        if (p) ctx.fillRect(Math.round(p.x) - 1, Math.round(p.y) - 1, 2, 2);
+        if (p) { ctx.beginPath(); ctx.arc(p.x, p.y, 1.3, 0, Math.PI * 2); ctx.fill(); }
       }
       const tip = this.screen(me.x + dx * (len + 3), me.y + dy * (len + 3), 0.5);
       if (tip) {
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(Math.round(tip.x) - 2, Math.round(tip.y) - 2, 4, 4);
+        ctx.beginPath();
+        ctx.arc(tip.x, tip.y, 2.4, 0, Math.PI * 2);
+        ctx.fill();
       }
       // Power bar.
       const w = 120;
       const x = view.width / 2 - w / 2;
       const y = view.height - 26;
-      ctx.fillStyle = 'rgba(11, 11, 30, 0.8)';
-      ctx.fillRect(x - 2, y - 2, w + 4, 10);
+      ctx.fillStyle = 'rgba(16, 30, 20, 0.75)';
+      roundRect(ctx, x - 2, y - 2, w + 4, 10, 4);
+      ctx.fill();
       const pw = Math.round(w * aim.power);
       ctx.fillStyle = aim.power < 0.5 ? '#7cff6b' : aim.power < 0.8 ? '#ffe14d' : '#ff4d6d';
-      ctx.fillRect(x, y, pw, 6);
+      roundRect(ctx, x, y, Math.max(3, pw), 6, 3);
+      ctx.fill();
       drawText(ctx, 'KRACHT', x - 6, y - 1, { color: '#ffffff', align: 'right', shadow: SHADOW });
       drawText(ctx, aim.dragging ? 'LAAT LOS OM TE SLAAN' : 'SLEEP TERUG EN LAAT LOS  /  PIJLTJES + SPATIE', view.width / 2, view.height - 12, { color: '#a3a8d6', align: 'center', shadow: SHADOW });
     },
@@ -386,7 +390,8 @@ export function createGame() {
       const x0 = Math.round(view.width / 2 - w / 2);
       const y0 = Math.round(view.height / 2 - hgt / 2);
       ctx.fillStyle = 'rgba(16, 40, 24, 0.9)';
-      ctx.fillRect(x0 - 6, y0 - 6, w + 12, hgt + 12);
+      roundRect(ctx, x0 - 6, y0 - 6, w + 12, hgt + 12, 6);
+      ctx.fill();
       ctx.fillStyle = '#ffe14d';
       ctx.fillRect(x0 - 6, y0 - 6, w + 12, 1);
       drawText(ctx, s.phase === ARCADE_PHASE.END ? 'EINDSTAND' : 'SCOREKAART', x0, y0, { color: '#ffe14d', shadow: SHADOW });

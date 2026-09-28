@@ -111,7 +111,7 @@ export function createBomberScene(canvas, { reducedMotion }) {
     },
 
     endParticles() {
-      particles.draw(r);
+      particles.draw(r, 1, true);
     },
 
     project(x, y, h, out) {
@@ -157,6 +157,21 @@ function buildFloor() {
       b.color(tulips[i % tulips.length]);
       for (let k = 0; k < 4; k++) b.box(x + (k - 1.5) * 5, 0, z, 3, 1.2, 14, { bottom: false });
     }
+  }
+  // A canal with a little bridge along the north side, and a windmill.
+  b.color('#3a78b0', { emissive: 0.08 }).face([[-300, -0.6, -70], [-300, -0.6, -46], [W + 300, -0.6, -46], [W + 300, -0.6, -70]], [0, 1, 0]);
+  b.color('#6a5a48').box(CX, -2, -46, W + 600, 2.2, 2).box(CX, -2, -70, W + 600, 2.2, 2);
+  b.color('#9a4a36').box(CX, 0, -58, 24, 3, 30, { top: '#a8503a' });
+  const mx = W + 90;
+  const mz = -20;
+  b.color('#5e4a3a').cylinder(mx, 0, mz, 10, 34, 8, { top: '#4a3a2e' });
+  b.color('#6a6a3a').cone(mx, 34, mz, 11, 11, 8);
+  b.color('#e8e0d0');
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * Math.PI * 2 + 0.3;
+    const q = (along, across) => [mx - 11, 36 + Math.cos(a) * along - Math.sin(a) * across, mz + Math.sin(a) * along + Math.cos(a) * across];
+    const blade = [q(3, -1.4), q(30, -3), q(30, 3), q(3, 1.4)];
+    b.face(blade, [-1, 0, 0]).face(blade, [1, 0, 0]);
   }
   return b.build();
 }

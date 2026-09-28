@@ -37,7 +37,8 @@ export function createTankScene(canvas, { arena, reducedMotion }) {
   const pickup = r.mesh(buildPickup());
   const shadow = r.mesh(buildShadow());
   const shield = r.mesh(new MeshBuilder().color('#ffffff', { emissive: 0.7, tint: 1 }).sphere(0, 0, 0, 11, 8, 5).build());
-  const particles = createParticles3D(500, { reducedMotion });
+  const particles = createParticles3D(500, { reducedMotion }); // fire and sparks (glowing)
+  const smoke = createParticles3D(300, { reducedMotion }); // smoke, dust, debris
   const m = create();
   let crateKey = '';
   let shake = 0;
@@ -65,6 +66,7 @@ export function createTankScene(canvas, { arena, reducedMotion }) {
       time += dt;
       shake = Math.max(0, shake - dt * 12);
       particles.update(dt);
+      smoke.update(dt);
     },
 
     // follow: { x, y } of your tank, or null for the overview.
@@ -103,14 +105,14 @@ export function createTankScene(canvas, { arena, reducedMotion }) {
       compose(m, x, 0, y, yawFromDir(dx, dy), 0, 0.08, MODEL_SCALE);
       r.draw(wreck, m);
       if (!reducedMotion && Math.random() < 0.25) {
-        particles.spawn(x + (Math.random() - 0.5) * 6, 6, y + (Math.random() - 0.5) * 6, 0, 12 + Math.random() * 8, 0, 1.2, '#5a5652', 3, 0, 0.99);
+        smoke.spawn(x + (Math.random() - 0.5) * 6, 6, y + (Math.random() - 0.5) * 6, 0, 12 + Math.random() * 8, 0, 1.6, '#4a4642', 3.2, 0, 0.99);
       }
     },
 
     bullet(x, y, color) {
       compose(m, x, 5.5, y, time * 8);
       r.draw(bullet, m, color);
-      if (!reducedMotion && Math.random() < 0.6) particles.spawn(x, 5.5, y, 0, 2, 0, 0.3, '#d8d4cc', 1.4, 0, 1);
+      if (!reducedMotion && Math.random() < 0.6) smoke.spawn(x, 5.5, y, 0, 2, 0, 0.35, '#d8d4cc', 1.3, 0, 1);
     },
 
     pickup(x, y, type) {
@@ -134,7 +136,14 @@ export function createTankScene(canvas, { arena, reducedMotion }) {
       particles.burst(x, 6, y, '#ffd23e', 40, { speed: 60, life: 0.7, size: 3, gravity: -30, up: 0.7 });
       particles.burst(x, 6, y, '#ff6a2a', 30, { speed: 40, life: 0.9, size: 4, gravity: -10, up: 0.5 });
       particles.burst(x, 6, y, color, 16, { speed: 70, life: 0.6, size: 2, gravity: -60, up: 0.8 });
+      smoke.burst(x, 6, y, '#5a5550', 18, { speed: 22, life: 1.4, size: 5, gravity: 8, up: 0.9 });
       this.shake(10);
+    },
+
+    // Wood splinters and dust (crates).
+    debris(x, y, color) {
+      smoke.burst(x, 6, y, color, 18, { speed: 40, life: 0.8, size: 2.5, gravity: -60, up: 0.8 });
+      smoke.burst(x, 4, y, '#c8b898', 8, { speed: 14, life: 1, size: 5, gravity: 4, up: 0.5 });
     },
 
     sparks(x, y, color = '#ffe14d', n = 8) {
@@ -142,7 +151,8 @@ export function createTankScene(canvas, { arena, reducedMotion }) {
     },
 
     endParticles() {
-      particles.draw(r, 1.2);
+      smoke.draw(r, 1.2, false);
+      particles.draw(r, 1.2, true);
     },
 
     project(x, y, h, out) {
@@ -195,6 +205,7 @@ function buildFloor(arena, th) {
     b.color('#3a3a3a').cylinder(p.x, 0, p.y, 5.2, 0.14, 10);
   }
   scenery(b, th, rnd);
+  camp(b, th);
   return b.build();
 }
 
@@ -221,6 +232,40 @@ function scenery(b, th, rnd) {
       if (th.deco === 'snow') b.color('#f8fbff').cone(x, 19 * s, z, 3.6 * s, 5.5 * s, 6);
     }
   }
+}
+
+// A small camp outside the arena: tents, barrels, a watchtower (plus a
+// snowman in winter). Placed along the far and side edges the camera shows.
+function camp(b, th) {
+  const W = TANK_WORLD.width;
+  const H = TANK_WORLD.height;
+  const tent = th.deco === 'snow' ? ['#c8ccd2', '#a8aeb8'] : th.deco === 'forest' ? ['#4f6a3a', '#3f5a2e'] : ['#8a8456', '#747046'];
+  const spots = [[-60, 60], [-70, 180], [W + 60, 80], [W + 70, 220], [90, -50], [220, -60], [330, -45], [W - 60, -55]];
+  spots.forEach(([x, z], k) => {
+    const kind = k % 4;
+    if (kind === 0 || kind === 2) {
+      // Ridge tent
+      const w = 22, d = 16, h = 11;
+      b.color(tent[0]).face([[x - w / 2, 0, z + d / 2], [x + w / 2, 0, z + d / 2], [x + w / 2, h, z], [x - w / 2, h, z]], [0, 1, 1]);
+      b.color(tent[1]).face([[x - w / 2, 0, z - d / 2], [x - w / 2, h, z], [x + w / 2, h, z], [x + w / 2, 0, z - d / 2]], [0, 1, -1]);
+      b.color(tent[1]).face([[x + w / 2, 0, z - d / 2], [x + w / 2, h, z], [x + w / 2, 0, z + d / 2]], [1, 0, 0]);
+      b.color('#2a2a24').face([[x - w / 2, 0, z - d / 2], [x - w / 2, 0, z + d / 2], [x - w / 2, h, z]], [-1, 0, 0]);
+    } else if (kind === 1) {
+      // Fuel barrels
+      for (let i = 0; i < 5; i++) b.color(i % 2 ? '#8a3a2a' : '#4f5a3a').cylinder(x + (i % 3) * 5, 0, z + Math.floor(i / 3) * 5, 2.2, 5.5, 8, { top: '#3a3a36' });
+    } else if (th.deco === 'snow' && k % 8 === 3) {
+      // Snowman
+      b.color('#f4f7fb').sphere(x, 5, z, 5, 8, 5).sphere(x, 12, z, 3.6, 8, 5).sphere(x, 17.5, z, 2.6, 8, 5);
+      b.color('#e8781a').cone(x + 2.2, 17.5, z, 0.6, 2.2, 5);
+    } else {
+      // Watchtower
+      b.color('#6b4a2e');
+      for (const [dx, dz] of [[-4, -4], [4, -4], [-4, 4], [4, 4]]) b.box(x + dx, 0, z + dz, 1.4, 26, 1.4);
+      b.color('#8a6a44').box(x, 26, z, 12, 1.2, 12).box(x, 27.2, z + 5.4, 12, 3, 0.8).box(x, 27.2, z - 5.4, 12, 3, 0.8);
+      b.color(tent[1]).cone(x, 32, z, 9, 6, 4);
+      for (const [dx, dz] of [[-5, -5], [5, 5]]) b.color('#6b4a2e').box(x + dx, 27, z + dz, 1, 5, 1);
+    }
+  });
 }
 
 function buildWalls(arena, th) {
