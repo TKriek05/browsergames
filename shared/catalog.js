@@ -61,7 +61,10 @@ const entries = [
     id: 'reversi', title: 'Reversi', tagline: 'Sluit stenen in en draai ze om.',
     kind: 'board', phase: 1, available: true, bots: true, controls: 'Klik of tik op een vak met een stip, of pijltjes + Enter',
   },
-  { id: 'chess', title: 'Schaken', tagline: 'Volledige regels, met bots in drie niveaus.', kind: 'board', phase: 1 },
+  {
+    id: 'chess', title: 'Schaken', tagline: 'Volledige regels, met bots in drie niveaus.',
+    kind: 'board', phase: 1, available: true, bots: true, controls: 'Klik een stuk en daarna het doelveld, of pijltjes + Enter',
+  },
   { id: 'ludo', title: 'Mens-erger-je-niet', tagline: 'Gooi, loop en sla elkaar terug naar start.', kind: 'board', phase: 1 },
   { id: 'goose', title: 'Ganzenbord', tagline: 'Het oer-Hollandse dobbelspel voor de hele groep.', kind: 'board', phase: 1 },
   { id: 'battleship', title: 'Zeeslag', tagline: 'Verstop je vloot en jaag op die van de ander.', kind: 'board', phase: 1 },
