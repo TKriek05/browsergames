@@ -93,7 +93,7 @@ export function createGame() {
         case 'go': sfx.play('go'); break;
         case 'eat':
           if (msg.s === slot) sfx.play('coin');
-          fx.burst(px(msg.x) + 3, py(msg.y) + 3, '#ff4d6d', 8, { speed: 30, life: 0.4 });
+          fx.burst(px(msg.x) + 3, py(msg.y) + 3, '#d62828', 8, { speed: 30, life: 0.4 });
           break;
         case 'die':
           sfx.play(msg.s === slot ? 'explode' : 'hit');
@@ -136,11 +136,13 @@ export function createGame() {
         const b = sample.b.state;
         const step = b.moves - a.moves === 1 ? sample.t : 1;
         for (const [x, y] of b.food) {
-          ctx.fillStyle = '#ff4d6d';
+          ctx.fillStyle = '#d62828';
           ctx.fillRect(px(x) + 1, py(y) + 1, 4, 4);
-          ctx.fillStyle = '#5dff8a';
+          ctx.fillStyle = '#6b4a2e';
           ctx.fillRect(px(x) + 3, py(y), 1, 1);
-          ctx.fillStyle = '#ffb3c1';
+          ctx.fillStyle = '#3c8a45';
+          ctx.fillRect(px(x) + 4, py(y), 1, 1);
+          ctx.fillStyle = '#ff9a9a';
           ctx.fillRect(px(x) + 2, py(y) + 2, 1, 1);
         }
         for (const eb of b.ents) {
@@ -171,7 +173,7 @@ export function createGame() {
         x -= w + 12;
       }
       if (s.phase === ARCADE_PHASE.COUNTDOWN) {
-        drawText(ctx, String(Math.max(1, Math.ceil(core.secondsLeft()))), 160, 70, { color: '#ffe14d', scale: 5, align: 'center', shadow: '#ff3ea5' });
+        drawText(ctx, String(Math.max(1, Math.ceil(core.secondsLeft()))), 160, 70, { color: '#ffe14d', scale: 5, align: 'center', shadow: '#2f6a2a' });
         drawText(ctx, 'EET APPELS, BOTS NERGENS TEGENAAN', 160, 112, { color: '#ffffff', align: 'center', shadow: SHADOW });
       } else if ((s.phase === ARCADE_PHASE.ROUND_END || s.phase === ARCADE_PHASE.END) && banner) {
         drawText(ctx, banner.text, 160, 72, { color: banner.color, scale: 3, align: 'center', shadow: SHADOW });
@@ -184,19 +186,31 @@ export function createGame() {
   };
 }
 
+// A garden: checkered lawn inside a hedge, a strip of soil for the HUD.
 function drawBackground() {
   const { canvas, ctx } = createLayer(320, 180);
-  ctx.fillStyle = '#0b0b1e';
+  ctx.fillStyle = '#2f6a2a';
   ctx.fillRect(0, 0, 320, 180);
+  // Hedge texture
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 900; i++) {
+    ctx.fillStyle = rnd() < 0.5 ? '#3a7a32' : '#265a24';
+    ctx.fillRect(Math.floor(rnd() * 320), Math.floor(rnd() * 180), 2, 2);
+  }
+  ctx.fillStyle = '#5a3f28';
+  ctx.fillRect(0, 0, 320, G.y0 - 2);
   for (let y = 0; y < G.rows; y++) {
     for (let x = 0; x < G.cols; x++) {
-      ctx.fillStyle = (x + y) % 2 ? '#12122e' : '#151535';
+      ctx.fillStyle = (x + y) % 2 ? '#8cc152' : '#81b84a';
       ctx.fillRect(px(x), py(y), G.cell, G.cell);
     }
   }
-  ctx.strokeStyle = '#3ef0ff';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(G.x0 - 1.5, G.y0 - 1.5, G.cols * G.cell + 3, G.rows * G.cell + 3);
+  // A few blades of grass
+  for (let i = 0; i < 160; i++) {
+    ctx.fillStyle = '#74a843';
+    ctx.fillRect(G.x0 + Math.floor(rnd() * G.cols * G.cell), G.y0 + Math.floor(rnd() * G.rows * G.cell), 1, 2);
+  }
   return canvas;
 }
 

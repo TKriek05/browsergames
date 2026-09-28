@@ -11,7 +11,7 @@ import { createLayer } from '../../js/core/canvas.js';
 export const meta = { width: 320, height: 180, pixelated: true, step: 1 / 30, touchButtons: [{ label: 'VUUR', bit: BTN.A }] };
 
 const SHADOW = '#0b0b1e';
-const ALIEN_COLORS = ['#ff3ea5', '#3ef0ff', '#5dff8a'];
+const ALIEN_COLORS = ['#c86ad8', '#5ac8a8', '#8ad84a'];
 const ALIENS = [
   [['....###....', '...#####...', '..#######..', '.##.###.##.', '.#########.', '...#...#...', '..#.###.#..', '.#.......#.'],
     ['....###....', '...#####...', '..#######..', '.##.###.##.', '.#########.', '..#.#.#.#..', '.#.......#.', '..#.....#..']],
@@ -86,7 +86,7 @@ export function createGame() {
   let lastFrame = -1;
   let banner = null;
   const alienSprites = ALIENS.map((frames, t) => frames.map((rows) => sprite(rows, ALIEN_COLORS[t])));
-  const ufoSprite = sprite(UFO, '#ff4d6d');
+  const ufoSprite = sprite(UFO, '#c8ccd8');
   const ships = new Map();
   const shipSprite = (hex) => {
     if (!ships.has(hex)) ships.set(hex, sprite(SHIP, hex));
@@ -130,8 +130,8 @@ export function createGame() {
           fx.burst(msg.x, INV.shipY, core.hex(msg.s), 30, { speed: 70, life: 0.8 });
           fx.shake(msg.s === slot ? 6 : 3);
           break;
-        case 'roundEnd': banner = { text: `GOLF ${msg.wave} VERSLAGEN!`, color: '#5dff8a' }; sfx.play('win'); break;
-        case 'end': banner = msg.win ? { text: 'AARDE GERED!', color: '#5dff8a' } : { text: 'GAME OVER', color: '#ff4d6d' }; sfx.play(msg.win ? 'win' : 'lose'); break;
+        case 'roundEnd': banner = { text: `GOLF ${msg.wave} VERSLAGEN!`, color: '#8ad84a' }; sfx.play('win'); break;
+        case 'end': banner = msg.win ? { text: 'AARDE GERED!', color: '#8ad84a' } : { text: 'GAME OVER', color: '#ff4d6d' }; sfx.play(msg.win ? 'win' : 'lose'); break;
         default: break;
       }
     },
@@ -166,7 +166,7 @@ export function createGame() {
         }
         b.bunkers.forEach((cells, k) => {
           const bx = bunkerX(k);
-          ctx.fillStyle = '#5dff8a';
+          ctx.fillStyle = '#8a8f98';
           for (let r = 0; r < INV.bunkerRows; r++) {
             for (let c = 0; c < INV.bunkerCols; c++) if (cells[r * INV.bunkerCols + c]) ctx.fillRect(bx + c * 2, INV.bunkerY + r * 2, 2, 2);
           }
@@ -201,7 +201,7 @@ export function createGame() {
           ctx.fillRect(x + (zig ? 1 : -1), y + 1, 1, 2);
         }
       }
-      ctx.fillStyle = '#5dff8a';
+      ctx.fillStyle = '#4a9a4a';
       ctx.fillRect(0, INV.shipY + 8, INV.width, 1);
       fx.drawParticles(ctx);
       if (s) this.hud(s);
@@ -221,7 +221,7 @@ export function createGame() {
         x -= w + 12;
       }
       if (s.phase === ARCADE_PHASE.COUNTDOWN) {
-        drawText(ctx, `GOLF ${s.wave}`, 160, 92, { color: '#ffe14d', scale: 3, align: 'center', shadow: '#ff3ea5' });
+        drawText(ctx, `GOLF ${s.wave}`, 160, 92, { color: '#ffe14d', scale: 3, align: 'center', shadow: '#2a3a6a' });
         drawText(ctx, 'HOUD ZE TEGEN! SPATIE = SCHIETEN', 160, 118, { color: '#ffffff', align: 'center', shadow: SHADOW });
       } else if (banner && s.phase !== ARCADE_PHASE.PLAY) {
         drawText(ctx, banner.text, 160, 92, { color: banner.color, scale: 2, align: 'center', shadow: SHADOW });
@@ -234,17 +234,52 @@ export function createGame() {
   };
 }
 
+// Space above the Earth: stars, the moon, and the planet's curve with its
+// blue atmosphere along the bottom (what the players are defending).
 function drawStars() {
   const { canvas, ctx } = createLayer(INV.width, INV.height);
-  ctx.fillStyle = '#05050f';
+  const sky = ctx.createLinearGradient(0, INV.top, 0, INV.height);
+  sky.addColorStop(0, '#04050e');
+  sky.addColorStop(0.75, '#0a1030');
+  sky.addColorStop(1, '#1a3a6a');
+  ctx.fillStyle = sky;
   ctx.fillRect(0, 0, INV.width, INV.height);
   for (let i = 0; i < 90; i++) {
     const x = (i * 97) % INV.width;
-    const y = INV.top + ((i * 53) % (INV.height - INV.top));
-    ctx.fillStyle = i % 5 ? '#3a3a6a' : '#a3a8d6';
+    const y = INV.top + ((i * 53) % (INV.height - INV.top - 30));
+    ctx.fillStyle = i % 5 ? '#3a3e5a' : '#d8dcf0';
     ctx.fillRect(x, y, 1, 1);
   }
-  ctx.fillStyle = '#3ef0ff';
+  ctx.fillStyle = '#d8d4c8';
+  ctx.beginPath();
+  ctx.arc(284, 44, 9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#b8b4a8';
+  ctx.fillRect(280, 40, 3, 3);
+  ctx.fillRect(286, 47, 2, 2);
+  // Earth below the ships
+  const earthY = INV.shipY + 9;
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(INV.width / 2, earthY + 260, 360, 262, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#2a6ab8';
+  ctx.fill();
+  ctx.clip();
+  ctx.fillStyle = '#4a9a4a';
+  for (const [x, rx] of [[50, 38], [160, 22], [255, 46]]) {
+    ctx.beginPath();
+    ctx.ellipse(x, earthY + 12, rx, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+  ctx.fillRect(100, earthY + 4, 26, 2);
+  ctx.fillRect(205, earthY + 6, 18, 2);
+  ctx.restore();
+  ctx.fillStyle = 'rgba(120, 180, 255, 0.35)'; // atmosphere
+  ctx.fillRect(0, earthY - 1, INV.width, 1);
+  ctx.fillStyle = '#10141e';
+  ctx.fillRect(0, 0, INV.width, INV.top - 1);
+  ctx.fillStyle = '#2a2e48';
   ctx.fillRect(0, INV.top - 1, INV.width, 1);
   return canvas;
 }

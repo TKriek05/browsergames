@@ -14,6 +14,7 @@ export const meta = {
 };
 
 const SHADOW = '#0b0b1e';
+const ROCK_FILL = ['#7a6a5a', '#6e6660', '#86705a', '#6a6258'];
 const ROCK_R = [15, 8, 4];
 const KEYS = ['x', 'y', 'vx', 'vy', 'hx', 'hy'];
 
@@ -151,7 +152,7 @@ export function createGame() {
         case 'fire': if (msg.s === slot) sfx.play('shoot'); break;
         case 'rock':
           sfx.play(msg.size === 0 ? 'explode' : 'hit');
-          fx.burst(msg.x, msg.y, '#a3a8d6', msg.size === 0 ? 20 : 10, { speed: 45, life: 0.6 });
+          fx.burst(msg.x, msg.y, '#9a8a78', msg.size === 0 ? 20 : 10, { speed: 45, life: 0.6 });
           break;
         case 'boom':
           sfx.play('explode');
@@ -191,7 +192,7 @@ export function createGame() {
         const b = sample.b.state;
         const t = sample.t;
         // Rocks
-        ctx.strokeStyle = '#c8cbe8';
+        ctx.strokeStyle = '#3e342c';
         ctx.lineWidth = 1;
         for (const rb of b.rocks) {
           const ra = a.rocks.find((q) => q.id === rb.id) ?? rb;
@@ -210,7 +211,14 @@ export function createGame() {
               else ctx.moveTo(rx, ry);
             });
             ctx.closePath();
+            ctx.fillStyle = ROCK_FILL[rb.seed % ROCK_FILL.length];
+            ctx.fill();
             ctx.stroke();
+            // A crater or two
+            ctx.fillStyle = 'rgba(40, 30, 24, 0.45)';
+            const cr = ROCK_R[rb.size] * 0.28;
+            ctx.fillRect(Math.round(cx + c * cr - 1), Math.round(cy + sn * cr - 1), 2 + rb.size, 2 + rb.size);
+            if (rb.size > 0) ctx.fillRect(Math.round(cx - sn * cr * 1.4), Math.round(cy + c * cr * 1.2), 2, 2);
           });
         }
         // Bullets
@@ -255,7 +263,7 @@ export function createGame() {
         x -= w + 10 + Math.min(e.lives, 5) * 4;
       }
       if (s.phase === ARCADE_PHASE.COUNTDOWN) {
-        drawText(ctx, String(Math.max(1, Math.ceil(core.secondsLeft()))), 160, 60, { color: '#ffe14d', scale: 5, align: 'center', shadow: '#ff3ea5' });
+        drawText(ctx, String(Math.max(1, Math.ceil(core.secondsLeft()))), 160, 60, { color: '#ffe14d', scale: 5, align: 'center', shadow: '#3a2a5a' });
         drawText(ctx, s.versus ? 'IEDER VOOR ZICH!' : 'SAMEN DE ROTSEN KAPOT', 160, 100, { color: '#ffffff', align: 'center', shadow: SHADOW });
         drawText(ctx, 'DRAAIEN: LINKS/RECHTS  GAS: OMHOOG  VUUR: SPATIE', 160, 114, { color: '#a3a8d6', align: 'center', shadow: SHADOW });
       } else if (banner && s.phase === ARCADE_PHASE.END) {
@@ -270,13 +278,33 @@ export function createGame() {
   };
 }
 
+// Deep space: a soft nebula, a distant ringed planet and many stars.
 function drawStars() {
   const { canvas, ctx } = createLayer(F.width, F.height);
-  ctx.fillStyle = '#04040c';
+  ctx.fillStyle = '#05060e';
   ctx.fillRect(0, 0, F.width, F.height);
-  for (let i = 0; i < 70; i++) {
-    ctx.fillStyle = i % 6 ? '#26264a' : '#6a6fa0';
-    ctx.fillRect((i * 131) % F.width, (i * 71) % F.height, 1, 1);
+  for (const [x, y, r, color] of [[70, 50, 90, 'rgba(70, 40, 110, 0.35)'], [240, 130, 110, 'rgba(30, 60, 110, 0.3)'], [180, 40, 60, 'rgba(110, 50, 70, 0.2)']]) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color);
+    g.addColorStop(1, 'rgba(5, 6, 14, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, F.width, F.height);
   }
+  for (let i = 0; i < 160; i++) {
+    ctx.fillStyle = i % 9 === 0 ? '#f4ecd8' : i % 3 ? '#3a3e5a' : '#8a90b8';
+    ctx.fillRect((i * 131 + (i >> 3)) % F.width, (i * 71 + i * i) % F.height, 1, 1);
+  }
+  // Ringed planet in the corner
+  ctx.fillStyle = '#c9784e';
+  ctx.beginPath();
+  ctx.arc(282, 148, 16, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#a85a38';
+  ctx.fillRect(266, 146, 32, 3);
+  ctx.fillRect(268, 153, 28, 2);
+  ctx.strokeStyle = '#e8c89a';
+  ctx.beginPath();
+  ctx.ellipse(282, 148, 27, 6, -0.3, 0, Math.PI * 2);
+  ctx.stroke();
   return canvas;
 }

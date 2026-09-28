@@ -10,14 +10,16 @@ import {
 import { ARCADE_PHASE } from '../../../shared/games/arcade.js';
 import { drawText } from '../../js/core/pixelfont.js';
 import { createFx } from '../../js/core/fx.js';
+import { createLayer } from '../../js/core/canvas.js';
 
 export const meta = {
   width: 320, height: 180, pixelated: true, step: 1 / 60,
   touchButtons: [{ label: 'DRAAI', bit: BTN.X }, { label: 'VAL', bit: BTN.A }],
 };
 
-const COLORS = ['#000000', '#3ef0ff', '#ffe14d', '#c77dff', '#5dff8a', '#ff4d6d', '#3e7bff', '#ff9a3e', '#6a6f8a'];
-const SHADOW = '#0b0b1e';
+// Painted wooden toy blocks (empty, I, O, T, S, Z, J, L, garbage).
+const COLORS = ['#000000', '#3aa8c8', '#f2c230', '#8a5ab8', '#5aa84a', '#d8453a', '#3a6ad0', '#e8863a', '#7a756e'];
+const SHADOW = '#2a1a10';
 const DAS_S = 0.14;
 const ARR_S = 0.035;
 const LOCK_S = 0.5;
@@ -28,6 +30,7 @@ const BX = 12;
 const BY = 12 - HIDDEN * CELL; // hidden rows sit above the visible board
 
 export function createGame() {
+  const bg = drawTable();
   let net, session, input, sfx, ctx, fx;
   let snap = null;
   let seq = null;
@@ -142,16 +145,19 @@ export function createGame() {
     ctx.fillStyle = COLORS[v];
     ctx.fillRect(x, y, size, size);
     if (size >= 5) {
-      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      // Bevel: light top/left, dark bottom/right, like a wooden block.
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
       ctx.fillRect(x, y, size, 1);
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(x, y, 1, size);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(x, y + size - 1, size, 1);
+      ctx.fillRect(x + size - 1, y, 1, size);
     }
     ctx.globalAlpha = 1;
   }
 
   function drawBoard(b, x0, y0, size, piece) {
-    ctx.fillStyle = '#10102a';
+    ctx.fillStyle = '#2a1f18';
     ctx.fillRect(x0, y0 + HIDDEN * size, COLS * size, (ROWS - HIDDEN) * size);
     for (let r = HIDDEN; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
@@ -282,8 +288,7 @@ export function createGame() {
     render() {
       ctx.save();
       ctx.translate(fx.shakeX(), fx.shakeY());
-      ctx.fillStyle = '#0b0b1e';
-      ctx.fillRect(0, 0, 320, 180);
+      ctx.drawImage(bg, 0, 0);
       if (!snap) { ctx.restore(); return; }
       const mine = me();
       const slot = mySlot();
@@ -307,7 +312,7 @@ export function createGame() {
             if (active.y + cy >= HIDDEN) drawCell(BX + (active.x + cx) * CELL, BY + (active.y + cy) * CELL, CELL, active.k + 1);
           }
         }
-        ctx.strokeStyle = mine ? hexOf(slot) : '#3a3486';
+        ctx.strokeStyle = mine ? hexOf(slot) : '#c8945a';
         ctx.strokeRect(BX - 1.5, 10.5, COLS * CELL + 3, (ROWS - HIDDEN) * CELL + 3);
         if (flash > 0) {
           ctx.fillStyle = `rgba(255,255,255,${flash * 2})`;
@@ -316,20 +321,20 @@ export function createGame() {
         // Incoming garbage meter
         const pend = Math.min(20, focus.pending);
         if (pend) {
-          ctx.fillStyle = '#ff4d6d';
+          ctx.fillStyle = '#d8453a';
           ctx.fillRect(BX - 7, 12 + (20 - pend) * CELL, 4, pend * CELL);
         }
         // Next pieces
-        drawText(ctx, 'VOLGENDE', 98, 12, { color: '#a3a8d6' });
+        drawText(ctx, 'VOLGENDE', 98, 12, { color: '#f0d8b0', shadow: SHADOW });
         if (seq) {
           for (let n = 1; n <= 3; n++) {
             const k = seq((mine ? idx : focus.idx) + n - (active || !mine ? 0 : 1));
             for (const [cx, cy] of SHAPES[k][0]) drawCell(100 + cx * 5, 16 + n * 16 + cy * 5, 5, k + 1);
           }
         }
-        drawText(ctx, `NIVEAU ${snap.level}`, 98, 88, { color: '#ffffff' });
-        drawText(ctx, `RIJEN ${focus.lines}`, 98, 98, { color: '#ffffff' });
-        drawText(ctx, `ROMMEL ${focus.sent}`, 98, 108, { color: '#ff9a3e' });
+        drawText(ctx, `NIVEAU ${snap.level}`, 98, 88, { color: '#ffffff', shadow: SHADOW });
+        drawText(ctx, `RIJEN ${focus.lines}`, 98, 98, { color: '#ffffff', shadow: SHADOW });
+        drawText(ctx, `ROMMEL ${focus.sent}`, 98, 108, { color: '#ffb070', shadow: SHADOW });
         if (!mine) drawText(ctx, 'JE KIJKT MEE', 98, 124, { color: '#ffe14d' });
       }
 
@@ -339,7 +344,7 @@ export function createGame() {
       others.forEach((p, i) => {
         const x = 150 + i * 34;
         const y = 22;
-        drawText(ctx, nameOf(p.slot).slice(0, 5), x, 4, { color: hexOf(p.slot) });
+        drawText(ctx, nameOf(p.slot).slice(0, 5), x, 4, { color: hexOf(p.slot), shadow: SHADOW });
         drawBoard(decodeBoard(p.board), x, y - HIDDEN * size, size, p.alive ? p.piece : null);
         ctx.strokeStyle = hexOf(p.slot);
         ctx.strokeRect(x - 0.5, y - 0.5, COLS * size + 1, (ROWS - HIDDEN) * size + 1);
@@ -347,16 +352,16 @@ export function createGame() {
           ctx.fillStyle = '#ff4d6d';
           ctx.fillRect(x - 3, y + (20 - Math.min(20, p.pending)) * size, 2, Math.min(20, p.pending) * size);
         }
-        drawText(ctx, String(p.lines), x, y + 62, { color: '#ffffff' });
+        drawText(ctx, String(p.lines), x, y + 62, { color: '#ffffff', shadow: SHADOW });
         if (!p.alive && snap.phase !== ARCADE_PHASE.COUNTDOWN) {
-          ctx.fillStyle = 'rgba(11,11,30,0.7)';
+          ctx.fillStyle = 'rgba(30,20,14,0.75)';
           ctx.fillRect(x, y, COLS * size, (ROWS - HIDDEN) * size);
           drawText(ctx, p.place === 1 ? 'WIN' : `${p.place}E`, x + 15, y + 26, { color: p.place === 1 ? '#ffe14d' : '#ff4d6d', align: 'center' });
         }
       });
 
       if (snap.phase === ARCADE_PHASE.COUNTDOWN) {
-        drawText(ctx, String(Math.max(1, Math.ceil(snap.left))), BX + 40, 70, { color: '#ffe14d', scale: 5, align: 'center', shadow: '#ff3ea5' });
+        drawText(ctx, String(Math.max(1, Math.ceil(snap.left))), BX + 40, 70, { color: '#ffe14d', scale: 5, align: 'center', shadow: SHADOW });
       } else if (mine && !mine.alive) {
         drawText(ctx, mine.place === 1 ? 'GEWONNEN!' : 'K.O.', BX + 40, 80, { color: mine.place === 1 ? '#ffe14d' : '#ff4d6d', scale: 2, align: 'center', shadow: SHADOW });
       } else if (snap.phase === ARCADE_PHASE.END && mine?.alive) {
@@ -368,4 +373,20 @@ export function createGame() {
 
     unmount() {},
   };
+}
+
+// A walnut tabletop with a lighter wooden frame around your own board.
+function drawTable() {
+  const { canvas, ctx } = createLayer(320, 180);
+  for (let y = 0; y < 180; y += 8) {
+    ctx.fillStyle = (y / 8) % 2 ? '#5a3a22' : '#62402a';
+    ctx.fillRect(0, y, 320, 8);
+    ctx.fillStyle = '#4a2f1b';
+    for (let x = ((y / 8) % 4) * 31; x < 320; x += 96) ctx.fillRect(x, y, 1, 8);
+  }
+  ctx.fillStyle = '#c8945a';
+  ctx.fillRect(BX - 4, 8, COLS * CELL + 8, (ROWS - HIDDEN) * CELL + 8);
+  ctx.fillStyle = '#a8743f';
+  ctx.fillRect(BX - 2, 10, COLS * CELL + 4, (ROWS - HIDDEN) * CELL + 4);
+  return canvas;
 }

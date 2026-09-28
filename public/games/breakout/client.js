@@ -11,7 +11,8 @@ import { createLayer } from '../../js/core/canvas.js';
 export const meta = { width: 320, height: 180, pixelated: true, step: 1 / 30, touchButtons: [{ label: 'START', bit: BTN.A }] };
 
 const SHADOW = '#0b0b1e';
-const ROW_COLORS = ['#ff4d6d', '#ff9a3e', '#ffd23e', '#5dff8a', '#3ef0ff', '#3e7bff', '#c77dff', '#ff3ea5'];
+// Stone and brick colours per row (terracotta, ochre, sandstone, moss, slate, ...).
+const ROW_COLORS = ['#b5553c', '#c9784e', '#d9b77a', '#8a9a5a', '#6f8196', '#9a8f86', '#c99a3a', '#9a3a2a'];
 
 function decode(r, time) {
   const s = { time, phase: r.u8(), endsAt: 0, level: 0, lives: 0, slow: false, ents: [], balls: [], bricks: null, caps: [] };
@@ -127,16 +128,27 @@ export function createGame() {
           const row = Math.floor(i / BF.cols);
           const x = brickX(col);
           const y = brickY(row);
-          const color = v === BRICK.STEEL ? '#8a8fb8' : v === BRICK.TOUGH ? '#ffffff' : ROW_COLORS[row % ROW_COLORS.length];
+          const color = v === BRICK.STEEL ? '#7a7f88' : v === BRICK.TOUGH ? '#d8d2c8' : ROW_COLORS[row % ROW_COLORS.length];
+          ctx.fillStyle = '#2a211c'; // mortar
+          ctx.fillRect(x - 1, y - 1, BF.brickW + 2, BF.brickH + 2);
           ctx.fillStyle = color;
           ctx.fillRect(x, y, BF.brickW, BF.brickH);
-          ctx.fillStyle = 'rgba(255,255,255,0.35)';
+          ctx.fillStyle = 'rgba(255,255,255,0.25)';
           ctx.fillRect(x, y, BF.brickW, 1);
-          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          ctx.fillStyle = 'rgba(0,0,0,0.28)';
           ctx.fillRect(x, y + BF.brickH - 1, BF.brickW, 1);
+          // Speckles so every stone looks a bit different.
+          ctx.fillStyle = 'rgba(0,0,0,0.18)';
+          for (let k = 0; k < 3; k++) ctx.fillRect(x + ((i * 7 + k * 5) % (BF.brickW - 2)) + 1, y + ((i * 3 + k * 2) % (BF.brickH - 2)) + 1, 1, 1);
           if (v === BRICK.TOUGH) {
             ctx.fillStyle = ROW_COLORS[row % ROW_COLORS.length];
             ctx.fillRect(x + 2, y + 2, BF.brickW - 4, BF.brickH - 4);
+          } else if (v === BRICK.STEEL) {
+            ctx.fillStyle = '#a8adb6'; // rivets
+            ctx.fillRect(x + 1, y + 1, 1, 1);
+            ctx.fillRect(x + BF.brickW - 2, y + 1, 1, 1);
+            ctx.fillRect(x + 1, y + BF.brickH - 2, 1, 1);
+            ctx.fillRect(x + BF.brickW - 2, y + BF.brickH - 2, 1, 1);
           }
         }
         for (const c of s.caps) {
@@ -186,8 +198,8 @@ export function createGame() {
 
     hud(s) {
       drawText(ctx, `LEVEL ${Math.min(s.level + 1, 3)}`, 4, 2, { color: '#ffffff', shadow: SHADOW });
-      drawText(ctx, `LEVENS ${s.lives}`, 60, 2, { color: '#ff4d6d', shadow: SHADOW });
-      if (s.slow) drawText(ctx, 'TRAAG', 118, 2, { color: '#5dff8a', shadow: SHADOW });
+      drawText(ctx, `LEVENS ${s.lives}`, 60, 2, { color: '#ff8a7a', shadow: SHADOW });
+      if (s.slow) drawText(ctx, 'TRAAG', 118, 2, { color: '#8ad88a', shadow: SHADOW });
       let x = 316;
       for (const e of [...s.ents].sort((p, q) => p.score - q.score)) {
         const w = drawText(ctx, String(e.score), x, 2, { color: '#ffffff', align: 'right', shadow: SHADOW });
@@ -196,10 +208,10 @@ export function createGame() {
         x -= w + 12;
       }
       if (s.phase === ARCADE_PHASE.COUNTDOWN) {
-        drawText(ctx, `LEVEL ${s.level + 1}`, 160, 96, { color: '#ffe14d', scale: 3, align: 'center', shadow: '#ff3ea5' });
+        drawText(ctx, `LEVEL ${s.level + 1}`, 160, 96, { color: '#ffe14d', scale: 3, align: 'center', shadow: '#5a3f28' });
         drawText(ctx, 'SPATIE OF TIK OM TE SCHIETEN', 160, 128, { color: '#ffffff', align: 'center', shadow: SHADOW });
       } else if (banner && s.phase !== ARCADE_PHASE.PLAY) {
-        drawText(ctx, banner.text, 160, 96, { color: '#ffe14d', scale: 3, align: 'center', shadow: '#ff3ea5' });
+        drawText(ctx, banner.text, 160, 96, { color: '#ffe14d', scale: 3, align: 'center', shadow: '#5a3f28' });
         if (banner.sub) drawText(ctx, banner.sub, 160, 124, { color: '#ffffff', align: 'center', shadow: SHADOW });
       }
     },
@@ -208,15 +220,23 @@ export function createGame() {
   };
 }
 
+// A dim castle wall of big stone blocks, a wooden beam for the HUD.
 function drawBackground() {
   const { canvas, ctx } = createLayer(BF.width, BF.height);
-  ctx.fillStyle = '#0b0b1e';
+  ctx.fillStyle = '#1e1a18';
   ctx.fillRect(0, 0, BF.width, BF.height);
-  for (let y = BF.top; y < BF.height; y += 8) {
-    ctx.fillStyle = y % 16 ? '#10102a' : '#12122e';
-    ctx.fillRect(0, y, BF.width, 8);
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let y = BF.top, row = 0; y < BF.height; y += 12, row++) {
+    for (let x = row % 2 ? -12 : 0; x < BF.width; x += 24) {
+      const v = 38 + Math.floor(rnd() * 10);
+      ctx.fillStyle = `rgb(${v}, ${v - 5}, ${v - 9})`;
+      ctx.fillRect(x + 1, y + 1, 22, 10);
+    }
   }
-  ctx.fillStyle = '#3ef0ff';
-  ctx.fillRect(0, BF.top - 1, BF.width, 1);
+  ctx.fillStyle = '#5a3f28';
+  ctx.fillRect(0, 0, BF.width, BF.top - 1);
+  ctx.fillStyle = '#3e2a1a';
+  ctx.fillRect(0, BF.top - 2, BF.width, 2);
   return canvas;
 }

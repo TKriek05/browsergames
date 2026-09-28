@@ -112,7 +112,7 @@ export function createGame() {
         for (let sd = 0; sd < 4; sd++) {
           const owner = b.ents.find((e) => e.side === sd && e.alive);
           if (owner) continue;
-          ctx.fillStyle = '#3a3486';
+          ctx.fillStyle = '#e8e8e8';
           if (sd === 0) ctx.fillRect(OX, OY + S - 3, S, 3);
           if (sd === 1) ctx.fillRect(OX, OY, S, 3);
           if (sd === 2) ctx.fillRect(OX, OY, 3, S);
@@ -141,11 +141,11 @@ export function createGame() {
           trails.set(bb.id, trail);
           trail.forEach(([tx, ty], i) => {
             ctx.globalAlpha = (i + 1) / (trail.length * 2.5);
-            ctx.fillStyle = '#3ef0ff';
+            ctx.fillStyle = '#ffc080';
             ctx.fillRect(Math.round(OX + tx) - 1, Math.round(OY + ty) - 1, 3, 3);
           });
           ctx.globalAlpha = bb.wait && Math.floor(performance.now() / 150) % 2 ? 0.4 : 1;
-          ctx.fillStyle = '#ffffff';
+          ctx.fillStyle = '#ff8a1a';
           ctx.fillRect(Math.round(OX + x) - 2, Math.round(OY + y) - 2, 5, 5);
           ctx.globalAlpha = 1;
         });
@@ -167,16 +167,16 @@ export function createGame() {
         ctx.globalAlpha = isConnected(e.flags) ? 1 : 0.5;
         ctx.fillRect(x, y, 4, 16);
         ctx.globalAlpha = 1;
-        drawText(ctx, e.slot === core.mySlot() ? 'JIJ' : core.name(e.slot).slice(0, 10), x + 8, y, { color: e.alive ? '#ffffff' : '#8a8fb8' });
-        drawText(ctx, e.side >= 0 ? SIDE_NAMES[e.side] : '', x + 8, y + 9, { color: '#a3a8d6' });
+        drawText(ctx, e.slot === core.mySlot() ? 'JIJ' : core.name(e.slot).slice(0, 10), x + 8, y, { color: e.alive ? '#ffffff' : '#6a5a4a', shadow: SHADOW });
+        drawText(ctx, e.side >= 0 ? SIDE_NAMES[e.side] : '', x + 8, y + 9, { color: '#f4e4c8', shadow: SHADOW });
         for (let k = 0; k < Math.min(e.lives, 9); k++) {
-          ctx.fillStyle = e.alive ? '#ff4d6d' : '#3a3440';
+          ctx.fillStyle = e.alive ? '#e63946' : '#6a5a4a';
           ctx.fillRect(x + 8 + k * 6, y + 19, 4, 4);
         }
         if (!e.alive) drawText(ctx, 'AF', x + 8, y + 19, { color: '#ff4d6d' });
       });
       if (s.phase === ARCADE_PHASE.COUNTDOWN) {
-        drawText(ctx, String(Math.max(1, Math.ceil(core.secondsLeft()))), OX + S / 2, 64, { color: '#ffe14d', scale: 5, align: 'center', shadow: '#ff3ea5' });
+        drawText(ctx, String(Math.max(1, Math.ceil(core.secondsLeft()))), OX + S / 2, 64, { color: '#ffe14d', scale: 5, align: 'center', shadow: SHADOW });
         const me = core.mine();
         if (me && me.side >= 0) drawText(ctx, `JIJ SPEELT ${SIDE_NAMES[me.side]}`, OX + S / 2, 104, { color: core.hex(me.slot), align: 'center', shadow: SHADOW });
       } else if (s.phase === ARCADE_PHASE.END) {
@@ -189,23 +189,35 @@ export function createGame() {
   };
 }
 
+// A table-tennis table in a sports hall: wooden floor, blue table with
+// white lines, wooden corner posts.
 function drawField() {
   const { canvas, ctx } = createLayer(320, 180);
-  ctx.fillStyle = '#0b0b1e';
+  ctx.fillStyle = '#a8703f';
   ctx.fillRect(0, 0, 320, 180);
-  ctx.fillStyle = '#12122e';
-  ctx.fillRect(OX, OY, S, S);
-  ctx.fillStyle = '#1b1b48';
-  for (let i = 8; i < S; i += 16) {
-    ctx.fillRect(OX + i, OY, 1, S);
-    ctx.fillRect(OX, OY + i, S, 1);
+  for (let y = 0; y < 180; y += 6) {
+    ctx.fillStyle = (y / 6) % 2 ? '#9e6838' : '#b07846';
+    ctx.fillRect(0, y, 320, 6);
+    ctx.fillStyle = '#8a5a30';
+    for (let x = ((y / 6) % 3) * 23; x < 320; x += 70) ctx.fillRect(x, y, 1, 6);
   }
-  ctx.fillStyle = '#ff3ea5';
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+  ctx.fillRect(OX + 3, OY + 3, S, S);
+  ctx.fillStyle = '#1f5fa8';
+  ctx.fillRect(OX, OY, S, S);
+  ctx.fillStyle = '#f4f4f4';
+  ctx.fillRect(OX, OY, S, 1);
+  ctx.fillRect(OX, OY + S - 1, S, 1);
+  ctx.fillRect(OX, OY, 1, S);
+  ctx.fillRect(OX + S - 1, OY, 1, S);
+  ctx.fillRect(OX + S / 2, OY, 1, S);
+  ctx.fillRect(OX, OY + S / 2, S, 1);
   const c = PF.corner;
-  for (const [x, y] of [[0, 0], [S - c, 0], [0, S - c], [S - c, S - c]]) ctx.fillRect(OX + x, OY + y, c, c);
-  ctx.fillStyle = '#0b0b1e';
-  for (const [x, y] of [[0, 0], [S - c, 0], [0, S - c], [S - c, S - c]]) ctx.fillRect(OX + x + 2, OY + y + 2, c - 4, c - 4);
-  ctx.strokeStyle = '#3ef0ff';
-  ctx.strokeRect(OX - 0.5, OY - 0.5, S + 1, S + 1);
+  for (const [x, y] of [[0, 0], [S - c, 0], [0, S - c], [S - c, S - c]]) {
+    ctx.fillStyle = '#5a3a22';
+    ctx.fillRect(OX + x, OY + y, c, c);
+    ctx.fillStyle = '#6e4a2c';
+    ctx.fillRect(OX + x + 2, OY + y + 2, c - 4, c - 4);
+  }
   return canvas;
 }

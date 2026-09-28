@@ -14,7 +14,8 @@ const T = 7; // pixels per tile
 const X0 = Math.floor((320 - MAZE_W * T) / 2);
 const Y0 = 16;
 const SHADOW = '#0b0b1e';
-const GHOST_COLORS = ['#ff4d6d', '#ff9ad8', '#3ef0ff', '#ffb347'];
+// Pale sheet ghosts, each with its own tint (they also behave differently).
+const GHOST_COLORS = ['#f4dede', '#e6d4f4', '#d4ecf4', '#f4e4cc'];
 
 const px = (u) => X0 + (u / UNIT) * T + T / 2;
 const py = (u) => Y0 + (u / UNIT) * T + T / 2;
@@ -81,7 +82,7 @@ export function createGame() {
     const iy = Math.round(y) - 4;
     if (g.mode !== M.EYES) {
       let body = GHOST_COLORS[g.id];
-      if (g.mode === M.FRIGHT) body = fright < 2 && Math.floor(time * 6) % 2 ? '#eef0ff' : '#3a4aff';
+      if (g.mode === M.FRIGHT) body = fright < 2 && Math.floor(time * 6) % 2 ? '#f4f4f4' : '#3a4a9a';
       ctx.fillStyle = body;
       ctx.fillRect(ix + 1, iy, 5, 1);
       ctx.fillRect(ix, iy + 1, 7, 6);
@@ -96,10 +97,10 @@ export function createGame() {
       return;
     }
     const [dx, dy] = g.dir >= 0 ? DIRS[g.dir] : [0, 0];
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = g.mode === M.EYES ? '#f4f4f4' : '#2a1a2e';
     ctx.fillRect(ix + 1, iy + 2, 2, 2);
     ctx.fillRect(ix + 4, iy + 2, 2, 2);
-    ctx.fillStyle = '#1b1bb0';
+    ctx.fillStyle = g.mode === M.EYES ? '#3a2a4a' : '#d8453a';
     ctx.fillRect(ix + 1 + (dx > 0 ? 1 : 0), iy + 2 + (dy > 0 ? 1 : 0), 1, 1);
     ctx.fillRect(ix + 4 + (dx > 0 ? 1 : 0), iy + 2 + (dy > 0 ? 1 : 0), 1, 1);
   }
@@ -135,7 +136,7 @@ export function createGame() {
         case 'power': sfx.play('item'); break;
         case 'eatGhost':
           sfx.play('coin');
-          fx.text(String(msg.p), px(msg.x), py(msg.y) - 4, '#3ef0ff', 1, 1);
+          fx.text(String(msg.p), px(msg.x), py(msg.y) - 4, '#ffd27a', 1, 1);
           break;
         case 'die':
           sfx.play(msg.s === slot ? 'lose' : 'hit');
@@ -144,7 +145,7 @@ export function createGame() {
         case 'fruitOn': sfx.play('ready'); break;
         case 'fruit': sfx.play('win'); fx.text(String(msg.p), px(13 * UNIT), py(13 * UNIT) - 6, '#ff4d6d', 1, 1.2); break;
         case 'spawn': if (msg.s === slot) sfx.play('join'); break;
-        case 'roundEnd': banner = { text: 'LEVEL KLAAR!', color: '#5dff8a' }; sfx.play('win'); break;
+        case 'roundEnd': banner = { text: 'LEVEL KLAAR!', color: '#ffd27a' }; sfx.play('win'); break;
         case 'end': banner = { text: 'GAME OVER', color: '#ff4d6d' }; sfx.play('lose'); break;
         default: break;
       }
@@ -165,21 +166,26 @@ export function createGame() {
     },
 
     render(alpha) {
-      ctx.fillStyle = '#05050f';
-      ctx.fillRect(0, 0, 320, 180);
       ctx.drawImage(maze, 0, 0);
       const s = core.latest;
       const sample = core.sample();
       if (s) {
-        ctx.fillStyle = '#ffd8a8';
+        // Candy dots and pumpkins (the power pills).
         const blink = Math.floor(time * 4) % 2;
         for (let i = 0; i < s.dots.length; i++) {
           const d = s.dots[i];
           if (!d) continue;
           const x = X0 + (i % MAZE_W) * T + 3;
           const y = Y0 + Math.floor(i / MAZE_W) * T + 3;
-          if (d === 1) ctx.fillRect(x, y, 1, 1);
-          else if (blink) ctx.fillRect(x - 1, y - 1, 3, 3);
+          if (d === 1) {
+            ctx.fillStyle = '#ffd27a';
+            ctx.fillRect(x, y, 1, 1);
+          } else {
+            ctx.fillStyle = blink ? '#ff9a2a' : '#e8781a';
+            ctx.fillRect(x - 1, y - 1, 3, 3);
+            ctx.fillStyle = '#3c8a45';
+            ctx.fillRect(x, y - 2, 1, 1);
+          }
         }
         if (s.fruit) {
           const x = px(13 * UNIT);
@@ -244,9 +250,31 @@ export function createGame() {
   };
 }
 
-// Walls as neon outlines: an edge wherever a wall tile meets a corridor.
+// A haunted house: wooden floorboards, stone walls with a lit top edge
+// wherever a wall meets a corridor, and a moon in the night outside.
 function drawMaze() {
   const { canvas, ctx } = createLayer(320, 180);
+  ctx.fillStyle = '#140e1c';
+  ctx.fillRect(0, 0, 320, 180);
+  ctx.fillStyle = '#f4ecd0';
+  ctx.beginPath();
+  ctx.arc(24, 150, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#140e1c';
+  ctx.beginPath();
+  ctx.arc(29, 146, 9, 0, Math.PI * 2);
+  ctx.fill();
+  for (let y = 0; y < MAZE_H; y++) {
+    for (let x = 0; x < MAZE_W; x++) {
+      if (MAZE.walls[y * MAZE_W + x] === 1) continue;
+      ctx.fillStyle = y % 2 ? '#2e2228' : '#33262c';
+      ctx.fillRect(X0 + x * T, Y0 + y * T, T, T);
+      if ((x + y * 3) % 5 === 0) {
+        ctx.fillStyle = '#261c21';
+        ctx.fillRect(X0 + x * T, Y0 + y * T, 1, T);
+      }
+    }
+  }
   const wall = (x, y) => x >= 0 && y >= 0 && x < MAZE_W && y < MAZE_H && MAZE.walls[y * MAZE_W + x] === 1;
   for (let y = 0; y < MAZE_H; y++) {
     for (let x = 0; x < MAZE_W; x++) {
@@ -254,17 +282,20 @@ function drawMaze() {
       const X = X0 + x * T;
       const Y = Y0 + y * T;
       if (w === 2) {
-        ctx.fillStyle = '#ff9ad8';
+        ctx.fillStyle = '#8a6a4a';
         ctx.fillRect(X, Y + 3, T, 1);
         continue;
       }
       if (w !== 1) continue;
-      ctx.fillStyle = '#10103a';
+      ctx.fillStyle = (x + y) % 3 ? '#4a4458' : '#46405a';
       ctx.fillRect(X, Y, T, T);
-      ctx.fillStyle = '#3e7bff';
+      ctx.fillStyle = '#3a3448';
+      ctx.fillRect(X, Y + (x % 2 ? 2 : 4), T, 1);
+      ctx.fillStyle = '#7a7290';
       if (!wall(x, y - 1)) ctx.fillRect(X, Y, T, 1);
-      if (!wall(x, y + 1)) ctx.fillRect(X, Y + T - 1, T, 1);
       if (!wall(x - 1, y)) ctx.fillRect(X, Y, 1, T);
+      ctx.fillStyle = '#241f2e';
+      if (!wall(x, y + 1)) ctx.fillRect(X, Y + T - 1, T, 1);
       if (!wall(x + 1, y)) ctx.fillRect(X + T - 1, Y, 1, T);
     }
   }

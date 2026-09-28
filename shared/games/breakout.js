@@ -67,10 +67,10 @@ export function stepBreakoutPaddle(s, ax, dt) {
 
 // Power-up capsules
 export const CAPS = [
-  { key: 'wide', label: 'W', color: '#3ef0ff' },
-  { key: 'multi', label: 'M', color: '#ff3ea5' },
-  { key: 'slow', label: 'S', color: '#5dff8a' },
-  { key: 'life', label: '+', color: '#ffe14d' },
+  { key: 'wide', label: 'W', color: '#5ab4e8' },
+  { key: 'multi', label: 'M', color: '#e8709a' },
+  { key: 'slow', label: 'S', color: '#7ac86a' },
+  { key: 'life', label: '+', color: '#f0c040' },
 ];
 
 export function parseLevel(index) {
