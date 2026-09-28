@@ -329,6 +329,19 @@ const entries = [
       },
     ],
   },
+  {
+    id: 'pesten', title: 'Pesten', tagline: 'Het kaartspel met pestkaarten: wie is als eerste door zijn kaarten heen?',
+    kind: 'board', phase: 6, available: true, bots: true,
+    controls: 'Klik een kaart om te spelen, of pak een kaart van de stapel. Toetsen: pijltjes + Enter',
+    settings: [
+      {
+        key: 'hand', label: 'Kaarten per speler', type: 'select',
+        options: [{ value: 7, label: '7 kaarten' }, { value: 5, label: '5 kaarten' }],
+        default: 7,
+      },
+      { key: 'jokers', label: 'Met jokers (+5)', type: 'toggle', default: true },
+    ],
+  },
 ];
 
 // Fill in limits + defaults so consumers can rely on every field existing.

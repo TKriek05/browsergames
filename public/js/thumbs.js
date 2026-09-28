@@ -226,6 +226,15 @@ const DRAW = {
     R(ctx, 30, 24, 14, 4, '#34373f'); R(ctx, 40, 23, 8, 2, '#23252b'); R(ctx, 32, 28, 3, 4, '#23252b');
     disc(ctx, 33, 21, 2, '#ff3ea5'); R(ctx, 29, 28, 4, 4, '#e8b894');
   },
+  pesten(ctx) {
+    R(ctx, 0, 0, 48, 32, '#1f6a45');
+    const card = (x, y, color, pip) => { R(ctx, x, y, 11, 15, '#fdfbf5'); R(ctx, x, y + 15, 11, 1, '#0f3a26'); pip(x, y, color); };
+    card(6, 11, '#c8282e', (x, y, c) => { R(ctx, x + 1, y + 1, 2, 3, c); disc(ctx, x + 5, y + 8, 2, c); });
+    card(15, 9, '#1d1f24', (x, y, c) => { R(ctx, x + 1, y + 1, 2, 3, c); R(ctx, x + 4, y + 6, 3, 4, c); R(ctx, x + 5, y + 10, 1, 2, c); });
+    card(24, 8, '#7a3fc0', (x, y, c) => { R(ctx, x + 5, y + 4, 1, 7, '#e0a21a'); R(ctx, x + 2, y + 7, 7, 1, '#e0a21a'); R(ctx, x + 3, y + 5, 5, 5, c); });
+    R(ctx, 36, 4, 9, 13, '#23508f'); R(ctx, 37, 5, 7, 11, '#fdfbf5'); R(ctx, 38, 6, 5, 9, '#23508f');
+    R(ctx, 36, 21, 10, 6, '#d62839'); R(ctx, 38, 23, 1, 2, C.white); R(ctx, 37, 24, 3, 1, C.white); R(ctx, 41, 23, 3, 1, C.white); R(ctx, 43, 24, 1, 1, C.white); R(ctx, 41, 25, 3, 1, C.white);
+  },
 };
 
 export function drawThumb(canvas, gameId) {

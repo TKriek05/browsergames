@@ -60,9 +60,10 @@ import goose from '../../shared/rules/goose.js';
 import battleship from '../../shared/rules/battleship.js';
 import memory from '../../shared/rules/memory.js';
 import mines from '../../shared/rules/mines.js';
+import pesten from '../../shared/rules/pesten.js';
 
 // Board games are pure rules modules wrapped by the generic adapter.
-const BOARD_RULES = [tictactoe, connect4, reversi, checkers, chess, ludo, goose, battleship, memory, mines];
+const BOARD_RULES = [tictactoe, connect4, reversi, checkers, chess, ludo, goose, battleship, memory, mines, pesten];
 
 // Custom modules (realtime or not) that are not generic board games.
 const REALTIME = [tag, duckshoot, tanks, kartrace, snake, paddle, breakout, invaders, rocks, blocks, ghosts, bomber, minigolf, paintball];

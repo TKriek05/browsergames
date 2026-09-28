@@ -79,3 +79,4 @@
 .fleet-list li.is-sunk { color: var(--red); text-decoration: line-through; }
 .fleet-list li.is-current .btn { border-color: var(--yellow); }
 .fleet-list li.is-done .btn { color: var(--green); }
+.bp__row { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }

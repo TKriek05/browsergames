@@ -9,6 +9,7 @@ import ludo from './ludo.js';
 import battleship from './battleship.js';
 import memory from './memory.js';
 import mines from './mines.js';
+import pesten from './pesten.js';
 
 export const ENGINES = {
   tictactoe,
@@ -20,4 +21,5 @@ export const ENGINES = {
   battleship,
   memory,
   mines,
+  pesten,
 };
