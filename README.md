@@ -5,8 +5,11 @@ Eén Node.js-app serveert de frontend én de WebSockets. Geen framework, geen
 build-stap, geen database, geen accounts, geen tracking.
 
 - **Frontend:** vanilla JavaScript (ES modules), HTML, CSS, Canvas
-- **Backend:** Node.js (LTS, ≥ 20.12) met precies één dependency: [`ws`](https://github.com/websockets/ws)
+- **Backend:** Node.js (LTS, ≥ 22) met precies één dependency: [`ws`](https://github.com/websockets/ws)
 - **Status:** Fase 0 klaar (netwerkfundament + lobby + demo-game *Neon Tikkertje*).
+
+> **Nieuw hier of code nog niet op GitHub?** Volg eerst [docs/SETUP.md](docs/SETUP.md):
+> repo vullen, branches, automatische tests en de weg van repo naar server.
 
 ---
 

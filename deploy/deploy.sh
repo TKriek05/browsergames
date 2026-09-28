@@ -44,6 +44,7 @@ rsync -avz --delete \
   --exclude '/node_modules' \
   --exclude '/tools' \
   --exclude '/test' \
+  --exclude '/docs' \
   --exclude '/logs' \
   --exclude '/.env' \
   --exclude '/.build-id' \
