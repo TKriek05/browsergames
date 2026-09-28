@@ -6,17 +6,31 @@
 //                    game pixel is equally big and crisp on any devicePixelRatio.
 // pixelated: false → the backing store follows the CSS size × devicePixelRatio
 //                    for sharp vector drawing (board games); draw in logical units.
+// gl: true         → 3D games: a WebGL canvas (view.glCanvas) at the logical
+//                    resolution with a transparent 2D HUD canvas (view.canvas) on top.
 
-export function createGameCanvas(container, { width, height, pixelated = true }) {
+export function createGameCanvas(container, { width, height, pixelated = true, gl = false }) {
   const canvas = document.createElement('canvas');
   canvas.className = pixelated ? 'game-canvas game-canvas--pixel' : 'game-canvas';
   canvas.width = width;
   canvas.height = height;
-  container.append(canvas);
-  const ctx = canvas.getContext('2d', { alpha: false });
+  let glCanvas = null;
+  let root = canvas;
+  if (gl) {
+    root = document.createElement('div');
+    root.className = 'game-stack';
+    glCanvas = document.createElement('canvas');
+    glCanvas.className = 'game-canvas game-canvas--pixel game-canvas--gl';
+    glCanvas.width = width;
+    glCanvas.height = height;
+    canvas.classList.add('game-canvas--hud');
+    root.append(glCanvas, canvas);
+  }
+  container.append(root);
+  const ctx = canvas.getContext('2d', { alpha: gl });
   ctx.imageSmoothingEnabled = !pixelated;
 
-  const view = { canvas, ctx, width, height, scale: 1, destroy, toLogical };
+  const view = { canvas, ctx, glCanvas, width, height, scale: 1, destroy, toLogical };
 
   function fit() {
     const dpr = window.devicePixelRatio || 1;
@@ -32,8 +46,10 @@ export function createGameCanvas(container, { width, height, pixelated = true })
     }
     const cssW = Math.floor(width * cssScale);
     const cssH = Math.floor(height * cssScale);
-    canvas.style.width = `${cssW}px`;
-    canvas.style.height = `${cssH}px`;
+    for (const el of glCanvas ? [root, glCanvas, canvas] : [canvas]) {
+      el.style.width = `${cssW}px`;
+      el.style.height = `${cssH}px`;
+    }
     view.scale = cssScale;
 
     if (!pixelated) {
@@ -72,7 +88,7 @@ export function createGameCanvas(container, { width, height, pixelated = true })
   function destroy() {
     ro.disconnect();
     mq?.removeEventListener('change', onDpr);
-    canvas.remove();
+    root.remove();
   }
 
   return view;

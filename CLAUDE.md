@@ -57,6 +57,14 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 - Client: `createBoardModule(spec)` uit `public/games/board/kit.js`; houd lokale UI-state in `f.local`.
 - Merknamen vermijden: "Erger je niet!" i.p.v. het merk mens-erger-je-niet, "Reversi" i.p.v. Othello.
 
+## 3D (WebGL)
+
+- Eigen mini-engine in `public/js/gl/`: `mesh.js` (low-poly MeshBuilder, vertexkleuren, emissive, tint),
+  `renderer.js` (WebGL 1, licht + mist + luchtverloop met retro-zon, punten-deeltjes), `mat4.js`, `particles.js`.
+- `meta.gl = true`: `view.glCanvas` (WebGL, lage resolutie, pixelated) met `view.canvas` als 2D-HUD erboven.
+- Spelwereld is 2D (x, y) → 3D (x, 0, y). Fysica blijft 2D en deterministisch in `shared/physics/`.
+- Geen WebGL? `createRenderer3D` geeft `null`: val terug op een eenvoudige 2D-weergave.
+
 ## Game-module interface
 
 Server (`server/games/<id>.js`, registreren in `server/games/index.js`):
@@ -84,6 +92,6 @@ thumbnail in `public/js/thumbs.js`, server- en clientmodule, tests.
 0. Fundament + lobby + Neon Tikkertje ✅
 1. Bordspellen: boter-kaas-en-eieren, vier op een rij, dammen, reversi, schaken, Erger je niet!, ganzenbord, zeeslag ✅
 2. Kwek Kwek Knal (eenden schieten, lag compensation) ✅
-3. Tank Tumult (top-down tanks)
+3. Tank Tumult (tanks in 3D) ✅
 4. Neon Kart GP (Mode 7 kartrace)
 5. Extra's (snake, paddle, breakout, bomber, spoken, blokken, minigolf, memory, mijnenveger, invaders, rotsen)

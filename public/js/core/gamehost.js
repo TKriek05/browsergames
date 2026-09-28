@@ -4,7 +4,8 @@
 // ─── Game module interface (client) ────────────────────────────────────────
 // public/games/<id>/client.js exports:
 //   meta = { width, height, pixelated, step, touchButtons: [{ label, bit }],
-//            layout?: 'board' (adds a side panel), input?: false, touchControls?: false }
+//            layout?: 'board' (adds a side panel), input?: false, touchControls?: false,
+//            gl?: true (3D: view.glCanvas for WebGL + view.canvas/ctx as a 2D HUD on top) }
 //   createGame() → {
 //     mount(view, net, ctx)   view = { canvas, ctx, width, height, toLogical }
 //                             ctx  = { session, input, sfx, start, side, reducedMotion }

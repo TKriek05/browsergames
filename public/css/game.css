@@ -40,6 +40,10 @@ body[data-view="game"] main { padding: 0; }
 }
 .game-canvas { outline: none; border-radius: 4px; box-shadow: 0 0 0 1px var(--line), 0 0 40px rgba(62, 240, 255, 0.12); }
 .game-canvas--pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
+/* 3D games: WebGL canvas with a transparent 2D HUD canvas on top. */
+.game-stack { position: relative; line-height: 0; border-radius: 4px; box-shadow: 0 0 0 1px var(--line), 0 0 40px rgba(62, 240, 255, 0.12); }
+.game-stack > .game-canvas { box-shadow: none; }
+.game-canvas--hud { position: absolute; left: 0; top: 0; background: transparent; }
 /* Aim games (Kwek Kwek Knal): the crosshair is drawn in the canvas. */
 .game-canvas--aim { cursor: none; touch-action: none; -webkit-user-select: none; user-select: none; }
 .game__error { padding: 24px; text-align: center; }

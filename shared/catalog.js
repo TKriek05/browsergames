@@ -116,7 +116,50 @@ const entries = [
       },
     ],
   },
-  { id: 'tanks', title: 'Tank Tumult', tagline: 'Top-down tankgevechten met stuiterende kogels.', kind: 'realtime', phase: 3 },
+  {
+    id: 'tanks',
+    title: 'Tank Tumult',
+    tagline: 'Tankgevechten in 3D met stuiterende kogels en kratten.',
+    kind: 'realtime',
+    phase: 3,
+    available: true,
+    bots: true,
+    controls: 'Pijltjes/WASD rijden, muis mikken + klik of spatie schieten. Gamepad: rechter stick mikt',
+    settings: [
+      {
+        key: 'mode',
+        label: 'Spelvorm',
+        type: 'select',
+        options: [
+          { value: 'deathmatch', label: 'Op tijd (meeste treffers)' },
+          { value: 'rounds', label: 'Laatste tank (3 rondes winnen)' },
+        ],
+        default: 'deathmatch',
+      },
+      {
+        key: 'duration',
+        label: 'Speelduur (op tijd)',
+        type: 'select',
+        options: [
+          { value: 120, label: '2 minuten' },
+          { value: 180, label: '3 minuten' },
+          { value: 300, label: '5 minuten' },
+        ],
+        default: 180,
+      },
+      {
+        key: 'arena',
+        label: 'Arena',
+        type: 'select',
+        options: [
+          { value: 'kruispunt', label: 'Kruispunt' },
+          { value: 'doolhof', label: 'Doolhof' },
+          { value: 'fort', label: 'Fort' },
+        ],
+        default: 'kruispunt',
+      },
+    ],
+  },
   { id: 'kartrace', title: 'Neon Kart GP', tagline: 'Retro kartracen met drift, items en een Grand Prix.', kind: 'realtime', phase: 4 },
 
   // --- Extras -------------------------------------------------------------------
