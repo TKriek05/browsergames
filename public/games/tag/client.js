@@ -1,6 +1,7 @@
 // Neon Tikkertje (client side): prediction for your own runner, snapshot
-// interpolation for everybody else, sounds and effects.
+// interpolation for everybody else, power-up orbs, sounds and effects.
 import { TAG_PHYS, stepRunner } from '../../../shared/physics/tag.js';
+import { POWERS, POWER, canTake } from '../../../shared/games/tag-powers.js';
 import { TAG_ARENAS } from '../../../shared/maps/tag-arenas.js';
 import { PLAYER_COLORS } from '../../../shared/constants.js';
 import { ByteWriter, encodeInput, quantizeAxis } from '../../../shared/binary.js';
@@ -34,13 +35,18 @@ function decode(snap) {
       bot: (flags & 1) !== 0,
       immune: (flags & 2) !== 0,
       connected: (flags & 4) !== 0,
+      shield: (flags & 8) !== 0,
+      reach: (flags & 16) !== 0,
       ack: r.u16(),
-      x: r.f32(), y: r.f32(), vx: r.f32(), vy: r.f32(), stun: r.f32(),
+      x: r.f32(), y: r.f32(), vx: r.f32(), vy: r.f32(), stun: r.f32(), boost: r.f32(), slow: r.f32(),
       itTime: r.u16() / 10,
       tags: r.u8(),
     };
   }
-  return { time: snap.time, phase, endsAt: snap.time + remaining * 1000, itSlot, ents };
+  const orbCount = r.u8();
+  const orbs = new Array(orbCount);
+  for (let i = 0; i < orbCount; i++) orbs[i] = { id: r.u8(), power: r.u8(), x: r.u16(), y: r.u16(), life: r.u8() / 10 };
+  return { time: snap.time, phase, endsAt: snap.time + remaining * 1000, itSlot, ents, orbs };
 }
 
 const findSlot = (ents, slot) => {
@@ -53,14 +59,15 @@ export function createGame() {
   let walls = [];
   let latest = null;
   let lastCountdown = 0;
+  let banner = null; // { text, sub, color, until } after taking a power-up
   const buffer = new SnapshotBuffer();
   const writer = new ByteWriter(16);
   const sendInput = { ax: 0, ay: 0, buttons: 0, aim: 0 };
-  const serverState = { x: 0, y: 0, vx: 0, vy: 0, stun: 0, it: false };
+  const serverState = { x: 0, y: 0, vx: 0, vy: 0, stun: 0, boost: 0, slow: 0, it: false };
 
   const predictor = new Predictor({
-    create: () => ({ x: 0, y: 0, vx: 0, vy: 0, stun: 0, it: false }),
-    copy: (d, s) => { d.x = s.x; d.y = s.y; d.vx = s.vx; d.vy = s.vy; d.stun = s.stun; d.it = s.it; },
+    create: () => ({ x: 0, y: 0, vx: 0, vy: 0, stun: 0, boost: 0, slow: 0, it: false }),
+    copy: (d, s) => { d.x = s.x; d.y = s.y; d.vx = s.vx; d.vy = s.vy; d.stun = s.stun; d.boost = s.boost; d.slow = s.slow; d.it = s.it; },
     step: (s, inp) => stepRunner(s, inp.ax, inp.ay, TAG_PHYS.DT, walls, s.it),
   });
 
@@ -94,12 +101,32 @@ export function createGame() {
         serverState.vx = mine.vx;
         serverState.vy = mine.vy;
         serverState.stun = mine.stun;
+        serverState.boost = mine.boost;
+        serverState.slow = mine.slow;
         serverState.it = s.itSlot === slot;
         predictor.reconcile(serverState, mine.ack);
       }
     },
 
     onEvent(msg) {
+      if (msg.e === 'power') {
+        const power = POWERS[msg.p];
+        if (!power) return;
+        renderer.burst(msg.x, msg.y, power.color, 18);
+        if (msg.p === POWER.FREEZE) renderer.wave(msg.x, msg.y, power.color);
+        if (msg.id === session.me) {
+          banner = { text: power.name, sub: power.help, color: power.color, until: performance.now() + 1600 };
+          sfx.play(msg.p === POWER.TURBO ? 'boost' : msg.p === POWER.FREEZE ? 'spin' : 'coin');
+        } else sfx.play(msg.p === POWER.FREEZE ? 'spin' : 'item');
+        return;
+      }
+      if (msg.e === 'warp') {
+        const p = session.room?.players.find((x) => x.id === msg.id);
+        const color = p ? PLAYER_COLORS[p.color].hex : '#c07bff';
+        renderer.burst(msg.x0, msg.y0, '#c07bff', 16);
+        renderer.burst(msg.x, msg.y, color, 16);
+        return;
+      }
       if (msg.e === 'go') sfx.play('go');
       else if (msg.e === 'end') sfx.play('countdown');
       else if (msg.e === 'tag' || msg.e === 'pass') {
@@ -145,6 +172,14 @@ export function createGame() {
       renderer.begin();
       const now = net.serverNow();
       const sample = buffer.sample(now);
+      if (latest?.phase === PHASE.PLAY) {
+        const slot = mySlot();
+        const iAmIt = slot >= 0 && latest.itSlot === slot;
+        for (const orb of latest.orbs) {
+          const power = POWERS[orb.power];
+          if (power) renderer.drawOrb(orb, power, slot < 0 || canTake(power, iAmIt));
+        }
+      }
       if (sample && latest) {
         const slot = mySlot();
         const b = sample.b.state;
@@ -169,9 +204,14 @@ export function createGame() {
           // Use the newest known "it" so the crown switches without delay.
           const it = latest.itSlot === eb.slot;
           if (it && latest.phase === PHASE.PLAY) renderer.trail(x, y, color);
+          const fx = isMe ? predictor.state : eb;
           renderer.drawRunner(x, y, vx, vy, color, {
             it,
-            stunned: (isMe ? predictor.state.stun : eb.stun) > 0,
+            stunned: fx.stun > 0,
+            boost: fx.boost > 0,
+            slow: fx.slow > 0,
+            shield: eb.shield,
+            reach: eb.reach,
             immune: eb.immune,
             me: eb.slot === slot,
             name: player?.name ?? '?',
@@ -192,6 +232,7 @@ export function createGame() {
           itName: itPlayer?.name ?? '',
           itColor: itPlayer ? PLAYER_COLORS[itPlayer.color].hex : '#fff',
           spectator: mySlot() < 0,
+          banner: banner && performance.now() < banner.until ? banner : null,
         });
       }
       renderer.end();

@@ -119,6 +119,9 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
   Hapvis-plankton staat op vaste plekken uit de seed; de snapshot stuurt alleen een bitmasker.
 - Pesten: `shared/rules/pesten.js` + `server/ai/pesten.js`; kaarten als vectorvormen in `public/games/pesten/cards.js`.
 - Input onthoudt korte tikken tussen twee ticks (`Input.tapped`), zodat een snelle spatie niet wegvalt.
+- Neon Tikkertje power-ups: definities in `shared/games/tag-powers.js` (rol `it`/`run`/`any`, id = index = wire-waarde),
+  serverlogica in `server/games/tag-powers.js` (bollen, effecten, bots). Turbo/traag (`boost`/`slow`) zitten in de gedeelde
+  fysica zodat de voorspelling klopt; schild en lange arm alleen op de server (vlaggen in de snapshot).
 
 ## Game-module interface
 

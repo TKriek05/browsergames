@@ -86,7 +86,7 @@ In het spel zet 🎵 de muziek aan/uit (onthouden in de browser); 🔊 dempt all
 
 | Spel | Spelers | Bijzonderheden |
 |---|---|---|
-| Neon Tikkertje | 2-6 | Realtime (30 Hz), prediction + interpolatie, 3 arena's |
+| Neon Tikkertje | 2-6 | Realtime (30 Hz), prediction + interpolatie, 3 arena's, power-ups: turbo (iedereen), lange arm en vriesgolf (tikker), schild en warp (lopers) |
 | Boter-kaas-en-eieren | 2 | Perfecte bot op "moeilijk" |
 | Vier op een rij | 2 | Schijven vallen door het bord, alpha-beta-bot |
 | Reversi | 2 | Automatisch passen, omdraai-animatie |

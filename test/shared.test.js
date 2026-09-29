@@ -64,10 +64,10 @@ test('sequence numbers wrap around correctly', () => {
 });
 
 test('settings are validated against the catalog schema', () => {
-  assert.deepEqual(defaultSettings('tag'), { duration: 90, arena: 'pillars' });
-  assert.deepEqual(normalizeSettings('tag', { duration: 60, arena: 'maze' }), { duration: 60, arena: 'maze' });
-  assert.deepEqual(normalizeSettings('tag', { duration: 61, arena: '<script>', evil: 1 }), { duration: 90, arena: 'pillars' });
-  assert.deepEqual(normalizeSettings('tag', { duration: '60' }, { duration: 120, arena: 'open' }), { duration: 120, arena: 'open' });
+  assert.deepEqual(defaultSettings('tag'), { duration: 90, arena: 'pillars', powerups: true });
+  assert.deepEqual(normalizeSettings('tag', { duration: 60, arena: 'maze', powerups: false }), { duration: 60, arena: 'maze', powerups: false });
+  assert.deepEqual(normalizeSettings('tag', { duration: 61, arena: '<script>', evil: 1, powerups: 'yes' }), { duration: 90, arena: 'pillars', powerups: true });
+  assert.deepEqual(normalizeSettings('tag', { duration: '60' }, { duration: 120, arena: 'open', powerups: false }), { duration: 120, arena: 'open', powerups: false });
   assert.deepEqual(normalizeSettings('nope', { a: 1 }), {});
 });
 

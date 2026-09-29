@@ -1,20 +1,24 @@
 // Neon Tikkertje (server side). Small realtime game that exercises the whole
 // netcode path: input queues, prediction-friendly shared physics, binary
-// snapshots, server-side bots and results.
+// snapshots, server-side bots and results. Power-ups: tag-powers.js.
 import { TAG_PHYS, stepRunner, touching } from '../../shared/physics/tag.js';
+import { POWER_TUNING } from '../../shared/games/tag-powers.js';
 import { TAG_ARENAS, TAG_SPAWNS, TAG_FIELD } from '../../shared/maps/tag-arenas.js';
 import { SIM_TICK_RATE } from '../../shared/constants.js';
 import { InputQueue } from '../inputqueue.js';
+import { TagPowers } from './tag-powers.js';
 
 // Tuning
 const COUNTDOWN_S = 3;
 const END_HOLD_S = 2.5; // freeze on the final state before the results
 const IT_IDLE_PASS_S = 4; // an AFK tagger passes the role on
+// orbs: how often a bot goes for a power-up it notices (per decision).
 const BOT_LEVELS = {
-  easy: { think: 0.5, speed: 0.72, lead: 0, jitter: 0.7, panic: 70 },
-  normal: { think: 0.22, speed: 0.86, lead: 0.25, jitter: 0.35, panic: 90 },
-  hard: { think: 0.08, speed: 1, lead: 0.55, jitter: 0.12, panic: 110 },
+  easy: { think: 0.5, speed: 0.72, lead: 0, jitter: 0.7, panic: 70, orbs: 0.3 },
+  normal: { think: 0.22, speed: 0.86, lead: 0.25, jitter: 0.35, panic: 90, orbs: 0.7 },
+  hard: { think: 0.08, speed: 1, lead: 0.55, jitter: 0.12, panic: 110, orbs: 1 },
 };
+const BOT_ORB_RANGE = 90; // px: a runner bot only detours for orbs this close
 
 export const PHASE = { COUNTDOWN: 0, PLAY: 1, END: 2 };
 
@@ -30,6 +34,7 @@ class TagGame {
     this.itId = null;
     for (const p of room.gamePlayers()) this.onJoin(p);
     if (this.runners.length) this.itId = this.runners[Math.floor(Math.random() * this.runners.length)].player.id;
+    this.powers = new TagPowers(this, settings.powerups !== false);
   }
 
   _runner(id) {
@@ -42,6 +47,7 @@ class TagGame {
     this.runners.push({
       player,
       x: spawn.x, y: spawn.y, vx: 0, vy: 0, stun: 0,
+      boost: 0, slow: 0, shield: 0, reach: 0, // power-up timers (s)
       immune: 0, itTime: 0, tags: 0,
       queue: new InputQueue(),
       bot: { ax: 0, ay: 0, thinkIn: 0 },
@@ -101,12 +107,14 @@ class TagGame {
       if (r.immune > 0) r.immune = Math.max(0, r.immune - dt);
     }
 
+    this.powers.tick(dt, it);
     if (it) {
       it.itTime += dt;
       if (it.stun <= 0) {
+        const reach = TAG_PHYS.RADIUS * 2 + (it.reach > 0 ? POWER_TUNING.REACH_BONUS : 0);
         for (let i = 0; i < this.runners.length; i++) {
           const o = this.runners[i];
-          if (o !== it && o.immune <= 0 && touching(it, o)) {
+          if (o !== it && o.immune <= 0 && o.shield <= 0 && touching(it, o, reach)) {
             this._transfer(it, o);
             break;
           }
@@ -133,7 +141,9 @@ class TagGame {
   _transfer(from, to) {
     this.itId = to.player.id;
     to.stun = TAG_PHYS.STUN_TIME;
+    to.shield = 0;
     from.immune = TAG_PHYS.IMMUNE_TIME;
+    from.reach = 0;
     from.tags++;
     this.room.emit('tag', { from: from.player.id, to: to.player.id, x: Math.round(to.x), y: Math.round(to.y) });
   }
@@ -147,11 +157,15 @@ class TagGame {
     const next = others[Math.floor(Math.random() * others.length)];
     this.itId = next.player.id;
     next.stun = TAG_PHYS.STUN_TIME;
+    next.shield = 0;
+    if (except) except.reach = 0;
     if (except) except.immune = TAG_PHYS.IMMUNE_TIME;
     this.room.emit('pass', { to: next.player.id });
   }
 
   // Simple steering bot: chase (with lead) when tagger, flee otherwise.
+  // Power-ups: the tagger takes a detour when an orb is much closer than
+  // its prey; a runner grabs a nearby orb when the tagger is not too close.
   _botThink(r, it, dt) {
     const cfg = BOT_LEVELS[r.player.botLevel] ?? BOT_LEVELS.normal;
     r.bot.thinkIn -= dt;
@@ -160,18 +174,26 @@ class TagGame {
 
     let dx = 0;
     let dy = 0;
+    const orb = Math.random() < cfg.orbs ? this.powers.nearestFor(r, r === it) : null;
     if (r === it) {
       let best = null;
       let bestD = Infinity;
       for (const o of this.runners) {
-        if (o === r || o.immune > 0) continue;
+        if (o === r || o.immune > 0 || o.shield > 0) continue;
         const d = (o.x - r.x) ** 2 + (o.y - r.y) ** 2;
         if (d < bestD) { bestD = d; best = o; }
       }
-      if (best) {
+      if (orb && (!best || orb.d < Math.sqrt(bestD) * 0.6)) {
+        dx = orb.orb.x - r.x;
+        dy = orb.orb.y - r.y;
+      } else if (best) {
         dx = best.x + best.vx * cfg.lead - r.x;
         dy = best.y + best.vy * cfg.lead - r.y;
       }
+    } else if (it && orb && orb.d < BOT_ORB_RANGE && Math.hypot(it.x - r.x, it.y - r.y) > cfg.panic * 0.6
+      && Math.hypot(it.x - orb.orb.x, it.y - orb.orb.y) > orb.d) {
+      dx = orb.orb.x - r.x;
+      dy = orb.orb.y - r.y;
     } else if (it) {
       dx = r.x - it.x;
       dy = r.y - it.y;
@@ -197,7 +219,9 @@ class TagGame {
 
   // Body layout (after the 14-byte header), see public/games/tag/client.js:
   // u8 phase, f32 phaseRemaining, u8 itSlot, u8 count,
-  // count × [u8 slot, u8 flags, u16 ack, f32 x, f32 y, f32 vx, f32 vy, f32 stun, u16 itTime(ds), u8 tags]
+  // count × [u8 slot, u8 flags, u16 ack, f32 x, f32 y, f32 vx, f32 vy, f32 stun, f32 boost, f32 slow,
+  //          u16 itTime(ds), u8 tags], then the orbs (TagPowers.write).
+  // flags: 1 bot, 2 immune, 4 connected, 8 shield, 16 long reach
   snapshot(w) {
     const it = this._runner(this.itId);
     w.u8(this.phase);
@@ -205,11 +229,13 @@ class TagGame {
     w.u8(it ? it.player.slot : 255);
     w.u8(this.runners.length);
     for (const r of this.runners) {
-      const flags = (r.player.isBot ? 1 : 0) | (r.immune > 0 ? 2 : 0) | (r.player.isBot || r.player.connected ? 4 : 0);
+      const flags = (r.player.isBot ? 1 : 0) | (r.immune > 0 ? 2 : 0) | (r.player.isBot || r.player.connected ? 4 : 0)
+        | (r.shield > 0 ? 8 : 0) | (r.reach > 0 ? 16 : 0);
       w.u8(r.player.slot).u8(flags).u16(r.queue.ackSeq);
-      w.f32(r.x).f32(r.y).f32(r.vx).f32(r.vy).f32(r.stun);
+      w.f32(r.x).f32(r.y).f32(r.vx).f32(r.vy).f32(r.stun).f32(r.boost).f32(r.slow);
       w.u16(Math.min(65535, Math.round(r.itTime * 10))).u8(Math.min(255, r.tags));
     }
+    this.powers.write(w);
   }
 
   results() {

@@ -242,7 +242,7 @@ test('only the host can start, kick or change settings', async () => {
   assert.equal((await guest.waitType('error')).code, ERR.NOT_HOST);
   host.send('settings', { settings: { duration: 60, arena: 'nope' } });
   const room = await host.latestRoom(60);
-  assert.deepEqual(room.settings, { duration: 60, arena: 'pillars' });
+  assert.deepEqual(room.settings, { duration: 60, arena: 'pillars', powerups: true });
   host.close();
   guest.close();
 });

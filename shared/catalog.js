@@ -11,7 +11,7 @@ const entries = [
   {
     id: 'tag',
     title: 'Neon Tikkertje',
-    tagline: 'Tik elkaar af in een neon-arena. Wie het kortst de tikker is, wint.',
+    tagline: 'Tik elkaar af in een neon-arena, met power-ups. Wie het kortst de tikker is, wint.',
     kind: 'realtime',
     phase: 0,
     available: true,
@@ -40,6 +40,7 @@ const entries = [
         ],
         default: 'pillars',
       },
+      { key: 'powerups', label: 'Power-ups (turbo, schild, vriesgolf …)', type: 'toggle', default: true },
     ],
   },
 

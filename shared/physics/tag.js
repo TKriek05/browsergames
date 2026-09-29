@@ -13,16 +13,31 @@ export const TAG_PHYS = {
   RADIUS: 5,
   STUN_TIME: 0.8, // a freshly tagged player is frozen this long (s)
   IMMUNE_TIME: 1.5, // the previous tagger cannot be tagged back this long (s)
+  BOOST_SPEED: 1.35, // turbo power-up: top speed ×
+  BOOST_ACCEL: 1.3, // … and acceleration ×
+  SLOW_SPEED: 0.55, // hit by a freeze wave: top speed ×
 };
 
 const f = Math.fround;
 
-// s: { x, y, vx, vy, stun }  ax/ay: -1..1 (already quantized)
+// s: { x, y, vx, vy, stun, boost?, slow? }  ax/ay: -1..1 (already quantized)
+// boost/slow: seconds left of a turbo or a freeze wave (power-ups).
 export function stepRunner(s, ax, ay, dt, walls, isIt) {
   if (s.stun > 0) {
     s.stun = f(Math.max(0, s.stun - dt));
     ax = 0;
     ay = 0;
+  }
+  let speedK = 1;
+  let accelK = 1;
+  if (s.boost > 0) {
+    s.boost = f(Math.max(0, s.boost - dt));
+    speedK *= TAG_PHYS.BOOST_SPEED;
+    accelK = TAG_PHYS.BOOST_ACCEL;
+  }
+  if (s.slow > 0) {
+    s.slow = f(Math.max(0, s.slow - dt));
+    speedK *= TAG_PHYS.SLOW_SPEED;
   }
   const len = Math.sqrt(ax * ax + ay * ay);
   if (len > 1) {
@@ -30,13 +45,13 @@ export function stepRunner(s, ax, ay, dt, walls, isIt) {
     ay /= len;
   }
 
-  let vx = s.vx + ax * TAG_PHYS.ACCEL * dt;
-  let vy = s.vy + ay * TAG_PHYS.ACCEL * dt;
+  let vx = s.vx + ax * TAG_PHYS.ACCEL * accelK * dt;
+  let vy = s.vy + ay * TAG_PHYS.ACCEL * accelK * dt;
   const damp = 1 / (1 + TAG_PHYS.DRAG * dt);
   vx *= damp;
   vy *= damp;
 
-  const max = isIt ? TAG_PHYS.IT_SPEED : TAG_PHYS.MAX_SPEED;
+  const max = (isIt ? TAG_PHYS.IT_SPEED : TAG_PHYS.MAX_SPEED) * speedK;
   const speed = Math.sqrt(vx * vx + vy * vy);
   if (speed > max) {
     vx = (vx / speed) * max;
@@ -97,9 +112,8 @@ function collideRect(s, rect, r) {
   }
 }
 
-export function touching(a, b) {
+export function touching(a, b, reach = TAG_PHYS.RADIUS * 2) {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
-  const reach = TAG_PHYS.RADIUS * 2;
   return dx * dx + dy * dy <= reach * reach;
 }

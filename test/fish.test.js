@@ -74,10 +74,12 @@ test('eating: plankton and smaller fish; points stay when you get eaten', () => 
   assert.equal(game.phase, ARCADE_PHASE.PLAY);
   const a = game.ent('p1');
   const b = game.ent('p2');
-  // Plankton under fish a.
+  // Plankton under fish a (the score starts from zero: the random seed may
+  // have put some plankton in reach during the first ticks of play).
   game.food.fill(0);
   game.food[0] = 1;
   game.foodBack.fill(99);
+  a.score = 0;
   a.s.x = game.spots.xs[0];
   a.s.y = game.spots.ys[0];
   run(game, room, 0.05);

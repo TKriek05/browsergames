@@ -3,20 +3,68 @@
 import { createLayer } from '../../js/core/canvas.js';
 import { drawText, textSprite } from '../../js/core/pixelfont.js';
 import { TAG_PHYS } from '../../../shared/physics/tag.js';
+import { POWER_TUNING } from '../../../shared/games/tag-powers.js';
 
 const BG = '#0b0b1e';
 const GRID = '#15153a';
 const WALL_FILL = '#1b1b48';
 const WALL_EDGE = '#3ef0ff';
 const MAX_PARTICLES = 160;
+const ROLE_RIM = { it: '#ff4d6d', run: '#3ef0ff', any: '#ffe14d' };
+const WAVE_S = 0.45;
+// 7×7 pixel icons per power (index = POWER id): turbo, long reach, freeze, shield, warp.
+const ICONS = [
+  ['....##.', '...##..', '..##...', '.#####.', '...##..', '..##...', '.##....'],
+  ['.......', '.#...#.', '##...##', '#######', '##...##', '.#...#.', '.......'],
+  ['...#...', '.#.#.#.', '..###..', '#######', '..###..', '.#.#.#.', '...#...'],
+  ['#######', '#.###.#', '#.###.#', '#.###.#', '.#.#.#.', '..#.#..', '...#...'],
+  ['...#...', '..#.#..', '.#...#.', '#..#..#', '.#...#.', '..#.#..', '...#...'],
+];
 
 export function createRenderer(view, { walls, reducedMotion }) {
   const { ctx, width, height } = view;
   const background = drawBackground(width, height, walls);
   const sprites = new Map();
   const particles = Array.from({ length: MAX_PARTICLES }, () => ({ alive: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, color: '#fff' }));
+  const discs = new Map();
+  const waves = []; // freeze waves: { x, y, color, t }
   let shake = 0;
   let time = 0;
+
+  // Round orb background with a rim in the role colour.
+  function orbDisc(rim) {
+    let s = discs.get(rim);
+    if (s) return s;
+    const size = 13;
+    const { canvas, ctx: c } = createLayer(size, size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const d = Math.hypot(x + 0.5 - size / 2, y + 0.5 - size / 2);
+        if (d > 6.3) continue;
+        c.fillStyle = d > 5.2 ? rim : '#101030';
+        c.fillRect(x, y, 1, 1);
+      }
+    }
+    discs.set(rim, canvas);
+    return canvas;
+  }
+
+  function icon(rows, x, y, color) {
+    ctx.fillStyle = color;
+    for (let r = 0; r < rows.length; r++) {
+      for (let c = 0; c < rows[r].length; c++) if (rows[r][c] === '#') ctx.fillRect(x + c, y + r, 1, 1);
+    }
+  }
+
+  function ring(x, y, radius, color, alpha) {
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(x + 0.5, y + 0.5, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 
   function runnerSprite(color) {
     let s = sprites.get(color);
@@ -98,7 +146,41 @@ export function createRenderer(view, { walls, reducedMotion }) {
       shake = Math.max(shake, amount);
     },
 
+    wave(x, y, color) {
+      waves.push({ x, y, color, t: time });
+    },
+
+    // A power-up orb; dimmed when you cannot take it (wrong role).
+    drawOrb(orb, power, usable) {
+      if (orb.life < 2 && Math.floor(time * 8) % 2 === 0) return; // about to vanish
+      const bob = reducedMotion ? 0 : Math.round(Math.sin(time * 4 + orb.id));
+      const px = orb.x;
+      const py = orb.y + bob;
+      ctx.globalAlpha = usable ? 1 : 0.35;
+      const disc = orbDisc(ROLE_RIM[power.role]);
+      ctx.drawImage(disc, px - 6, py - 6);
+      icon(ICONS[power.id], px - 3, py - 3, power.color);
+      if (power.role === 'it') {
+        // A tiny crown: only for the tagger.
+        ctx.fillStyle = '#ffe14d';
+        ctx.fillRect(px - 2, py - 8, 5, 1);
+        ctx.fillRect(px - 2, py - 9, 1, 1);
+        ctx.fillRect(px, py - 9, 1, 1);
+        ctx.fillRect(px + 2, py - 9, 1, 1);
+      }
+      ctx.globalAlpha = 1;
+    },
+
     drawParticles() {
+      for (let i = waves.length - 1; i >= 0; i--) {
+        const w = waves[i];
+        const k = (time - w.t) / WAVE_S;
+        if (k >= 1) {
+          waves.splice(i, 1);
+          continue;
+        }
+        ring(w.x, w.y, 4 + k * (POWER_TUNING.FREEZE_RADIUS - 4), w.color, 1 - k);
+      }
       for (const p of particles) {
         if (!p.alive) continue;
         ctx.globalAlpha = Math.max(0, p.life / p.max);
@@ -108,12 +190,15 @@ export function createRenderer(view, { walls, reducedMotion }) {
       ctx.globalAlpha = 1;
     },
 
-    drawRunner(x, y, vx, vy, color, { it, stunned, immune, me, name, connected }) {
+    drawRunner(x, y, vx, vy, color, { it, stunned, immune, me, name, connected, boost, slow, shield, reach }) {
       const px = Math.round(x);
       const py = Math.round(y);
       const sprite = runnerSprite(color);
       const half = sprite.width >> 1;
       const blink = immune && Math.floor(time * 12) % 2 === 0;
+
+      if (reach) ring(px, py, TAG_PHYS.RADIUS * 2 + POWER_TUNING.REACH_BONUS, '#ff4d6d', 0.55 + 0.25 * Math.sin(time * 12));
+      if (boost && !reducedMotion && Math.random() < 0.7) spawn(px - vx * 0.04, py - vy * 0.04, -vx * 0.3, -vy * 0.3, 0.3, '#ffe14d');
 
       if (it) {
         // Pulsing danger ring around the tagger.
@@ -145,6 +230,15 @@ export function createRenderer(view, { walls, reducedMotion }) {
         ctx.fillRect(px, py - 11, 1, 2);
         ctx.fillRect(px + 3, py - 11, 1, 2);
       }
+      if (shield) ring(px, py, 8, '#5dff9a', 0.6 + 0.3 * Math.sin(time * 9));
+      if (slow) {
+        // Ice crystals drifting around a frozen runner.
+        ctx.fillStyle = '#bfefff';
+        for (let k = 0; k < 3; k++) {
+          const a = time * 2 + (k * Math.PI * 2) / 3;
+          ctx.fillRect(Math.round(px + Math.cos(a) * 7), Math.round(py + Math.sin(a) * 7), 1, 1);
+        }
+      }
       if (stunned) {
         const a = time * 8;
         ctx.fillStyle = '#ffe14d';
@@ -160,7 +254,11 @@ export function createRenderer(view, { walls, reducedMotion }) {
       ctx.drawImage(tag, lx, ly);
     },
 
-    drawHud({ timeText, itName, itColor, phase, countdown, spectator }) {
+    drawHud({ timeText, itName, itColor, phase, countdown, spectator, banner }) {
+      if (banner) {
+        drawText(ctx, banner.text, width / 2, 24, { color: banner.color, scale: 2, align: 'center', shadow: '#0b0b1e' });
+        drawText(ctx, banner.sub, width / 2, 40, { color: '#ffffff', align: 'center', shadow: '#0b0b1e' });
+      }
       if (timeText) drawText(ctx, timeText, width / 2, 4, { color: '#fff', scale: 2, align: 'center', shadow: '#0b0b1e' });
       if (itName) {
         const w = drawText(ctx, 'TIKKER: ', 4, 5, { color: '#a3a8d6', shadow: '#0b0b1e' });
