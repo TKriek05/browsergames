@@ -1,26 +1,34 @@
 // Party parts of the lobby: the next game (with a short roulette after a
-// random draw), the party mode, the game picker / random pool and the
-// tournament standings. Rendered by lobby.js on every room update.
+// random draw), the party mode, the game picker / vote grid / random pool
+// and the tournament standings. Rendered by lobby.js on every room update.
 import { CATALOG, getGame } from '../../shared/catalog.js';
 import { C2S } from '../../shared/messages.js';
-import { PARTY_MODES, PARTY_MODE_LABELS, TOURNAMENT_LENGTHS, gameFits } from '../../shared/party.js';
+import {
+  PARTY_MODES, PARTY_MODE_LABELS, TOURNAMENT_LENGTHS, gameFits, votesPick, drawsPick, tallyVotes,
+} from '../../shared/party.js';
 import { h, prefersReducedMotion, confirmDialog } from './core/ui.js';
 import { drawThumb } from './thumbs.js';
 import * as sfx from './core/audio.js';
 
 const SPIN_MS = 1500;
 const MODE_HELP = {
-  free: 'De host kiest elke keer de game.',
+  free: 'De host kiest elke keer de game. Iedereen kan een voorkeur doorgeven met een stem.',
+  vote: 'Iedereen stemt: de game met de meeste stemmen wordt gespeeld.',
   random: 'Na elke game kiest de arcade een willekeurige volgende game.',
   tournament: 'Een reeks games: wie de meeste wint, wint het toernooi.',
 };
-const ORDER_LABELS = { random: 'Willekeurig', host: 'Host kiest' };
+const ORDER_LABELS = { random: 'Willekeurig', host: 'Host kiest', vote: 'Stemmen' };
 const KIND_LABELS = { realtime: 'Actie', board: 'Bord- of kaartspel', quiz: 'Quiz' };
 
 const games = () => Object.values(CATALOG).filter((g) => g.available);
 // Shared place for equal wins and points.
 const rankOf = (list, s) => 1 + list.filter((o) => o.wins > s.wins || (o.wins === s.wins && o.points > s.points)).length;
 const playersText = (g) => (g.min === g.max ? `${g.max} spelers` : `${Math.max(1, g.min)}–${g.max} spelers`);
+
+// Votes as the server counts them (voting order is not public: ties show in join order).
+function votesOf(room) {
+  return tallyVotes(room.players.filter((p) => p.vote && !p.bot).map((p, i) => ({ game: p.vote, at: i })));
+}
 
 // Humans who want to play (seated or waiting) and bots, as the server counts them.
 function headcount(room) {
@@ -42,9 +50,9 @@ function thumb(id, cls) {
 export class PartyUi {
   constructor(lobby) {
     this.lobby = lobby;
-    this.panel = null; // null | 'pick' | 'pool' (host: open game grid)
+    this.panel = null; // null | 'pick' | 'pool' (host) | 'vote' (everyone): open game grid
     this.openOnJoin = null; // panel to open in the next new room (a fresh party lobby)
-    this.seen = { code: null, draws: 0 };
+    this.seen = { code: null, draws: 0, voting: false };
     this.spin = null; // { until, next, last }
     this.spinCanvas = null;
     this.tick = (now) => this._tick(now);
@@ -57,12 +65,17 @@ export class PartyUi {
   // Start the roulette when the server drew a new game since the last render.
   noteRoom(room) {
     const draws = room.party?.draws ?? 0;
+    const voting = votesPick(room.party);
     if (this.seen.code !== room.code) {
-      this.seen = { code: room.code, draws };
-      this.panel = this.openOnJoin;
+      this.seen = { code: room.code, draws, voting };
+      this.panel = this.openOnJoin ?? (voting && room.state === 'lobby' ? 'vote' : null);
       this.openOnJoin = null;
       return;
     }
+    // The votes decide from now on: show everyone the games to vote for.
+    if (voting && !this.seen.voting) this.panel = 'vote';
+    if (drawsPick(room.party) && this.panel === 'vote') this.panel = null;
+    this.seen.voting = voting;
     if (draws > this.seen.draws && !prefersReducedMotion() && !this.lobby.root.hidden) {
       this.spin = { until: performance.now() + SPIN_MS, next: 0, last: null };
       requestAnimationFrame(this.tick);
@@ -104,6 +117,11 @@ export class PartyUi {
     this.spinCanvas = null;
     const { humans, bots } = headcount(room);
     const warn = humans > game.max ? `Max. ${game.max} spelers: ${humans - game.max} kijk${humans - game.max > 1 ? 'en' : 't'} mee.` : '';
+    const tally = drawsPick(room.party) ? [] : votesOf(room);
+    const votes = tally.length ? h('p', { class: 'gamecard__votes small' },
+      h('span', { class: 'muted' }, '🗳️ Stemmen: '),
+      ...tally.map((e, i) => h('span', { class: `vote-tag ${e.game === room.game ? 'is-current' : ''}` },
+        `${getGame(e.game)?.title ?? e.game} ${e.count}${i < tally.length - 1 ? ' · ' : ''}`))) : null;
     return h('div', { class: 'gamecard' },
       thumb(room.game, 'gamecard__thumb'),
       h('div', { class: 'gamecard__body' },
@@ -113,7 +131,8 @@ export class PartyUi {
           h('li', {}, playersText(game)),
           h('li', {}, KIND_LABELS[game.kind] ?? 'Actie'),
           bots && game.bots ? h('li', {}, 'Met bots') : null),
-        warn ? h('p', { class: 'gamecard__warn small' }, warn) : null));
+        warn ? h('p', { class: 'gamecard__warn small' }, warn) : null,
+        votes));
   }
 
   // Mode selector (host) or a line describing it (others).
@@ -136,7 +155,7 @@ export class PartyUi {
     };
     wrap.append(
       h('p', { id: 'party-mode-label', class: 'field__label' }, 'Party-modus'),
-      h('div', { class: 'seg', role: 'group', 'aria-labelledby': 'party-mode-label' },
+      h('div', { class: 'seg seg--grid', role: 'group', 'aria-labelledby': 'party-mode-label' },
         ...PARTY_MODES.map((m) => h('button', {
           class: 'seg__btn', type: 'button', 'data-key': `mode-${m}`, 'aria-pressed': String(party.mode === m),
           onclick: () => setMode(m),
@@ -161,14 +180,21 @@ export class PartyUi {
     return wrap;
   }
 
-  // Host buttons under the game card.
-  gameTools(room) {
+  // Buttons under the game card: the host picks, draws or edits the pool;
+  // everyone can vote (except when the arcade draws the games).
+  gameTools(room, isHost) {
     const party = room.party;
-    const random = party.mode === 'random' || (party.mode === 'tournament' && party.order === 'random');
+    const random = drawsPick(party);
     const toggle = (which, label, hide) => h('button', {
       class: 'btn btn--small', type: 'button', 'data-key': `panel-${which}`, 'aria-expanded': String(this.panel === which), 'aria-controls': 'game-grid',
       onclick: () => { this.panel = this.panel === which ? null : which; this.lobby.render(); },
     }, this.panel === which ? hide : label);
+    const mine = room.players.find((p) => p.id === this.lobby.session.me)?.vote;
+    const voteLabel = mine ? `🗳️ Jouw stem: ${getGame(mine)?.title ?? mine}` : '🗳️ Stem op een game';
+    if (votesPick(party) || (!isHost && !random)) {
+      return h('div', { class: 'gamecard__tools' }, toggle('vote', voteLabel, 'Verberg games'));
+    }
+    if (!isHost) return null;
     return h('div', { class: 'gamecard__tools' },
       random ? null : toggle('pick', 'Kies een game', 'Verberg games'),
       h('button', { class: 'btn btn--small', type: 'button', 'data-key': 'draw', disabled: !!this.spin, onclick: () => this.send(C2S.DRAW) },
@@ -176,11 +202,16 @@ export class PartyUi {
       random ? toggle('pool', `Welke games? (${party.pool.length})`, 'Verberg keuze') : null);
   }
 
-  // Full-width grid of every game: pick one, or toggle games in the random pool.
+  // Full-width grid of every game: pick one (host), vote for one (everyone)
+  // or toggle games in the random pool (host).
   gameGrid(room) {
-    if (!this.panel || !this.lobby.session.isHost || this.spin) return null;
+    if (!this.panel || this.spin) return null;
+    if (this.panel === 'vote' ? drawsPick(room.party) : !this.lobby.session.isHost) return null;
     const pool = new Set(room.party.pool);
     const picking = this.panel === 'pick';
+    const voting = this.panel === 'vote';
+    const myVote = room.players.find((p) => p.id === this.lobby.session.me)?.vote ?? null;
+    const voters = (id) => room.players.filter((p) => p.vote === id && !p.bot);
     const { humans, bots } = headcount(room);
     const groups = [
       ['Actiegames', games().filter((g) => g.kind === 'realtime')],
@@ -188,13 +219,17 @@ export class PartyUi {
     ];
     const card = (g) => {
       const fits = gameFits(g, humans, bots);
-      const on = picking ? g.id === room.game : pool.has(g.id);
+      const on = voting ? g.id === myVote : picking ? g.id === room.game : pool.has(g.id);
       const why = g.max < humans ? `Max. ${g.max} spelers` : !fits ? `Min. ${g.min} spelers (voeg bots toe)` : playersText(g);
+      const who = picking || voting ? voters(g.id) : [];
+      const label = who.length ? `${g.title}, ${who.length} ${who.length > 1 ? 'stemmen' : 'stem'}: ${who.map((p) => p.name).join(', ')}` : null;
       return h('li', {},
         h('button', {
-          class: `pick ${fits ? '' : 'pick--off'}`, type: 'button', 'data-key': `pick-${g.id}`, 'aria-pressed': String(on),
+          class: `pick ${fits ? '' : 'pick--off'} ${voting && g.id === room.game ? 'pick--current' : ''}`, type: 'button', 'data-key': `pick-${g.id}`, 'aria-pressed': String(on),
+          'aria-label': label, title: label,
           onclick: () => {
-            if (picking) this.send(C2S.GAME, { game: g.id });
+            if (voting) this.send(C2S.VOTE, g.id === myVote ? {} : { game: g.id });
+            else if (picking) this.send(C2S.GAME, { game: g.id });
             else {
               const next = on ? room.party.pool.filter((id) => id !== g.id) : [...room.party.pool, g.id];
               if (next.length) this.send(C2S.PARTY, { pool: next });
@@ -204,12 +239,20 @@ export class PartyUi {
         thumb(g.id, 'pick__thumb'),
         h('span', { class: 'pick__title' }, g.title),
         h('span', { class: 'pick__meta' }, why),
-        on ? h('span', { class: 'pick__check', 'aria-hidden': 'true' }, '✓') : null));
+        voting && g.id === room.game ? h('span', { class: 'pick__now' }, votesPick(room.party) ? 'Wint nu' : 'Gekozen') : null,
+        on ? h('span', { class: 'pick__check', 'aria-hidden': 'true' }, '✓') : null,
+        who.length ? h('span', { class: 'pick__votes', 'aria-hidden': 'true' },
+          ...who.map((p) => h('span', { class: 'player__chip player__chip--dot', dataset: { color: String(p.color) } })),
+          h('span', { class: 'pick__count' }, String(who.length))) : null));
     };
     const section = h('section', { id: 'game-grid', class: 'panel game-grid', 'aria-labelledby': 'grid-title' },
       h('div', { class: 'game-grid__head' },
-        h('h3', { id: 'grid-title', class: 'panel__title' }, picking ? 'Kies de volgende game' : 'Uit welke games mag de arcade kiezen?'),
-        picking ? null : h('div', { class: 'game-grid__bulk' },
+        h('h3', { id: 'grid-title', class: 'panel__title' },
+          voting ? 'Op welke game stem jij?' : picking ? 'Kies de volgende game' : 'Uit welke games mag de arcade kiezen?'),
+        voting ? h('p', { class: 'muted small game-grid__hint' }, votesPick(room.party)
+          ? 'De game met de meeste stemmen wordt gespeeld. Klik nog eens om je stem in te trekken.'
+          : 'De host ziet je stem en kiest de game.') : null,
+        picking || voting ? null : h('div', { class: 'game-grid__bulk' },
           h('button', { class: 'btn btn--small', type: 'button', 'data-key': 'pool-all', onclick: () => this.send(C2S.PARTY, { pool: games().map((g) => g.id) }) }, 'Alles'),
           h('button', {
             class: 'btn btn--small', type: 'button', 'data-key': 'pool-fit',

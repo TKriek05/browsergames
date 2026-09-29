@@ -1,12 +1,12 @@
 // Party lobby rules, shared by server (enforces) and client (explains):
-// which games fit the people in the room, random draws and tournament
-// scoring. Pure functions and plain data only.
+// which games fit the people in the room, random draws, votes and
+// tournament scoring. Pure functions and plain data only.
 import { CATALOG, getGame } from './catalog.js';
 
-export const PARTY_MODES = ['free', 'random', 'tournament'];
-export const PARTY_MODE_LABELS = { free: 'Vrije keuze', random: 'Willekeurig', tournament: 'Toernooi' };
+export const PARTY_MODES = ['free', 'vote', 'random', 'tournament'];
+export const PARTY_MODE_LABELS = { free: 'Vrije keuze', vote: 'Stemmen', random: 'Willekeurig', tournament: 'Toernooi' };
 export const TOURNAMENT_LENGTHS = [3, 5, 7, 10];
-export const TOURNAMENT_ORDERS = ['random', 'host'];
+export const TOURNAMENT_ORDERS = ['random', 'host', 'vote'];
 export const DEFAULT_PARTY = Object.freeze({ mode: 'free', order: 'random', length: 5 });
 
 export function availableGameIds() {
@@ -45,6 +45,41 @@ export function drawGame(pool, { humans = 1, bots = 0, exclude = [], rng = Math.
     return list[Math.floor(rng() * list.length)] ?? list[0];
   }
   return null;
+}
+
+// --- Votes ------------------------------------------------------------------------------
+// Does this party let the votes pick the next game (instead of the host or a draw)?
+export function votesPick(party) {
+  return party?.mode === 'vote' || (party?.mode === 'tournament' && party.order === 'vote');
+}
+
+// Does a random draw pick the next game?
+export function drawsPick(party) {
+  return party?.mode === 'random' || (party?.mode === 'tournament' && party.order === 'random');
+}
+
+// votes: [{ game, at }] (at = order of voting). Result: one entry per game,
+// most votes first; equal counts: the game that got its first vote earliest.
+export function tallyVotes(votes) {
+  const byGame = new Map();
+  for (const v of votes) {
+    if (!v?.game) continue;
+    const e = byGame.get(v.game) ?? { game: v.game, count: 0, first: Infinity };
+    e.count++;
+    e.first = Math.min(e.first, v.at ?? 0);
+    byGame.set(v.game, e);
+  }
+  return [...byGame.values()].sort((a, b) => b.count - a.count || a.first - b.first);
+}
+
+// The game the votes choose, or null without (valid) votes. The current game
+// stays when it shares the top spot, so a tie never flips back and forth.
+export function voteWinner(votes, current = null, ok = () => true) {
+  const list = tallyVotes(votes).filter((e) => ok(e.game));
+  if (!list.length) return null;
+  const top = list[0].count;
+  if (current && list.some((e) => e.game === current && e.count === top)) return current;
+  return list[0].game;
 }
 
 // --- Tournament -----------------------------------------------------------------------

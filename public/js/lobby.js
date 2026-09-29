@@ -118,7 +118,7 @@ export class Lobby {
       h('h3', { id: 'settings-title', class: 'panel__title' }, room.party.mode === 'free' ? 'Game' : 'Volgende game'),
       this.party.modeControls(room, isHost),
       this.party.gameCard(room),
-      isHost ? this.party.gameTools(room) : null,
+      this.party.gameTools(room, isHost),
       h('h4', { class: 'panel__subtitle' }, 'Instellingen'));
     if (!game.settings.length) settingsPanel.append(h('p', { class: 'muted small' }, 'Deze game heeft geen instellingen.'));
     for (const s of game.settings) {

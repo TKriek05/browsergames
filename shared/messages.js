@@ -21,6 +21,7 @@ export const C2S = Object.freeze({
   GAME: 'game', // host picks the next game: { game }
   PARTY: 'party', // host sets the party mode: { mode?, order?, length?, pool?, restart? }
   DRAW: 'draw', // host asks for another random game
+  VOTE: 'vote', // anyone votes for the next game: { game? } (no game = take the vote back)
   START: 'start',
   TO_LOBBY: 'toLobby',
   INPUT: 'input', // turn-based moves etc: { data: {...} }

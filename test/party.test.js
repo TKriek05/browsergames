@@ -7,6 +7,7 @@ import { ERR } from '../shared/messages.js';
 import { getGame } from '../shared/catalog.js';
 import {
   drawGame, gameFits, cleanPool, newTournament, scoreGame, champions, tournamentView, availableGameIds,
+  tallyVotes, voteWinner, votesPick, drawsPick,
 } from '../shared/party.js';
 import { checkCanStart } from '../shared/lobbyrules.js';
 import { createRng } from '../shared/rng.js';
@@ -68,6 +69,21 @@ test('tournament scoring: wins first, placement points break ties, a draw has no
   scoreGame(even, 'tanks', results('a', 'b'));
   scoreGame(even, 'snake', results('b', 'a'));
   assert.deepEqual(champions(even.standings).map((s) => s.id), ['a', 'b'], 'same wins and points: shared title');
+});
+
+test('votes: most votes win, the earliest supported game breaks a tie, the current game stays on a tie', () => {
+  const v = (game, at) => ({ game, at });
+  assert.deepEqual(tallyVotes([v('tag', 3), v('chess', 1), v('tag', 4), v(null, 5)]).map((e) => [e.game, e.count]), [['tag', 2], ['chess', 1]]);
+  assert.equal(voteWinner([]), null);
+  assert.equal(voteWinner([v('tag', 2), v('chess', 1)]), 'chess', 'tie: first vote earliest');
+  assert.equal(voteWinner([v('tag', 2), v('chess', 1)], 'tag'), 'tag', 'tie with the current game: no flip');
+  assert.equal(voteWinner([v('tag', 2), v('tag', 3), v('chess', 1)], 'chess'), 'tag');
+  assert.equal(voteWinner([v('chess', 1), v('chess', 2), v('tag', 3)], null, (id) => id !== 'chess'), 'tag', 'games that do not fit are skipped');
+  assert.equal(votesPick({ mode: 'vote' }), true);
+  assert.equal(votesPick({ mode: 'tournament', order: 'vote' }), true);
+  assert.equal(votesPick({ mode: 'free' }), false);
+  assert.equal(drawsPick({ mode: 'tournament', order: 'random' }), true);
+  assert.equal(drawsPick({ mode: 'vote' }), false);
 });
 
 test('checkCanStart blocks a finished tournament', () => {
@@ -274,6 +290,71 @@ test('random mode draws a new game after each finished one; the pool is respecte
   assert.notEqual(room.game, first);
   assert.equal(room.results.game, first, 'results say which game they belong to');
   host.close();
+});
+
+test('everyone can vote: advice in free mode, the leading game is picked in vote mode', async () => {
+  const host = await createRoom(server, 'Host', 'tag');
+  const guest = await joinRoom(server, host.code, 'Gast');
+  const third = await joinRoom(server, host.code, 'Derde');
+
+  // Free mode: votes are visible, the host still decides.
+  guest.send('vote', { game: 'snake' });
+  let room = await roomWhere(host, (r) => r.players.find((p) => p.id === guest.id)?.vote === 'snake');
+  assert.equal(room.players.find((p) => p.id === guest.id).vote, 'snake');
+  assert.equal(room.game, 'tag');
+
+  // Vote mode: the votes carry over and decide right away; the host can no longer pick.
+  host.send('party', { mode: 'vote' });
+  room = await roomWhere(host, (r) => r.party.mode === 'vote' && r.game === 'snake');
+  assert.equal(room.game, 'snake');
+  host.send('game', { game: 'chess' });
+  host.send('draw');
+  third.send('vote', { game: 'tanks' }); // 1-1 tie: snake stays (it is the current game)
+  room = await roomWhere(host, (r) => r.players.find((p) => p.id === third.id)?.vote === 'tanks');
+  assert.equal(room.game, 'snake');
+  host.send('vote', { game: 'tanks' });
+  room = await roomWhere(host, (r) => r.game === 'tanks');
+  assert.equal(room.game, 'tanks', 'two votes beat one');
+
+  // Taking a vote back and leaving both count.
+  host.send('vote', {});
+  guest.send('vote', { game: 'chess' }); // chess seats two, three people want to play: ignored
+  room = await roomWhere(host, (r) => r.players.find((p) => p.id === guest.id)?.vote === 'chess');
+  assert.equal(room.game, 'tanks');
+  guest.send('vote', { game: 'snake' });
+  host.send('vote', { game: 'snake' });
+  room = await roomWhere(host, (r) => r.game === 'snake');
+  third.send('vote', { game: 'kartrace' });
+  guest.send('leave'); // snake 1, kartrace 1: the current game stays
+  room = await roomWhere(host, (r) => !r.players.some((p) => p.id === guest.id));
+  assert.equal(room.game, 'snake');
+  host.send('vote', {});
+  room = await roomWhere(host, (r) => r.game === 'kartrace');
+  assert.equal(room.game, 'kartrace', 'only the kartrace vote is left');
+
+  // Votes reset when a game starts.
+  third.send('ready', { ready: true });
+  await roomWhere(host, (x) => x.players.find((p) => p.id === third.id)?.ready);
+  const r = serverRoom(host.code);
+  r.start(null);
+  assert.equal(r.state, 'playing');
+  r.endGame(null, 'aborted');
+  room = await roomWhere(host, (x) => x.state === 'lobby' && x.players.every((p) => !p.vote));
+  assert.ok(room.players.every((p) => !p.vote));
+  for (const c of [host, guest, third]) c.close();
+});
+
+test('random draws ignore votes; bad votes are rejected', async () => {
+  const host = await createParty('Host', 'random');
+  const guest = await joinRoom(server, host.code, 'Gast');
+  guest.send('vote', { game: 'tag' });
+  guest.send('vote', { game: 'nope' });
+  guest.send('vote', { game: 42 });
+  guest.send('ready', { ready: true });
+  const room = await roomWhere(host, (r) => r.players.find((p) => p.id === guest.id)?.ready);
+  assert.equal(room.players.find((p) => p.id === guest.id).vote, null);
+  host.close();
+  guest.close();
 });
 
 test('party messages are validated', async () => {

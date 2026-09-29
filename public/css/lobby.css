@@ -99,6 +99,7 @@
   flex: 1 1 auto; min-height: 40px; padding: 0.3em 0.9em; cursor: pointer;
   background: transparent; border: 0; border-radius: 9px; color: var(--muted); font-weight: 650;
 }
+.seg--grid { display: grid; grid-template-columns: 1fr 1fr; }
 .seg__btn:hover { color: var(--text); }
 .seg__btn[aria-pressed="true"] { background: var(--pink); color: #14001a; }
 .party-mode { display: grid; gap: 8px; margin-bottom: 14px; }
@@ -139,6 +140,11 @@
 .pick:hover { border-color: var(--cyan); transform: translateY(-2px); }
 .pick[aria-pressed="true"] { border-color: var(--pink); box-shadow: var(--glow-pink); }
 .pick--off { opacity: 0.55; }
+.pick--current { border-color: var(--yellow); }
+.pick__now {
+  justify-self: stretch; text-align: center; font-size: 0.72rem; font-weight: 800; color: #14001a;
+  background: var(--yellow); border-radius: 4px; padding: 1px 4px;
+}
 .pick__thumb { width: 100%; aspect-ratio: 3 / 2; height: auto; border-radius: 4px; image-rendering: pixelated; image-rendering: crisp-edges; }
 .pick__title { font-weight: 700; font-size: 0.92rem; line-height: 1.2; }
 .pick__meta { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
@@ -146,6 +152,15 @@
   position: absolute; top: 4px; right: 4px; display: grid; place-items: center;
   width: 24px; height: 24px; border-radius: 50%; background: var(--pink); color: #14001a; font-weight: 900;
 }
+.pick__votes {
+  position: absolute; top: 4px; left: 4px; display: flex; align-items: center; gap: 3px;
+  padding: 3px 7px 3px 5px; border-radius: 999px; background: rgba(10, 10, 22, 0.82); border: 1px solid var(--line);
+}
+.player__chip--dot { width: 10px; height: 10px; border-radius: 50%; border-width: 1px; box-shadow: none; }
+.pick__count { margin-left: 2px; font-family: var(--mono); font-size: 0.78rem; font-weight: 800; color: var(--yellow); }
+.gamecard__votes { display: flex; flex-wrap: wrap; column-gap: 4px; }
+.vote-tag.is-current { color: var(--yellow); font-weight: 700; }
+.game-grid__hint { flex-basis: 100%; margin: 0; }
 
 .panel--tournament { border-color: var(--pink); }
 .champion {

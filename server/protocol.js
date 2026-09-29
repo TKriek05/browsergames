@@ -71,6 +71,7 @@ const SCHEMAS = {
     restart: optional(bool()),
   },
   [C2S.DRAW]: {},
+  [C2S.VOTE]: { game: optional(gameId()) },
   [C2S.START]: {},
   [C2S.TO_LOBBY]: {},
   [C2S.INPUT]: { data: data() },
@@ -82,7 +83,7 @@ const SCHEMAS = {
 export const LOBBY_TYPES = new Set([
   C2S.CREATE, C2S.JOIN, C2S.READY, C2S.NAME, C2S.COLOR, C2S.ROLE, C2S.SETTINGS,
   C2S.ADD_BOT, C2S.REMOVE_BOT, C2S.BOT_LEVEL, C2S.FILL_BOTS, C2S.KICK, C2S.START, C2S.TO_LOBBY,
-  C2S.GAME, C2S.PARTY, C2S.DRAW,
+  C2S.GAME, C2S.PARTY, C2S.DRAW, C2S.VOTE,
 ]);
 
 // Result: { ok: true, msg } | { ok: false, reason, version? }

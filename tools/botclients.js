@@ -7,11 +7,13 @@
 //   node tools/botclients.js --rooms 5 --duration 60
 //   node tools/botclients.js --chaos
 //   node tools/botclients.js --party --clients 2 --duration 90   # random party: a new game every few seconds
+//   node tools/botclients.js --vote --clients 3 --duration 90    # vote party: everyone votes, the votes switch games
 //   node tools/botclients.js --url wss://games.tkriek.dev/ws --origin https://games.tkriek.dev
 import WebSocket from 'ws';
 import { PROTOCOL_VERSION } from '../shared/constants.js';
 import { C2S, S2C, BIN, ERR } from '../shared/messages.js';
 import { ByteWriter, encodeInput } from '../shared/binary.js';
+import { availableGameIds } from '../shared/party.js';
 
 // --- CLI arguments -----------------------------------------------------------------
 const args = Object.fromEntries(
@@ -27,7 +29,9 @@ const ROOMS = Number(args.rooms ?? 1);
 const GAME = args.game ?? 'tag';
 const DURATION_S = Number(args.duration ?? 20);
 const CHAOS = !!args.chaos;
-const PARTY = !!args.party; // random party lobby: the host stops each game after --switch seconds and draws another
+const VOTE = !!args.vote; // vote party lobby: every client votes for a random game in the lobby
+const PARTY = !!args.party || VOTE; // random party lobby: the host stops each game after --switch seconds and draws another
+const GAME_IDS = availableGameIds();
 const SWITCH_S = Number(args.switch ?? 6);
 const JOIN_CODE = typeof args.room === 'string' ? args.room.toUpperCase() : null;
 
@@ -180,7 +184,7 @@ async function runRoom(index) {
   if (JOIN_CODE) {
     for (const c of clients) c.send(C2S.JOIN, { code: JOIN_CODE, name: c.name });
   } else {
-    host.send(C2S.CREATE, PARTY ? { name: host.name, mode: 'random' } : { game: GAME, name: host.name });
+    host.send(C2S.CREATE, PARTY ? { name: host.name, mode: VOTE ? 'vote' : 'random' } : { game: GAME, name: host.name });
     await host.waitFor((m) => m.t === S2C.JOINED);
     for (const c of clients.slice(1)) {
       c.send(C2S.JOIN, { code: host.code, name: c.name });
@@ -220,7 +224,13 @@ function partyStep(clients) {
       const p = room.players.find((x) => x.id === c.me);
       if (p && p.role === 'player' && !p.ready && c !== host) c.send(C2S.READY, { ready: true });
     }
-    if (Math.random() < 0.5) host.send(C2S.DRAW);
+    if (VOTE) {
+      // Change a few votes (sometimes take one back), then start now and then.
+      for (const c of clients) {
+        if (Math.random() < 0.4) c.send(C2S.VOTE, Math.random() < 0.15 ? {} : { game: GAME_IDS[Math.floor(Math.random() * GAME_IDS.length)] });
+      }
+      if (Math.random() < 0.3) host.send(C2S.START);
+    } else if (Math.random() < 0.5) host.send(C2S.DRAW);
     else host.send(C2S.START);
   } else if (room.state === 'playing' && host.startedAt && Date.now() - host.startedAt > SWITCH_S * 1000) {
     host.startedAt = 0;

@@ -7,7 +7,7 @@ build-stap, geen database, geen accounts, geen tracking.
 - **Frontend:** vanilla JavaScript (ES modules), HTML, CSS, Canvas
 - **Backend:** Node.js (LTS, ≥ 22) met precies één dependency: [`ws`](https://github.com/websockets/ws)
 - **Status:** 29 spellen (bordspellen, kaartspel, quiz, realtime arcade en zes games in 3D), allemaal met bots,
-  plus een **party-lobby**: de host kiest de games, of laat de arcade kiezen, of speelt een toernooi.
+  plus een **party-lobby**: de host kiest de games, iedereen stemt, de arcade kiest, of je speelt een toernooi.
 
 > **Nieuw hier of code nog niet op GitHub?** Volg eerst [docs/SETUP.md](docs/SETUP.md):
 > repo vullen, branches, automatische tests en de weg van repo naar server.
@@ -44,6 +44,7 @@ npm run bots                               # 6 nep-clients, 1 kamer, 20 s (serve
 node tools/botclients.js --chaos           # + wegvallen/terugkomen, host vertrekt, rommel sturen, kamer overvol
 node tools/botclients.js --rooms 8 --duration 60
 node tools/botclients.js --party --clients 2 --duration 120   # party-lobby: wisselt steeds van game (rooktest voor álle games)
+node tools/botclients.js --vote --clients 3 --duration 60     # stem-lobby: iedereen stemt, de stemmen wisselen de game
 ```
 
 Veel kamers vanaf één IP? Start de server dan met ruimere limieten:
@@ -54,18 +55,20 @@ Veel kamers vanaf één IP? Start de server dan met ruimere limieten:
 ## Party-lobby
 
 Een kamer zit niet vast aan één game. In de lobby kiest de host de volgende game uit een raster met
-alle spellen (spellen die niet bij het aantal spelers passen staan grijs). Er zijn drie party-modi:
+alle spellen (spellen die niet bij het aantal spelers passen staan grijs). Iedereen kan met **Stem op een game**
+laten weten wat hij wil spelen; de stemmen staan als gekleurde stipjes op de kaarten. Er zijn vier party-modi:
 
 | Modus | Hoe het werkt |
 |-------|---------------|
-| **Vrije keuze** | De host kiest elke keer zelf de game (of drukt op *Verras ons*). |
+| **Vrije keuze** | De host kiest elke keer zelf de game (of drukt op *Verras ons*). De stemmen zijn een advies. |
+| **Stemmen** | De game met de meeste stemmen wordt meteen gekozen. Gelijke stand: de huidige game blijft, anders wint de game die als eerste een stem kreeg. Games met te weinig plekken tellen niet. Na elke start begint het stemmen opnieuw. |
 | **Willekeurig** | Na elke game trekt de arcade een nieuwe game (met een korte roulette), uit de games die de host heeft aangevinkt en die bij de groep passen. |
-| **Toernooi** | Een reeks van 3, 5, 7 of 10 games. Elke gewonnen game telt; bij gelijke stand beslissen de plaatspunten. De volgende game kiest de host, of het toeval (zonder herhalingen). |
+| **Toernooi** | Een reeks van 3, 5, 7 of 10 games. Elke gewonnen game telt; bij gelijke stand beslissen de plaatspunten. De volgende game kiest de host, het toeval (zonder herhalingen) of de stemmen. |
 
 - Bots die bij een kleinere game niet passen, gaan **op de bank** en komen terug bij een grotere game.
 - Wie geen plek heeft, kijkt mee en krijgt de eerstvolgende vrije plek.
 - Bordspellen gaan in een party vanzelf terug naar de lobby na één potje; instellingen per game worden onthouden.
-- Maak een party-lobby met de knoppen **Party-lobby**, **Willekeurig** of **Toernooi** bovenaan de startpagina.
+- Maak een party-lobby met de knoppen **Party-lobby**, **Stemmen**, **Willekeurig** of **Toernooi** bovenaan de startpagina.
   *Maak kamer* bij een game kan ook: daarna kun je in de lobby gewoon van game wisselen.
 
 ## Spellen
@@ -119,7 +122,7 @@ public/            alles wat de browser krijgt
   js/core/         net, session, input, touch, audio, storage, loop, canvas, interp, predict, qr, ui, pixelfont, fx
   js/gl/           eigen WebGL-mini-engine voor de 3D-games (mesh, renderer, mat4, particles)
   js/lobby.js      gedeelde lobby
-  js/party.js      party-deel van de lobby: gamekiezer, roulette, party-modus, toernooistand
+  js/party.js      party-deel van de lobby: gamekiezer, stemmen, roulette, party-modus, toernooistand
   js/hub.js        startpagina + wisselen tussen hub/lobby/spel
   games/<id>/      client-kant per game (common/arcade.js = gedeelde client-basis)
 tools/botclients.js  stresstest

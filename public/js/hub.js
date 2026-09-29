@@ -306,6 +306,10 @@ function renderHub() {
     lobby.party.openOnJoin = 'pick'; // the host starts by choosing a game
     createRoom(null, false, 'free');
   });
+  $('#party-vote').addEventListener('click', () => {
+    lobby.party.openOnJoin = 'vote';
+    createRoom(null, false, 'vote');
+  });
   $('#party-random').addEventListener('click', () => createRoom(null, false, 'random'));
   $('#party-tournament').addEventListener('click', () => createRoom(null, false, 'tournament'));
 

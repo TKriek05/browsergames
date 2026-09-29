@@ -4,17 +4,15 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { MAX_PEOPLE_PER_ROOM, PLAYER_COLORS, SNAPSHOT_RATE } from '../shared/constants.js';
 import { S2C, ERR, CLOSE, C2S } from '../shared/messages.js';
-import { getGame } from '../shared/catalog.js';
 import { normalizeSettings } from '../shared/settings.js';
 import { checkCanStart } from '../shared/lobbyrules.js';
-import {
-  DEFAULT_PARTY, availableGameIds, cleanPool, drawGame, newTournament, scoreGame, champions, tournamentView,
-} from '../shared/party.js';
+import { DEFAULT_PARTY, availableGameIds, tournamentView } from '../shared/party.js';
 import { sanitizeName, defaultName, BOT_NAMES } from '../shared/names.js';
 import { decodeInput } from '../shared/binary.js';
 import { encode } from './protocol.js';
 import { serverNow } from './clock.js';
 import { GameLoop } from './gameloop.js';
+import { partyMethods } from './room-party.js';
 
 const newToken = () => randomBytes(18).toString('base64url'); // 24 chars
 
@@ -38,9 +36,11 @@ export class Room {
     this.settings = {};
     this.lastResults = null;
     this.nextPlayerNum = 1;
-    // Party lobby: the host picks games (free), the server draws them (random)
-    // or a series of games is played for the most wins (tournament).
+    // Party lobby: the host picks games (free), everyone votes (vote), the
+    // server draws them (random) or a series of games is played for the most
+    // wins (tournament). Methods in room-party.js.
     this.party = { ...DEFAULT_PARTY, pool: availableGameIds(), draws: 0, tournament: null, recent: [] };
+    this.voteSeq = 0;
     this.benched = []; // bots moved off the field for a smaller game: { name, botLevel }
     this._useGame(gameId);
 
@@ -125,6 +125,8 @@ export class Room {
       connected: false,
       disconnectedAt: 0,
       joinedAt: Date.now(),
+      vote: null, // game this person wants to play next
+      votedAt: 0,
     };
   }
 
@@ -235,6 +237,7 @@ export class Room {
     if (this.game && player.role === 'player') this.game.onLeave?.(player);
     if (player.id === this.hostId) this._migrateHost();
     if (this.connectedHumans().length === 0 && !this.emptySince) this.emptySince = Date.now();
+    if (player.vote) this._applyVotes();
     this.markDirty();
   }
 
@@ -327,13 +330,16 @@ export class Room {
         break;
       }
       case C2S.GAME:
-        if (hostOnly()) this.selectGame(msg.game);
+        if (hostOnly() && !this._votePicks()) this.selectGame(msg.game);
+        break;
+      case C2S.VOTE:
+        this.vote(player, msg.game);
         break;
       case C2S.PARTY:
         if (hostOnly()) this.setParty(msg);
         break;
       case C2S.DRAW:
-        if (hostOnly()) this.drawNext();
+        if (hostOnly() && !this._votePicks()) this.drawNext();
         break;
       case C2S.START:
         if (hostOnly()) this.start(player);
@@ -439,132 +445,6 @@ export class Room {
   }
 
   // ---------------------------------------------------------------------------
-  // Party lobby: switching games, random draws, tournaments
-  // ---------------------------------------------------------------------------
-  _useGame(gameId) {
-    if (this.gameId) this.settingsByGame.set(this.gameId, this.settings);
-    this.gameId = gameId;
-    this.meta = getGame(gameId);
-    this.module = this.registry.get(gameId);
-    this.settings = normalizeSettings(gameId, this.settingsByGame.get(gameId) ?? {});
-  }
-
-  // The host (or a random draw) picks the next game. Lobby only.
-  selectGame(gameId) {
-    if (this.state !== 'lobby') return false;
-    if (!getGame(gameId)?.available || !this.registry.get(gameId)) return false;
-    if (gameId !== this.gameId) {
-      this._useGame(gameId);
-      this._fitSeats();
-    }
-    this.markDirty();
-    return true;
-  }
-
-  // Board games in a random or tournament party go back to the lobby by
-  // themselves after one match, so the party keeps flowing.
-  get autoReturn() {
-    return this.party.mode !== 'free';
-  }
-
-  _randomPicks() {
-    const { mode, order } = this.party;
-    return mode === 'random' || (mode === 'tournament' && order === 'random');
-  }
-
-  // People who want to play (not watching by choice) and the bots.
-  headcount() {
-    let humans = 0;
-    let bots = 0;
-    for (const p of this.players) {
-      if (p.isBot) bots++;
-      else if (p.wantsToPlay) humans++;
-    }
-    return { humans, bots };
-  }
-
-  // After a game switch. Short of seats: bots go to the bench first, then the
-  // latest joiners watch (they keep wanting to play). Free seats go to those
-  // spectators first, then to benched bots.
-  _fitSeats() {
-    if (!this.meta.bots) for (const bot of this.players.filter((p) => p.isBot)) this._bench(bot);
-    while (this.seated.length > this.meta.max) {
-      const bot = [...this.seated].reverse().find((p) => p.isBot);
-      if (bot) {
-        this._bench(bot);
-        continue;
-      }
-      const humans = this.seated.filter((p) => p.id !== this.hostId).sort((a, b) => b.joinedAt - a.joinedAt);
-      const out = humans[0] ?? this.seated[this.seated.length - 1];
-      out.role = 'spectator';
-      out.ready = false;
-    }
-    const waiting = this.players.filter((p) => p.role === 'spectator' && p.wantsToPlay).sort((a, b) => a.joinedAt - b.joinedAt);
-    for (const p of waiting) {
-      if (this.seated.length >= this.meta.max) break;
-      p.role = 'player';
-    }
-    while (this.benched.length && this.meta.bots && this.seated.length < this.meta.max && this.players.length < MAX_PEOPLE_PER_ROOM) {
-      const b = this.benched.shift();
-      this._addBotPlayer(b.name, b.botLevel);
-    }
-  }
-
-  _bench(bot) {
-    this.benched.push({ name: bot.name, botLevel: bot.botLevel });
-    this._remove(bot);
-  }
-
-  // Host changes the party mode, tournament length/order or the random pool.
-  setParty({ mode, order, length, pool, restart = false }) {
-    if (this.state !== 'lobby') return;
-    const p = this.party;
-    const wasRandom = this._randomPicks();
-    const modeChanged = mode !== undefined && mode !== p.mode;
-    if (mode) p.mode = mode;
-    if (order) p.order = order;
-    if (length) p.length = length;
-    if (pool) p.pool = cleanPool(pool) ?? p.pool;
-
-    if (p.mode !== 'tournament') p.tournament = null;
-    else if (!p.tournament || modeChanged || restart) p.tournament = newTournament(p.length);
-    else {
-      // A longer or shorter series keeps the scores so far.
-      p.tournament.length = p.length;
-      p.tournament.done = p.tournament.played >= p.length;
-    }
-    const isRandom = this._randomPicks();
-    if (isRandom && (!wasRandom || restart || !p.pool.includes(this.gameId))) this.drawNext();
-    this.markDirty();
-  }
-
-  // A random game from the pool that suits the group; in a tournament the
-  // games played so far come last, otherwise the recent ones.
-  drawNext() {
-    if (this.state !== 'lobby') return false;
-    const t = this.party.tournament;
-    const exclude = [this.gameId, ...(t ? t.games.map((g) => g.game) : this.party.recent)];
-    const id = drawGame(this.party.pool, { ...this.headcount(), exclude });
-    if (!id || !this.selectGame(id)) return false;
-    this.party.draws++;
-    return true;
-  }
-
-  _afterPartyGame(results) {
-    const p = this.party;
-    p.recent = [this.gameId, ...p.recent.filter((id) => id !== this.gameId)].slice(0, 4);
-    const t = p.tournament;
-    if (p.mode === 'tournament' && t && !t.done) {
-      scoreGame(t, this.gameId, results);
-      if (t.done) {
-        const names = champions(t.standings).map((s) => s.name);
-        if (names.length) this.notice(names.length > 1 ? `🏆 ${names.join(' en ')} winnen samen het toernooi!` : `🏆 ${names[0]} wint het toernooi!`);
-      }
-    }
-    if (this._randomPicks() && !t?.done) this.drawNext();
-  }
-
-  // ---------------------------------------------------------------------------
   // Game lifecycle
   // ---------------------------------------------------------------------------
   start(by) {
@@ -573,6 +453,7 @@ export class Room {
 
     this.state = 'playing';
     this.lastResults = null;
+    this._clearVotes(); // a fresh vote for the game after this one
     this.game = this.module.create(this, { ...this.settings });
     this.loop.start();
     this.broadcast(S2C.START, this.startPayload());
@@ -674,6 +555,7 @@ export class Room {
         wants: p.wantsToPlay, // a spectator with wants=true is waiting for a seat
         bot: p.isBot ? p.botLevel : null,
         connected: p.isBot || p.connected,
+        vote: p.vote,
       })),
     };
   }
@@ -692,3 +574,5 @@ export class Room {
     this.players = [];
   }
 }
+
+Object.defineProperties(Room.prototype, Object.getOwnPropertyDescriptors(partyMethods));
