@@ -204,16 +204,17 @@ export class MeshBuilder {
     return this;
   }
 
-  // Vertical double-sided wall along a polyline of [x, z] points.
+  // Vertical double-sided wall along a polyline of [x, z] points (or
+  // [x, z, base]: then the wall follows that base height, e.g. up a hill).
   wall(points, y, h, closed = false, colorFn = null) {
     const n = points.length;
     const segs = closed ? n : n - 1;
     const keep = this.c;
     for (let i = 0; i < segs; i++) {
-      const [ax, az] = points[i];
-      const [bx, bz] = points[(i + 1) % n];
+      const [ax, az, ay = y] = points[i];
+      const [bx, bz, by = y] = points[(i + 1) % n];
       if (colorFn) this.c = rgb(colorFn(i));
-      const quad = [[ax, y, az], [bx, y, bz], [bx, y + h, bz], [ax, y + h, az]];
+      const quad = [[ax, ay, az], [bx, by, bz], [bx, by + h, bz], [ax, ay + h, az]];
       const px = -(bz - az);
       const pz = bx - ax;
       this.face(quad, [px, 0, pz]);

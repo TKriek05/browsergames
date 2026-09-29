@@ -127,6 +127,19 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 - **Pinguïnbotsen** (`penguins`) en **Hapvis** (`fish`): voorspelde eigen beweging, botsen/opeten alleen op de server.
   Hapvis-plankton staat op vaste plekken uit de seed; de snapshot stuurt alleen een bitmasker.
 - Pesten: `shared/rules/pesten.js` + `server/ai/pesten.js`; kaarten als vectorvormen in `public/games/pesten/cards.js`.
+
+## Turbo Kart GP
+
+- Banen in `shared/maps/kart-tracks.js`: spline + optioneel hoogteprofiel `heights: [[fractie, hoogte], …]`. Regels (getest):
+  delen van de baan blijven ver uit elkaar, geen bocht krapper dan de muurafstand, start/finish vlak op hoogte 0,
+  helling ≤ `MAX_SLOPE`. Grand Prix = `KART_CUPS` (`gp`, `gphills`).
+- `trackQuery` geeft de échte afstand tot de middenlijn (`lateral`, richting `ox/oy`), plus hoogte `h` en `slope`.
+  De fysica gebruikt de helling (bergop trager, bergaf sneller) en duwt terug langs `-o`; een schampende botsing kost
+  weinig en draait je langs de muur, frontaal kost veel en stuitert terug. `clampToTrack` na het botsen van karts.
+- Items staan in `server/games/kartrace-items.js`. Raakdetectie langs het hele pad dat een kart die tick reed
+  (`k.px/k.py` → nu), zodat snelle karts of meerdere inputs per tick niet over olie heen springen. Olie is pas
+  actief voor de eigenaar als die ervan weg is. Turbo ×3 → ×2 → ×1 zit in de gedeelde fysica (voorspeld).
+- 3D: alles op wegdek-hoogte (`groundAt`), kart kantelt mee (`climb`); taluds en berm op heuvelbanen in `world.js`.
 - Input onthoudt korte tikken tussen twee ticks (`Input.tapped`), zodat een snelle spatie niet wegvalt.
 - Neon Tikkertje power-ups: definities in `shared/games/tag-powers.js` (rol `it`/`run`/`any`, id = index = wire-waarde),
   serverlogica in `server/games/tag-powers.js` (bollen, effecten, bots). Turbo/traag (`boost`/`slow`) zitten in de gedeelde
@@ -169,7 +182,7 @@ clientmodule, tests.
 1. Bordspellen: boter-kaas-en-eieren, vier op een rij, dammen, reversi, schaken, Erger je niet!, ganzenbord, zeeslag ✅
 2. Kwek Kwek Knal (eenden schieten, lag compensation) ✅
 3. Tank Tumult (tanks in 3D) ✅
-4. Turbo Kart GP (3D-kartrace met eigen WebGL-engine) ✅
+4. Turbo Kart GP (3D-kartrace) ✅
 5. Extra's: Slangenstrijd, Paddle Party, Stenenbreker, Boemstad (3D), Spookjesdoolhof, Blokval, Minigolf (3D),
    Onthoud 'm, Mijnenveger, Ruimtegolf, Rotsregen ✅
 6. Party-update: party-lobby (vrije keuze, willekeurig, toernooi), Spetterveld (3D-shooter), Pesten, Quizkoorts,

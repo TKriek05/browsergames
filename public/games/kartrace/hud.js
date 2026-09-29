@@ -55,6 +55,12 @@ export function createKartHud(view) {
       drawText(ctx, `${m}:${s.toFixed(1).padStart(4, '0').replace('.', ',')}`, W - 6, 6, { color: '#ffffff', scale: 2, align: 'right', shadow: SHADOW });
     },
 
+    // A white flash over the whole screen (lightning), k = 1 → 0.
+    flash(k) {
+      ctx.fillStyle = `rgba(255, 252, 220, ${Math.max(0, Math.min(1, k)) * 0.7})`;
+      ctx.fillRect(0, 0, W, H);
+    },
+
     // item: ITEM.*; roll: 0..1 while the roulette spins.
     item(item, roll) {
       const x = W / 2 - 13;
@@ -65,7 +71,7 @@ export function createKartHud(view) {
       ctx.strokeStyle = 'rgba(255,255,255,0.85)';
       ctx.lineWidth = 1.2;
       ctx.stroke();
-      const shown = roll > 0 ? 1 + (Math.floor(performance.now() / 70) % 4) : item;
+      const shown = roll > 0 ? ROULETTE[Math.floor(performance.now() / 70) % ROULETTE.length] : item;
       if (shown) icon(ctx, shown, x + 13, y + 13);
     },
 
@@ -151,6 +157,19 @@ export function createKartHud(view) {
   };
 }
 
+const ROULETTE = [ITEM.TURBO, ITEM.ORB, ITEM.OIL, ITEM.SHIELD, ITEM.ROCKET, ITEM.BOMB, ITEM.LIGHTNING, ITEM.STAR];
+
+function star(ctx, cx, cy, r) {
+  ctx.beginPath();
+  for (let k = 0; k < 10; k++) {
+    const a = -Math.PI / 2 + (k * Math.PI) / 5;
+    const rr = k % 2 ? r * 0.45 : r;
+    if (k) ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+    else ctx.moveTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+  }
+  ctx.closePath();
+}
+
 function icon(ctx, item, cx, cy) {
   const color = ITEMS[item]?.color ?? '#ffffff';
   ctx.save();
@@ -160,6 +179,8 @@ function icon(ctx, item, cx, cy) {
   ctx.lineJoin = 'round';
   switch (item) {
     case ITEM.TURBO: // double chevron
+    case ITEM.TURBO2:
+    case ITEM.TURBO3:
       ctx.lineWidth = 2.4;
       ctx.beginPath();
       for (const dx of [-4, 2]) {
@@ -167,6 +188,74 @@ function icon(ctx, item, cx, cy) {
         ctx.lineTo(cx + dx + 3, cy);
         ctx.lineTo(cx + dx - 2, cy + 5);
       }
+      ctx.stroke();
+      if (item !== ITEM.TURBO) {
+        // How many are left, in a little badge.
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(cx + 7, cy + 7, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#1c1c24';
+        ctx.font = 'bold 7px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(item === ITEM.TURBO3 ? '3' : '2', cx + 7, cy + 7.5);
+      }
+      break;
+    case ITEM.ROCKET: // a rocket pointing up and right
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(-Math.PI / 4);
+      ctx.beginPath();
+      ctx.moveTo(8, 0);
+      ctx.lineTo(3, -3);
+      ctx.lineTo(-5, -3);
+      ctx.lineTo(-5, 3);
+      ctx.lineTo(3, 3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#f4f4f4';
+      ctx.fillRect(-7, -5, 3, 3);
+      ctx.fillRect(-7, 2, 3, 3);
+      ctx.fillStyle = '#ffb020';
+      ctx.fillRect(-9, -1.5, 3, 3);
+      ctx.restore();
+      break;
+    case ITEM.LIGHTNING:
+      ctx.beginPath();
+      ctx.moveTo(cx + 2, cy - 8);
+      ctx.lineTo(cx - 5, cy + 1);
+      ctx.lineTo(cx - 0.5, cy + 1);
+      ctx.lineTo(cx - 2, cy + 8);
+      ctx.lineTo(cx + 5, cy - 1.5);
+      ctx.lineTo(cx + 0.5, cy - 1.5);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case ITEM.BOMB:
+      ctx.beginPath();
+      ctx.arc(cx - 1, cy + 1.5, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.beginPath();
+      ctx.arc(cx - 3, cy - 0.5, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#c8a070';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(cx + 3, cy - 3);
+      ctx.quadraticCurveTo(cx + 5, cy - 7, cx + 7, cy - 6);
+      ctx.stroke();
+      ctx.fillStyle = '#ffd23e';
+      ctx.beginPath();
+      ctx.arc(cx + 7, cy - 6.5, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case ITEM.STAR:
+      star(ctx, cx, cy + 0.5, 8);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.lineWidth = 1;
       ctx.stroke();
       break;
     case ITEM.ORB: {

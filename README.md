@@ -95,7 +95,7 @@ In het spel zet 🎵 de muziek aan/uit (onthouden in de browser); 🔊 dempt all
 | Erger je niet! | 2-4 | Geïnspireerd op mens-erger-je-niet, eigen naam |
 | Ganzenbord | 2-6 | Klassieke vakjes: ganzen, brug, herberg, put, doolhof, gevangenis, dood |
 | Zeeslag | 2 | Verborgen vloot per speler, slimme bot met kansenkaart |
-| Turbo Kart GP | 1-6 | 3D-racer met achtervolgcamera, drift + mini-turbo, boost-pads, items (turbo, stuiterbal, olievlek, schild), 3 circuits (Groene Vallei, Herfstbos, Strandboulevard) of een Grand Prix met punten |
+| Turbo Kart GP | 1-6 | 3D-racer met achtervolgcamera, drift + mini-turbo, boost-pads, 9 items (turbo, turbo ×3, stuiterbal, olievlek, schild, raket, bom, bliksem, superster), 6 circuits: 3 vlakke (Groene Vallei, Herfstbos, Strandboulevard) en 3 met hoogteverschil (Alpenpas, Rode Canyon, Vulkaaneiland), of een Grand Prix (Klassiek / Heuvels) met punten; motor met versnellingen, piepende banden en grasgeluid |
 | Tank Tumult | 2-6 | 3D (three.js, echte schaduwen), stuiterende kogels, kapotschietbare kratten, power-ups, op tijd of laatste tank |
 | Kwek Kwek Knal | 1-6 | Eenden schieten met muis, touch of toetsen. Lag compensation: de server spoelt terug naar wat jij zag. Tegen elkaar of samen (quotum per ronde) |
 | Boemstad | 2-6 | **3D.** Bommen leggen in een Hollands dorpje, power-ups, kettingreacties; na 90 s krimpt het dorp. Eerst N rondes |

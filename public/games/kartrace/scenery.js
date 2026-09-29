@@ -1,8 +1,9 @@
-// Turbo Kart GP scenery on top of the terrain (see world.js): trees with a
-// blob shadow, buildings that fit the circuit (a farm with a windmill, log
-// cabins in the woods, a lighthouse and beach huts at the coast), a
-// grandstand, the start gantry, tyre stacks in the corners and billboards
-// along the straights. All positions come from the seeded generator.
+// Turbo Kart GP scenery on top of the terrain (see world.js): trees (they
+// cast real shadows), buildings that fit the circuit (a farm with a
+// windmill, log cabins in the woods, a lighthouse and beach huts at the
+// coast, adobe houses in the desert), a grandstand, the start gantry, tyre
+// stacks in the corners and billboards along the straights, at the height of
+// the road beside them. All positions come from the seeded generator.
 import { yawFromDir } from '../../js/gl/mat4.js';
 import { pointAt } from '../../../shared/maps/kart-tracks.js';
 
@@ -116,6 +117,14 @@ function buildings(b, w, used) {
     }
     const tw = findSpot(w, used, w.lim + 120, 500, 14);
     if (tw) watchtower(b, tw);
+  } else if (kind === 'desert') {
+    // Adobe houses and a water tower.
+    for (let k = 0; k < 5; k++) {
+      const a = findSpot(w, used, w.lim + 90, 560, 16);
+      if (a) adobe(b, a, k);
+    }
+    const tw = findSpot(w, used, w.lim + 110, 480, 12);
+    if (tw) waterTower(b, tw);
   } else if (kind === 'beach') {
     // Lighthouse and huts along the shore, a hotel further inland.
     const shore = { minD: w.lim + 60 };
@@ -204,6 +213,30 @@ function watchtower(b, s) {
   for (const [dx, dz] of [[-6, -6], [6, 6]]) b.color('#6b4a2e').box(s.x + dx, s.h + 31, s.y + dz, 1, 7, 1);
 }
 
+function adobe(b, s, k) {
+  const walls = ['#d9a070', '#e0b286', '#c98a5a'];
+  const wall = walls[k % walls.length];
+  const P = frame(s.x, s.h, s.y, s.yaw);
+  b.color(wall).orientedBox(s.x, s.h, s.y, 16, 9, 12, s.yaw);
+  b.color('#b8784a').orientedBox(s.x, s.h + 9, s.y, 16.6, 1, 12.6, s.yaw);
+  // Wooden roof beams sticking out, a dark door and a window.
+  for (const lz of [-4, 0, 4]) {
+    const [bx, , bz] = P(8.6, 0, lz);
+    b.color('#6b4a2e').orientedBox(bx, s.h + 7.6, bz, 1.6, 0.8, 0.8, s.yaw);
+  }
+  const [dx, , dz] = P(8.1, 0, 2.5);
+  b.color('#4a3020').orientedBox(dx, s.h, dz, 0.4, 6, 3, s.yaw);
+  const [wx, , wz] = P(8.1, 0, -3);
+  b.color('#3a4a5a').orientedBox(wx, s.h + 4, wz, 0.4, 2.4, 2.4, s.yaw);
+}
+
+function waterTower(b, s) {
+  b.color('#6a5040');
+  for (const [dx, dz] of [[-4, -4], [4, -4], [-4, 4], [4, 4]]) b.box(s.x + dx, s.h, s.y + dz, 1.4, 24, 1.4);
+  b.color('#9a6a44').cylinder(s.x, s.h + 24, s.y, 7, 10, 10, { top: '#7a5234' });
+  b.color('#5a3a24').cone(s.x, s.h + 34, s.y, 7.6, 4, 10);
+}
+
 function lighthouse(b, x, h, z) {
   for (let k = 0; k < 6; k++) b.color(k % 2 ? '#f4f4f4' : '#d62828').cylinder(x, h + k * 8, z, 7 - k * 0.5, 8, 10);
   b.color('#2a2a30').cylinder(x, h + 48, z, 5, 1.5, 10);
@@ -258,13 +291,17 @@ function trees(b, w, used) {
 
 function tree(b, th, x, h, y, s, rnd) {
   const leaf = th.leaves[Math.floor(rnd() * th.leaves.length)];
-  // Blob shadow
-  const pts = [];
-  for (let k = 0; k < 7; k++) {
-    const a = (k / 7) * Math.PI * 2;
-    pts.push([x + 2 + Math.cos(a) * 9 * s, h + 0.25, y + 2 + Math.sin(a) * 9 * s]);
+  if (th.trees === 'cactus') {
+    // Saguaro: a tall trunk with one or two arms.
+    b.color(leaf).box(x, h, y, 3 * s, 17 * s, 3 * s, { bottom: false });
+    const arms = rnd() < 0.6 ? [-1, 1] : [rnd() < 0.5 ? -1 : 1];
+    for (const side of arms) {
+      const ay = h + (6 + rnd() * 4) * s;
+      b.box(x + side * 3 * s, ay, y, 3.4 * s, 2.2 * s, 2.4 * s, { bottom: false });
+      b.box(x + side * 4.4 * s, ay, y, 2.4 * s, 7 * s, 2.4 * s, { bottom: false });
+    }
+    return;
   }
-  b.color('#1e3a1a').face(pts, [0, 1, 0]);
   if (th.trees === 'pine') {
     b.color('#6b4a2e').box(x, h, y, 2.4 * s, 6 * s, 2.4 * s, { bottom: false });
     b.color(leaf).cone(x, h + 5 * s, y, 10 * s, 15 * s, 7).cone(x, h + 13 * s, y, 7 * s, 12 * s, 7);
@@ -313,7 +350,8 @@ function tyreStacks(b, w) {
       const along = (k - 1) * 7;
       const x = t.px[i] - t.ty[i] * off + t.tx[i] * along;
       const z = t.py[i] + t.tx[i] * off + t.ty[i] * along;
-      for (let lvl = 0; lvl < 3; lvl++) b.color(lvl === 1 ? '#e8e8e8' : '#1c1c22').cylinder(x, lvl * 2.2, z, 3, 2.2, 8, { top: '#2a2a30' });
+      const y0 = t.pz[i];
+      for (let lvl = 0; lvl < 3; lvl++) b.color(lvl === 1 ? '#e8e8e8' : '#1c1c22').cylinder(x, y0 + lvl * 2.2, z, 3, 2.2, 8, { top: '#2a2a30' });
     }
   }
 }
@@ -329,17 +367,19 @@ function billboards(b, w) {
     const x = t.px[i] - t.ty[i] * off;
     const z = t.py[i] + t.tx[i] * off;
     const yaw = yawFromDir(t.tx[i], t.ty[i]);
+    const y0 = Math.min(t.pz[i], w.heightAt(x, z)); // posts reach down to the ground
+    const top = t.pz[i];
     const P = frame(x, 0, z, yaw);
     for (const lx of [-12, 12]) {
       const [px, , pz] = P(lx, 0, 0);
-      b.color('#8a8a92').box(px, 0, pz, 1.2, 8, 1.2);
+      b.color('#8a8a92').box(px, y0, pz, 1.2, 8 + top - y0, 1.2);
     }
     const c = colors[n % colors.length];
-    b.color(c).orientedBox(x, 8, z, 30, 9, 1, yaw);
+    b.color(c).orientedBox(x, top + 8, z, 30, 9, 1, yaw);
     // A simple logo: a white band and a dot in another colour
-    b.color('#f4f4f4').orientedBox(x - t.ty[i] * side * 0.6, 11, z + t.tx[i] * side * 0.6, 20, 2.2, 0.2, yaw);
+    b.color('#f4f4f4').orientedBox(x - t.ty[i] * side * 0.6, top + 11, z + t.tx[i] * side * 0.6, 20, 2.2, 0.2, yaw);
     const [lx2, , lz2] = P(-10, 0, 0);
-    b.color(colors[(n + 1) % colors.length]).orientedBox(lx2 - t.ty[i] * side * 0.6, 9.5, lz2 + t.tx[i] * side * 0.6, 5, 5, 0.3, yaw);
+    b.color(colors[(n + 1) % colors.length]).orientedBox(lx2 - t.ty[i] * side * 0.6, top + 9.5, lz2 + t.tx[i] * side * 0.6, 5, 5, 0.3, yaw);
     n++;
   }
 }

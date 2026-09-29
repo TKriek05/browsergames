@@ -1,8 +1,8 @@
 // Turbo Kart GP in 3D: a daytime circuit per track theme (grass or sand,
 // hills, trees, a grandstand, clouds and a real sun), the track built from
 // the shared centre line (asphalt, kerbs, painted barriers, start gantry,
-// boost pads), low-poly karts and a chase camera.
-// World mapping: track (x, y) → 3D (x, 0, y).
+// boost pads), low-poly karts and items and a chase camera that follows the
+// hills. World mapping: track (x, y) at road height h → 3D (x, h, y).
 import { createRenderer3D } from '../../js/gl/renderer.js';
 import { MeshBuilder } from '../../js/gl/mesh.js';
 import { create, compose, yawFromDir } from '../../js/gl/mat4.js';
@@ -24,6 +24,10 @@ export function createKartScene(canvas, { reducedMotion }) {
   const oil = r.mesh(buildOil());
   const shadow = r.mesh(buildShadow());
   const shield = r.mesh(new MeshBuilder().color('#bfe8ff', { emissive: 0.3 }).sphere(0, 0, 0, 10, 10, 6).build());
+  const rocket = r.mesh(buildRocket());
+  const bomb = r.mesh(buildBomb());
+  const bolt = r.mesh(new MeshBuilder().color('#fff6a0', { emissive: 1 }).box(0, 0, 0, 1.4, 1, 1.4).build());
+  const zaps = []; // lightning bolts: { x, y, h, until }
   const particles = createParticles3D(700, { reducedMotion });
   let world = null;
   let track = null;
@@ -58,22 +62,28 @@ export function createKartScene(canvas, { reducedMotion }) {
       particles.update(dt);
     },
 
-    // Chase camera behind (x, y, heading). mode: 'chase' | 'orbit'.
-    camera(x, y, hx, hy, speed01, boost, dt, mode = 'chase') {
+    // Chase camera behind (x, y, heading) at road height h. mode: 'chase' | 'orbit'.
+    // groundAt(x, y): road height anywhere (keeps the camera above the hills).
+    camera(x, y, hx, hy, speed01, boost, dt, mode = 'chase', h = 0, groundAt = null) {
       let tx, ty, tz, lx, lz;
+      let ly = 3.5 + h;
       if (mode === 'orbit') {
         const a = time * 0.4;
         tx = x + Math.cos(a) * 46;
         tz = y + Math.sin(a) * 46;
-        ty = 18;
+        ty = 18 + h;
         lx = x;
         lz = y;
       } else {
         tx = x - hx * 30;
         tz = y - hy * 30;
-        ty = 12.5;
+        ty = 12.5 + h;
         lx = x + hx * 24;
         lz = y + hy * 24;
+        if (groundAt) {
+          ty = Math.max(ty, groundAt(tx, tz) + 8); // never inside the hill behind you
+          ly += (groundAt(lx, lz) - h) * 0.5; // look up the hill, or down into the dip
+        }
       }
       const k = cam.ready ? 1 - Math.exp(-dt * 7) : 1;
       const kl = cam.ready ? 1 - Math.exp(-dt * 12) : 1;
@@ -81,7 +91,7 @@ export function createKartScene(canvas, { reducedMotion }) {
       cam.y += (ty - cam.y) * k;
       cam.z += (tz - cam.z) * k;
       cam.lx += (lx - cam.lx) * kl;
-      cam.ly += (3.5 - cam.ly) * kl;
+      cam.ly += (ly - cam.ly) * kl;
       cam.lz += (lz - cam.lz) * kl;
       const fov = 1.02 + speed01 * 0.1 + (boost ? 0.12 : 0);
       cam.fov += (fov - cam.fov) * (1 - Math.exp(-dt * 4));
@@ -95,68 +105,120 @@ export function createKartScene(canvas, { reducedMotion }) {
         compose(m, 0, 0, 0);
         r.draw(world, m);
       }
+      const now = performance.now();
+      for (let i = zaps.length - 1; i >= 0; i--) {
+        const z = zaps[i];
+        if (now > z.until) {
+          zaps.splice(i, 1);
+          continue;
+        }
+        // A jagged bolt from the sky onto the kart.
+        let bx = z.x;
+        let bz = z.y;
+        for (let k = 0; k < 6; k++) {
+          const y0 = z.h + 4 + k * 14;
+          const nx = z.x + (Math.random() - 0.5) * 8;
+          const nz = z.y + (Math.random() - 0.5) * 8;
+          compose(m, (bx + nx) / 2, y0, (bz + nz) / 2, 0, 0, 0, 1);
+          m[5] = 14; // stretch the bolt piece upwards
+          r.draw(bolt, m);
+          bx = nx;
+          bz = nz;
+        }
+      }
       return true;
     },
 
     // drift: -1/0/1 (the body swings into the slide), steer banks it a little.
-    kart(x, y, hx, hy, color, { drift = 0, steer = 0, spin = 0, flash = 0 } = {}) {
+    // h: road height, climb: slope along the heading (the nose follows the hill).
+    kart(x, y, hx, hy, color, { drift = 0, steer = 0, spin = 0, flash = 0, h = 0, climb = 0, star = false } = {}) {
       // A kart right at the camera would fill the screen: leave it out.
-      if ((x - cam.x) ** 2 + (y - cam.z) ** 2 < 14 * 14) return;
+      if ((x - cam.x) ** 2 + (y - cam.z) ** 2 < 14 * 14 && Math.abs(h + 6 - cam.y) < 14) return;
       const yaw = yawFromDir(hx, hy) - drift * 0.38 + (spin > 0 ? time * 14 : 0);
       const bank = drift * 0.1 + steer * 0.05;
-      compose(m, x, 0.3, y, yaw, bank, 0, 1);
-      r.draw(kart, m, paint(color), 1, flash);
+      compose(m, x, 0.3 + h, y, yaw, bank, Math.atan(climb), 1);
+      const tint = star ? starColor(time) : paint(color);
+      r.draw(kart, m, tint, 1, star ? 0.25 + 0.2 * Math.sin(time * 20) : flash);
+      if (star && !reducedMotion && Math.random() < 0.8) {
+        particles.spawn(x + (Math.random() - 0.5) * 12, h + 4 + Math.random() * 8, y + (Math.random() - 0.5) * 12, 0, 8, 0, 0.4, starColor(time + Math.random()), 1.4, 0, 0.95);
+      }
     },
 
-    itemBox(x, y, hue) {
+    itemBox(x, y, hue, h = 0) {
       const bob = reducedMotion ? 0 : Math.sin(time * 3 + x * 0.1) * 1.2;
-      compose(m, x, 9 + bob, y, time * 1.5, 0.5, 0.6);
+      compose(m, x, 9 + bob + h, y, time * 1.5, 0.5, 0.6);
       r.draw(box, m, hue);
     },
 
-    orb(x, y) {
-      compose(m, x, 3.8, y, time * 10, time * 6);
+    orb(x, y, h = 0) {
+      compose(m, x, 3.8 + h, y, time * 10, time * 6);
       r.draw(orb, m);
-      if (!reducedMotion && Math.random() < 0.4) particles.spawn(x, 1, y, 0, 3, 0, 0.3, dust, 1.2, 0, 1);
+      if (!reducedMotion && Math.random() < 0.4) particles.spawn(x, 1 + h, y, 0, 3, 0, 0.3, dust, 1.2, 0, 1);
     },
 
-    oil(x, y) {
-      compose(m, x, ROAD_Y + 0.08, y);
+    // A rocket flying along (dx, dy), with a flame and smoke trail.
+    rocket(x, y, dx, dy, h = 0) {
+      compose(m, x, 4.5 + h, y, yawFromDir(dx, dy), time * 8);
+      r.draw(rocket, m);
+      if (!reducedMotion) {
+        const len = Math.hypot(dx, dy) || 1;
+        const bx = x - (dx / len) * 7;
+        const by = y - (dy / len) * 7;
+        particles.spawn(bx, 4.5 + h, by, 0, 2, 0, 0.18, Math.random() < 0.5 ? '#ffd23e' : '#ff6a2a', 1.6, 0, 0.9);
+        if (Math.random() < 0.6) particles.spawn(bx, 4.5 + h, by, (Math.random() - 0.5) * 6, 4, (Math.random() - 0.5) * 6, 0.7, '#b8b8b8', 2, 0, 0.97);
+      }
+    },
+
+    // A bomb in flight: progress 0..1 along its arc, the fuse sparkling.
+    bomb(x, y, progress, h = 0) {
+      const lift = 3.5 + Math.sin(Math.PI * Math.min(1, progress)) * 26;
+      compose(m, x, lift + h, y, time * 6, time * 4);
+      r.draw(bomb, m);
+      if (!reducedMotion && Math.random() < 0.8) particles.spawn(x, lift + h + 4, y, (Math.random() - 0.5) * 10, 10, (Math.random() - 0.5) * 10, 0.25, '#ffd23e', 1, -20, 0.95);
+    },
+
+    // Lightning strikes these karts (x, y, h).
+    zap(x, y, h = 0) {
+      zaps.push({ x, y, h, until: performance.now() + 260 });
+    },
+
+    oil(x, y, h = 0) {
+      compose(m, x, ROAD_Y + 0.08 + h, y);
       r.draw(oil, m);
     },
 
-    shadow(x, y) {
+    shadow(x, y, h = 0) {
       if (r.shadows) return; // the sun casts a real one
-      compose(m, x, ROAD_Y + 0.1, y);
+      compose(m, x, ROAD_Y + 0.1 + h, y);
       r.draw(shadow, m, [1, 1, 1], 0.4);
     },
 
-    shield(x, y) {
-      compose(m, x, 4, y, time);
+    shield(x, y, h = 0) {
+      compose(m, x, 4 + h, y, time);
       r.draw(shield, m, [1, 1, 1], 0.25);
     },
 
     // Exhaust flames, drift sparks, dust on the grass.
-    effects(x, y, hx, hy, { boost, drift, charge, off, v }) {
+    effects(x, y, hx, hy, { boost, drift, charge, off, v, h = 0 }) {
       if (reducedMotion) return;
       const bx = x - hx * 8;
       const by = y - hy * 8;
       if (boost > 0 && Math.random() < 0.9) {
-        particles.spawn(bx, 2.6, by, -hx * 30 + (Math.random() - 0.5) * 10, 3, -hy * 30 + (Math.random() - 0.5) * 10, 0.22, Math.random() < 0.5 ? '#ffd23e' : '#ff6a2a', 1.3, 0, 0.9);
+        particles.spawn(bx, 2.6 + h, by, -hx * 30 + (Math.random() - 0.5) * 10, 3, -hy * 30 + (Math.random() - 0.5) * 10, 0.22, Math.random() < 0.5 ? '#ffd23e' : '#ff6a2a', 1.3, 0, 0.9);
       }
       if (drift !== 0 && charge > KART_PHYS.CHARGE_1 * 0.5) {
         const color = charge >= KART_PHYS.CHARGE_2 ? '#ff9a3e' : charge >= KART_PHYS.CHARGE_1 ? '#3ef0ff' : '#ffffff';
         for (const side of [-1, 1]) {
-          particles.spawn(bx - hy * 4.5 * side, 1.2, by + hx * 4.5 * side, (Math.random() - 0.5) * 30, 12 + Math.random() * 12, (Math.random() - 0.5) * 30, 0.22, color, 0.8, -60, 0.95);
+          particles.spawn(bx - hy * 4.5 * side, 1.2 + h, by + hx * 4.5 * side, (Math.random() - 0.5) * 30, 12 + Math.random() * 12, (Math.random() - 0.5) * 30, 0.22, color, 0.8, -60, 0.95);
         }
       }
       if (off && Math.abs(v) > 30 && Math.random() < 0.7) {
-        particles.spawn(bx, 1, by, (Math.random() - 0.5) * 16, 8 + Math.random() * 6, (Math.random() - 0.5) * 16, 0.45, dust, 1.2, -20, 0.95);
+        particles.spawn(bx, 1 + h, by, (Math.random() - 0.5) * 16, 8 + Math.random() * 6, (Math.random() - 0.5) * 16, 0.45, dust, 1.2, -20, 0.95);
       }
     },
 
-    burst(x, y, color, n = 24) {
-      particles.burst(x, 4, y, color, n, { speed: 45, life: 0.6, size: 1.4, gravity: -40, up: 0.7 });
+    burst(x, y, color, n = 24, h = 0, big = false) {
+      particles.burst(x, 4 + h, y, color, n, big ? { speed: 90, life: 0.9, size: 2.4, gravity: -30, up: 0.9 } : { speed: 45, life: 0.6, size: 1.4, gravity: -40, up: 0.7 });
     },
 
     endParticles() {
@@ -174,6 +236,35 @@ export function createKartScene(canvas, { reducedMotion }) {
 }
 
 // --- Meshes ------------------------------------------------------------------------
+// The superstar: the kart glows through the colours of the rainbow.
+const starTint = [0, 0, 0];
+function starColor(t) {
+  const h = (t * 1.6) % 1;
+  for (let k = 0; k < 3; k++) {
+    const x = (h + k / 3) % 1;
+    starTint[k] = 0.55 + 0.45 * Math.cos(x * Math.PI * 2);
+  }
+  return starTint;
+}
+
+// A rocket facing +x: red body, white nose and fins, a glowing nozzle.
+function buildRocket() {
+  const b = new MeshBuilder();
+  b.color('#e63946').box(-1, -1.3, 0, 8, 2.6, 2.6);
+  b.color('#f4f4f4').wedge(4.2, -1.3, 0, 2.4, 2.6, 2.6, 2);
+  b.color('#f4f4f4').box(-4.6, -0.2, 0, 2, 0.4, 6).box(-4.6, -2.6, 0, 2, 5, 0.4);
+  b.color('#ffb020', { emissive: 1 }).box(-5.4, -0.9, 0, 0.8, 1.8, 1.8);
+  return b.build();
+}
+
+// A round black bomb with a short fuse.
+function buildBomb() {
+  const b = new MeshBuilder();
+  b.color('#2a2a32').sphere(0, 0, 0, 4, 10, 6);
+  b.color('#8a8a92').box(0, 3.4, 0, 1.6, 1.2, 1.6);
+  b.color('#c8a070').box(0.4, 4.6, 0, 0.5, 1.8, 0.5);
+  return b.build();
+}
 // The player's colour as paint: a bit softer than the bright UI colours.
 const paintCache = new Map();
 function paint(c) {

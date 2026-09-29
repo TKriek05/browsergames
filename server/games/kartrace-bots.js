@@ -3,7 +3,7 @@
 // (hard bots) and use items sensibly. They drive with the same stick and
 // button input as humans, through the same physics.
 import { BTN } from '../../shared/messages.js';
-import { pointAt, trackQuery } from '../../shared/maps/kart-tracks.js';
+import { pointAt, trackQuery, createTrackQuery } from '../../shared/maps/kart-tracks.js';
 import { KART_PHYS } from '../../shared/physics/kart.js';
 import { ITEM } from '../../shared/games/kartrace.js';
 
@@ -15,7 +15,7 @@ const LEVELS = {
 
 export function createKartBot() {
   return {
-    q: { seg: 0, dist: 0, lateral: 0, nx: 0, ny: 0 },
+    q: createTrackQuery(),
     out: { ax: 0, ay: 0, buttons: 0 },
     lane: 0, laneT: 0, itemT: 0, stuckT: 0, reverseT: 0, wobble: 0, wobbleT: 0, drifting: 0,
   };
@@ -109,10 +109,19 @@ export function stepKartBot(k, game, dt, rng) {
 function useItemNow(k, game, curve) {
   const s = k.s;
   switch (s.item) {
-    case ITEM.TURBO: return Math.abs(curve) < 0.3;
-    case ITEM.SHIELD: return true;
+    case ITEM.TURBO:
+    case ITEM.TURBO2:
+    case ITEM.TURBO3:
+    case ITEM.STAR:
+      return Math.abs(curve) < 0.3; // on a straight
+    case ITEM.SHIELD:
+    case ITEM.LIGHTNING:
+      return true;
+    case ITEM.ROCKET:
+      return k.place > 1 || k.bot.itemT > 8; // it needs somebody ahead to chase
     case ITEM.OIL:
-    case ITEM.ORB: {
+    case ITEM.ORB:
+    case ITEM.BOMB: {
       for (const o of game.karts) {
         if (o === k) continue;
         const dx = o.s.x - s.x;
@@ -120,10 +129,12 @@ function useItemNow(k, game, curve) {
         const d = Math.hypot(dx, dy);
         const ahead = (dx * s.hx + dy * s.hy) / (d || 1);
         if (s.item === ITEM.ORB && d > 20 && d < 200 && ahead > 0.92) return true;
+        if (s.item === ITEM.BOMB && d > 80 && d < 200 && ahead > 0.85) return true;
         if (s.item === ITEM.OIL && d < 90 && ahead < -0.7) return true;
       }
       return k.bot.itemT > 8; // don't hoard forever
     }
-    default: return true;
+    default:
+      return true;
   }
 }

@@ -5,8 +5,11 @@
 //
 // Buttons: A = gas, B = drift (hold while steering, release for a mini
 // turbo), X = use item. Stick: x = steer, up = gas, down = brake/reverse.
+// Hills: going up lowers the top speed and gravity pulls you back, going
+// down does the opposite. Barriers: a glancing hit costs little and turns
+// you along the wall, a head-on hit costs a lot (and bounces you back).
 import { BTN } from '../messages.js';
-import { trackQuery, WALL_MARGIN } from '../maps/kart-tracks.js';
+import { trackQuery, createTrackQuery, WALL_MARGIN } from '../maps/kart-tracks.js';
 import { ITEM } from '../games/kartrace.js';
 
 export const KART_PHYS = {
@@ -33,16 +36,43 @@ export const KART_PHYS = {
   MINI_1: 0.6,
   MINI_2: 1.1,
   TURBO_S: 1.3,
+  STAR_S: 5,
   PAD_S: 0.9,
   PAD_RADIUS: 20,
-  WALL_DAMP: 0.93, // speed kept per tick while scraping a barrier
+  WALL_SCRAPE: 0.985, // speed kept per tick while sliding along a barrier
+  WALL_LOSS: 0.6, // speed lost on a head-on hit (× impact², 0 for a glancing one)
+  WALL_TURN: 0.6, // how much a hit turns you along the barrier
+  WALL_BOUNCE_AT: 0.85, // impact (0..1) from which you bounce back …
+  WALL_BOUNCE_MIN: 70, // … when going at least this fast
+  WALL_BOUNCE: 0.25, // part of the speed you bounce back with
+  SLOPE_G: 260, // gravity along the road (units/s² per unit of slope)
+  SLOPE_TOP: 1.4, // top speed × (1 - this × slope): slower uphill, faster downhill
   SPIN_DAMP: 0.9,
   SPIN_COS: 0.9210609940028851, // 0.4 rad per tick while spinning out
   SPIN_SIN: 0.3894183423086505,
 };
 
 const f = Math.fround;
-const q = { seg: 0, dist: 0, lateral: 0, nx: 0, ny: 0 };
+const q = createTrackQuery();
+
+// Keeps (x, y) inside the barriers. Leaves the query in q; true when it had to push.
+function pushInside(s, track) {
+  trackQuery(track, s.x, s.y, q);
+  const limit = track.half + WALL_MARGIN - KART_PHYS.RADIUS;
+  const out = (q.lateral < 0 ? -q.lateral : q.lateral) - limit;
+  if (out <= 0) return false;
+  s.x -= q.ox * out;
+  s.y -= q.oy * out;
+  return true;
+}
+
+// For the server after karts bumped into each other: back inside the barriers.
+export function clampToTrack(s, track) {
+  if (!pushInside(s, track)) return false;
+  s.x = f(s.x);
+  s.y = f(s.y);
+  return true;
+}
 
 export function createKartState() {
   return { x: 0, y: 0, hx: 1, hy: 0, v: 0, vs: 0, drift: 0, charge: 0, boost: 0, spin: 0, item: 0, prev: 0, off: 0 };
@@ -78,10 +108,22 @@ export function stepKart(s, ax, ay, buttons, dt, track) {
   const driftHeld = (buttons & BTN.B) !== 0;
 
   if (pressed & BTN.X && s.item) {
-    if (s.item === ITEM.TURBO) s.boost = s.boost > P.TURBO_S ? s.boost : P.TURBO_S;
-    else s.fired = s.item;
-    s.item = 0;
+    const item = s.item;
+    if (item === ITEM.TURBO || item === ITEM.TURBO2 || item === ITEM.TURBO3) {
+      // A triple turbo is used one at a time.
+      s.boost = s.boost > P.TURBO_S ? s.boost : P.TURBO_S;
+      s.item = item === ITEM.TURBO3 ? ITEM.TURBO2 : item === ITEM.TURBO2 ? ITEM.TURBO : 0;
+    } else {
+      // The superstar boosts right away (predicted); the server adds the invincibility.
+      if (item === ITEM.STAR) s.boost = s.boost > P.STAR_S ? s.boost : P.STAR_S;
+      s.fired = item;
+      s.item = 0;
+    }
   }
+
+  // The hill under the kart: > 0 when the nose points uphill.
+  trackQuery(track, s.x, s.y, q);
+  const climb = q.slope * (s.hx * track.tx[q.seg] + s.hy * track.ty[q.seg]);
 
   let v = s.v;
   if (s.spin > 0) {
@@ -101,6 +143,11 @@ export function stepKart(s, ax, ay, buttons, dt, track) {
     top = P.BOOST_SPEED;
     s.boost = s.boost - dt > 0 ? s.boost - dt : 0;
   }
+  if (climb !== 0) {
+    let k = 1 - P.SLOPE_TOP * climb;
+    k = k < 0.75 ? 0.75 : k > 1.25 ? 1.25 : k;
+    top *= k;
+  }
   if (gas) {
     if (v < top) {
       v += (s.boost > 0 ? P.BOOST_ACCEL : P.ACCEL) * dt;
@@ -115,6 +162,7 @@ export function stepKart(s, ax, ay, buttons, dt, track) {
     v = v + P.COAST * dt < 0 ? v + P.COAST * dt : 0;
   }
   if (v > top) v = v - P.OVERSPEED_DECEL * dt > top ? v - P.OVERSPEED_DECEL * dt : top;
+  v -= P.SLOPE_G * climb * dt; // gravity along the slope
 
   // --- Drift: hold B while steering at speed; release for a mini turbo ---
   if (s.drift === 0) {
@@ -161,19 +209,28 @@ export function stepKart(s, ax, ay, buttons, dt, track) {
   }
 
   // Barriers + grass
-  trackQuery(track, s.x, s.y, q);
-  const limit = track.half + WALL_MARGIN - P.RADIUS;
-  if (q.lateral > limit) {
-    s.x -= q.nx * (q.lateral - limit);
-    s.y -= q.ny * (q.lateral - limit);
+  if (pushInside(s, track)) {
     s.wall = 1;
-  } else if (q.lateral < -limit) {
-    s.x -= q.nx * (q.lateral + limit);
-    s.y -= q.ny * (q.lateral + limit);
-    s.wall = 1;
-  }
-  if (s.wall) {
-    v *= P.WALL_DAMP;
+    // Impact: how much we drive into the barrier (0 = along it, 1 = head-on).
+    const dirV = v < 0 ? -1 : 1;
+    const into = (s.hx * q.ox + s.hy * q.oy) * dirV;
+    if (into > 0) {
+      if (v > 0) {
+        // Turned along the wall, so you slide on instead of grinding to a halt.
+        const nx = s.hx - q.ox * into * P.WALL_TURN;
+        const ny = s.hy - q.oy * into * P.WALL_TURN;
+        const len = Math.sqrt(nx * nx + ny * ny);
+        if (len > 1e-6) {
+          s.hx = nx / len;
+          s.hy = ny / len;
+        }
+      }
+      const speed = v < 0 ? -v : v; // at the moment of impact
+      if (into > P.WALL_BOUNCE_AT && speed > P.WALL_BOUNCE_MIN) v = -v * P.WALL_BOUNCE;
+      else v *= 1 - P.WALL_LOSS * into * into;
+    } else {
+      v *= P.WALL_SCRAPE;
+    }
     s.vs = 0;
   }
   s.off = q.lateral > track.half || q.lateral < -track.half ? 1 : 0;

@@ -130,6 +130,15 @@ const SOUNDS = {
   marker: () => { noise({ dur: 0.08, vol: 0.4, filter: 2600, to: 500 }); tone({ type: 'sine', freq: 300, to: 120, dur: 0.07, vol: 0.22 }); },
   markerFar: () => noise({ dur: 0.06, vol: 0.14, filter: 1800, to: 400 }),
   splat: () => { noise({ dur: 0.14, vol: 0.45, filter: 1400, to: 250 }); tone({ type: 'sine', freq: 180, to: 70, dur: 0.1, vol: 0.18 }); },
+  // Turbo Kart GP items and contact
+  rocket: () => { noise({ dur: 0.7, vol: 0.3, filter: 600, to: 3500 }); tone({ type: 'sawtooth', freq: 220, to: 660, dur: 0.5, vol: 0.08 }); },
+  throw: () => { noise({ dur: 0.18, vol: 0.2, filter: 2500, to: 800 }); tone({ type: 'triangle', freq: 500, to: 300, dur: 0.15, vol: 0.1 }); },
+  star: () => [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => tone({ type: 'square', freq: f, dur: 0.1, vol: 0.08, delay: i * 0.06 })),
+  zap: () => { noise({ dur: 0.9, vol: 0.55, filter: 6000, to: 200 }); tone({ type: 'sawtooth', freq: 1400, to: 90, dur: 0.35, vol: 0.18 }); },
+  bump: () => { tone({ type: 'sine', freq: 140, to: 60, dur: 0.14, vol: 0.3 }); noise({ dur: 0.08, vol: 0.18, filter: 1200, to: 300 }); },
+  scrape: () => noise({ dur: 0.25, vol: 0.22, filter: 3800, to: 1400 }),
+  charge1: () => tone({ type: 'square', freq: 880, to: 1175, dur: 0.07, vol: 0.07 }),
+  charge2: () => tone({ type: 'square', freq: 1175, to: 1568, dur: 0.09, vol: 0.08 }),
 };
 
 export function play(name) {
@@ -138,8 +147,12 @@ export function play(name) {
   SOUNDS[name]?.();
 }
 
-// A continuous engine hum for racing games: { set(speed01, boost), stop() },
-// or null while audio is not unlocked yet (call again later).
+// Gears for the engine note: the pitch climbs within a gear and drops at a shift.
+const GEARS = [0, 0.3, 0.55, 0.78, 1.01];
+
+// A continuous engine for racing games: { set(speed01, boost, volume = 1), stop() },
+// or null while audio is not unlocked yet (call again later). A sawtooth and a
+// square an octave down through a low-pass, plus a little noise for texture.
 export function engineSound() {
   if (!ctx || ctx.state !== 'running') return null;
   const t = ctx.currentTime;
@@ -147,26 +160,42 @@ export function engineSound() {
   const sub = ctx.createOscillator();
   saw.type = 'sawtooth';
   sub.type = 'square';
+  saw.detune.value = 6;
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass';
   lp.frequency.value = 500;
+  lp.Q.value = 2;
+  const grit = ctx.createBufferSource();
+  grit.buffer = noiseBuffer;
+  grit.loop = true;
+  const gritFilter = ctx.createBiquadFilter();
+  gritFilter.type = 'bandpass';
+  gritFilter.frequency.value = 180;
+  const gritGain = ctx.createGain();
+  gritGain.gain.value = 0.25;
   const gain = ctx.createGain();
   gain.gain.value = 0;
   saw.connect(lp);
   sub.connect(lp);
+  grit.connect(gritFilter).connect(gritGain).connect(lp);
   lp.connect(gain).connect(master);
   saw.start(t);
   sub.start(t);
+  grit.start(t);
   let stopped = false;
   return {
-    set(speed01, boost) {
+    set(speed01, boost, volume = 1) {
       if (stopped) return;
       const now = ctx.currentTime;
-      const f = 48 + speed01 * 105 + (boost ? 22 : 0);
-      saw.frequency.setTargetAtTime(f, now, 0.06);
-      sub.frequency.setTargetAtTime(f / 2, now, 0.06);
-      lp.frequency.setTargetAtTime(380 + speed01 * 1000, now, 0.08);
-      gain.gain.setTargetAtTime(0.035 + speed01 * 0.045, now, 0.1);
+      let g = 0;
+      while (g < GEARS.length - 2 && speed01 > GEARS[g + 1]) g++;
+      const inGear = (speed01 - GEARS[g]) / (GEARS[g + 1] - GEARS[g]);
+      const f = 46 + g * 9 + Math.max(0, Math.min(1, inGear)) * 62 + (boost ? 18 : 0);
+      saw.frequency.setTargetAtTime(f, now, 0.05);
+      sub.frequency.setTargetAtTime(f / 2, now, 0.05);
+      gritFilter.frequency.setTargetAtTime(f * 3, now, 0.08);
+      lp.frequency.setTargetAtTime(360 + speed01 * 1100 + (boost ? 500 : 0), now, 0.08);
+      gain.gain.setTargetAtTime((0.035 + speed01 * 0.045) * volume, now, 0.1);
     },
     stop() {
       if (stopped) return;
@@ -175,6 +204,40 @@ export function engineSound() {
       gain.gain.setTargetAtTime(0, now, 0.05);
       saw.stop(now + 0.3);
       sub.stop(now + 0.3);
+      grit.stop(now + 0.3);
+    },
+  };
+}
+
+// Looping noise sounds with a level you can change: 'screech' (tyres in a
+// drift) or 'rumble' (driving over grass). { set(level 0..1), stop() } or null.
+export function loopSound(kind) {
+  if (!ctx || ctx.state !== 'running') return null;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer;
+  src.loop = true;
+  const filter = ctx.createBiquadFilter();
+  filter.type = kind === 'screech' ? 'bandpass' : 'lowpass';
+  filter.frequency.value = kind === 'screech' ? 2400 : 260;
+  filter.Q.value = kind === 'screech' ? 6 : 0.8;
+  const gain = ctx.createGain();
+  gain.gain.value = 0;
+  src.connect(filter).connect(gain).connect(master);
+  src.start();
+  const max = kind === 'screech' ? 0.12 : 0.22;
+  let stopped = false;
+  return {
+    set(level) {
+      if (stopped) return;
+      const now = ctx.currentTime;
+      gain.gain.setTargetAtTime(Math.max(0, Math.min(1, level)) * max, now, 0.05);
+      if (kind === 'screech') filter.frequency.setTargetAtTime(2200 + level * 600, now, 0.1);
+    },
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      gain.gain.setTargetAtTime(0, ctx.currentTime, 0.04);
+      src.stop(ctx.currentTime + 0.25);
     },
   };
 }

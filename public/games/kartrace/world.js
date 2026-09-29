@@ -1,11 +1,12 @@
 // Turbo Kart GP: the world around a track, in a single static mesh, styled
 // by the track's theme (shared/maps/kart-tracks.js). A height field of
-// rolling hills (flat near the track, so the physics stays 2D), a lake in
-// the infield or the sea, snowy mountains on the horizon, then the road
-// with kerbs, lines, barriers and boost pads. Buildings, trees and track-side
+// rolling hills (it follows the road near the track: embankments on the
+// hilly circuits), a lake in the infield or the sea, a volcano, mountains
+// on the horizon, then the road with kerbs, lines, barriers and boost pads,
+// lifted to the track's height profile. Buildings, trees and track-side
 // details come from scenery.js. Everything is seeded: same track, same world.
 import { MeshBuilder } from '../../js/gl/mesh.js';
-import { WALL_MARGIN } from '../../../shared/maps/kart-tracks.js';
+import { WALL_MARGIN, trackQuery, createTrackQuery } from '../../../shared/maps/kart-tracks.js';
 import { addScenery } from './scenery.js';
 
 export const ROAD_Y = 0.25;
@@ -14,6 +15,9 @@ const BARRIER_H = 4.5;
 const CELL = 80; // terrain grid size
 const FLAT = 1.5 * CELL; // terrain stays flat this far beyond the barriers (no hills over the road)
 const RAMP = 460; // then rises to full hill height over this distance
+const EMBANK = 150; // on hilly tracks the ground slopes from road height down to the hills over this distance
+const SINK = 3; // … and stays this far below the road right beside it (the shoulder covers the gap)
+const SKIRT = 12; // the embankment face below the barriers reaches at least this deep
 
 function seeded(seed) {
   let s = seed % 2147483647 || 1;
@@ -37,29 +41,42 @@ export function buildWorld(t) {
   const lim = t.half + WALL_MARGIN;
   const seaY = th.sea ? maxY + 230 : Infinity; // the sea starts south of the track
 
-  const distToTrack = (x, y) => {
+  // Nearest centre-line sample: its distance and the road height there.
+  const near = { d: 0, h: 0 };
+  const nearest = (x, y) => {
     let best = Infinity;
+    let bi = 0;
     for (let i = 0; i < t.count; i += 2) {
       const dx = t.px[i] - x;
       const dy = t.py[i] - y;
       const d = dx * dx + dy * dy;
-      if (d < best) best = d;
-    }
-    return Math.sqrt(best);
-  };
-
-  // A lake in the infield: the spot inside the bounding box farthest from the track.
-  let lake = null;
-  if (!th.sea) {
-    let best = { d: 0 };
-    for (let y = minY; y <= maxY; y += 40) {
-      for (let x = minX; x <= maxX; x += 40) {
-        const d = distToTrack(x, y);
-        if (d > best.d) best = { x, y, d };
+      if (d < best) {
+        best = d;
+        bi = i;
       }
     }
-    const r = best.d - lim - 50;
-    if (r > 60) lake = { x: best.x, y: best.y, r: Math.min(r, 230) };
+    near.d = Math.sqrt(best);
+    near.h = t.pz[bi];
+    return near;
+  };
+  const distToTrack = (x, y) => nearest(x, y).d;
+
+  // The infield spot farthest from the track: a lake there, or the volcano.
+  let infield = { d: 0 };
+  for (let y = minY; y <= maxY; y += 40) {
+    for (let x = minX; x <= maxX; x += 40) {
+      const d = distToTrack(x, y);
+      if (d > infield.d) infield = { x, y, d };
+    }
+  }
+  let lake = null;
+  let volcano = null;
+  if (th.volcano) {
+    const r = infield.d - lim - 70;
+    if (r > 80) volcano = { x: infield.x, y: infield.y, r: Math.min(r, 280) };
+  } else if (!th.sea) {
+    const r = infield.d - lim - 50;
+    if (r > 60) lake = { x: infield.x, y: infield.y, r: Math.min(r, 230) };
   }
 
   const p = [rnd() * 6, rnd() * 6, rnd() * 6, rnd() * 6];
@@ -67,8 +84,9 @@ export function buildWorld(t) {
     + 0.15 * Math.sin((x + z) * 0.0071 + p[2]) + 0.1 * Math.cos((x - z) * 0.013 + p[3]);
 
   const heightAt = (x, z) => {
-    const d = distToTrack(x, z);
+    const { d, h: road } = nearest(x, z);
     let h = smooth((d - lim - FLAT) / RAMP) * (8 + th.hilly * noise(x, z));
+    if (t.hilly) h += road * (1 - smooth((d - lim - 10) / EMBANK)) - SINK * (1 - smooth((d - lim) / 30));
     if (lake) {
       const r = Math.hypot(x - lake.x, z - lake.y);
       h = h * smooth((r - lake.r * 0.6) / 80) - 14 * (1 - smooth((r - lake.r * 0.4) / (lake.r * 0.7)));
@@ -151,7 +169,7 @@ export function buildWorld(t) {
   // --- Road: asphalt, white edge lines, kerbs, gravel, centre dashes -------------------------
   const edge = (off, y) => {
     const pts = [];
-    for (let i = 0; i < t.count; i++) pts.push([t.px[i] - t.ty[i] * off, y, t.py[i] + t.tx[i] * off]);
+    for (let i = 0; i < t.count; i++) pts.push([t.px[i] - t.ty[i] * off, y + t.pz[i], t.py[i] + t.tx[i] * off]);
     return pts;
   };
   const Lr = edge(-t.half, ROAD_Y);
@@ -173,9 +191,27 @@ export function buildWorld(t) {
     b.face([dashL[i], dashR[i], dashR[j], dashL[j]], [0, 1, 0]);
   }
 
+  // Hills: a grass shoulder up to the barriers at road height, and an
+  // embankment face below the barriers down to the ground.
+  if (t.hilly) {
+    for (const side of [-1, 1]) {
+      const inner = edge(side * (t.half + 13), 0.1);
+      const outer = edge(side * lim, 0.1);
+      b.color(th.ground[1]);
+      b.ribbon(side < 0 ? outer : inner, side < 0 ? inner : outer, null, true);
+      const top = edge(side * (lim + 1), 0);
+      const foot = edge(side * (lim + 5), 0).map(([x, y, z]) => [x, Math.min(y - SKIRT, heightAt(x, z) - 2), z]);
+      b.color(th.edge);
+      for (let i = 0; i < t.count; i++) {
+        const j = (i + 1) % t.count;
+        b.face([top[i], top[j], foot[j], foot[i]], [-t.ty[i] * side, 0.4, t.tx[i] * side]);
+      }
+    }
+  }
+
   // Barriers: low walls in alternating paint, with a cap on top.
   for (const side of [-1, 1]) {
-    const line = edge(side * lim, 0).map(([x, , z]) => [x, z]);
+    const line = edge(side * lim, 0).map(([x, y, z]) => [x, z, y]);
     b.wall(line, 0, BARRIER_H, true, (i) => (Math.floor(i / 3) % 2 ? th.wall[0] : th.wall[1]));
     const inner = edge(side * (lim - 1), BARRIER_H);
     const outer = edge(side * (lim + 1), BARRIER_H);
@@ -184,6 +220,8 @@ export function buildWorld(t) {
   }
 
   // Boost pads: painted chevrons pointing along the track.
+  const q = createTrackQuery();
+  const roadY = (x, z) => trackQuery(t, x, z, q).h + ROAD_Y + 0.05;
   for (const pad of t.pads) {
     const fx = pad.dx;
     const fy = pad.dy;
@@ -191,14 +229,57 @@ export function buildWorld(t) {
     const ny = fx;
     for (let k = 0; k < 3; k++) {
       const d = (k - 1) * 9;
-      const tip = [pad.x + fx * (d + 5), ROAD_Y + 0.05, pad.y + fy * (d + 5)];
-      const l = [pad.x + fx * (d - 3) + nx * 9, ROAD_Y + 0.05, pad.y + fy * (d - 3) + ny * 9];
-      const rr = [pad.x + fx * (d - 3) - nx * 9, ROAD_Y + 0.05, pad.y + fy * (d - 3) - ny * 9];
-      const mid = [pad.x + fx * d, ROAD_Y + 0.05, pad.y + fy * d];
+      const P = (along, across) => {
+        const x = pad.x + fx * along + nx * across;
+        const z = pad.y + fy * along + ny * across;
+        return [x, roadY(x, z), z];
+      };
+      const tip = P(d + 5, 0);
+      const l = P(d - 3, 9);
+      const rr = P(d - 3, -9);
+      const mid = P(d, 0);
       b.color(k === 1 ? '#ff7a1a' : '#ffb020', { emissive: 0.35 }).face([tip, l, mid], [0, 1, 0]).face([tip, mid, rr], [0, 1, 0]);
     }
   }
 
-  addScenery(b, { t, th, rnd, lim, lake, seaY, heightAt, distToTrack, ROAD_Y, bounds: { minX, maxX, minY, maxY } });
+  if (volcano) buildVolcano(b, volcano, th, rnd);
+  addScenery(b, { t, th, rnd, lim, lake: lake ?? volcano, seaY, heightAt, distToTrack, ROAD_Y, bounds: { minX, maxX, minY, maxY } });
   return b.build();
+}
+
+// A low-poly volcano: rock bands, a glowing crater, lava streaks and a smoke plume.
+function buildVolcano(b, v, th, rnd) {
+  const segs = 14;
+  const H = v.r * 1.05;
+  const levels = [[1, -4], [0.72, H * 0.38], [0.45, H * 0.72], [0.24, H]];
+  const ring = (k) => {
+    const [f, y] = levels[k];
+    return Array.from({ length: segs }, (_, i) => {
+      const a = (i / segs) * Math.PI * 2;
+      const wob = 1 + (k < 3 ? 0.08 * Math.sin(i * 2.7 + k) : 0);
+      return [v.x + Math.cos(a) * v.r * f * wob, y, v.y + Math.sin(a) * v.r * f * wob];
+    });
+  };
+  const rock = th.mountain[0];
+  for (let k = 0; k < levels.length - 1; k++) {
+    const lo = ring(k);
+    const hi = ring(k + 1);
+    for (let i = 0; i < segs; i++) {
+      const j = (i + 1) % segs;
+      const out = [Math.cos(((i + 0.5) / segs) * Math.PI * 2), 0.6, Math.sin(((i + 0.5) / segs) * Math.PI * 2)];
+      b.color(k % 2 ? rock : '#3a3232').face([lo[i], lo[j], hi[j], hi[i]], out);
+    }
+  }
+  // Crater rim, lava lake and streaks down the side.
+  const top = ring(levels.length - 1);
+  b.color('#ff6a1a', { emissive: 1 }).face(top.map(([x, , z]) => [x, H - 3, z]), [0, 1, 0]);
+  for (let s = 0; s < 4; s++) {
+    const a = rnd() * Math.PI * 2;
+    const w = 0.07;
+    const P = (f, y, da) => [v.x + Math.cos(a + da) * v.r * f, y, v.y + Math.sin(a + da) * v.r * f];
+    b.color('#ff8a2a', { emissive: 0.9 }).face([P(0.25, H - 0.5, -w), P(0.25, H - 0.5, w), P(0.62, H * 0.47, w * 0.4), P(0.62, H * 0.47, -w * 0.4)], [Math.cos(a), 0.7, Math.sin(a)]);
+  }
+  for (let k = 0; k < 5; k++) {
+    b.color(k < 2 ? '#8a8480' : '#b8b2ac').sphere(v.x + (rnd() - 0.5) * 30 + k * 8, H + 22 + k * 26, v.y + (rnd() - 0.5) * 30, 16 + k * 7, 7, 4);
+  }
 }
