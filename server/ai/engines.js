@@ -4,6 +4,7 @@ import tictactoe from './tictactoe.js';
 import connect4 from './connect4.js';
 import reversi from './reversi.js';
 import checkers from './checkers.js';
+import checkers4 from './checkers4.js';
 import chess from './chess.js';
 import ludo from './ludo.js';
 import battleship from './battleship.js';
@@ -16,6 +17,7 @@ export const ENGINES = {
   connect4,
   reversi,
   checkers,
+  checkers4,
   chess,
   ludo,
   battleship,

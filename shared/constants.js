@@ -73,6 +73,7 @@ export const GAME_LIMITS = {
   tictactoe: { min: 2, max: 2 },
   connect4: { min: 2, max: 2 },
   checkers: { min: 2, max: 2 },
+  checkers4: { min: 2, max: 4 },
   reversi: { min: 2, max: 2 },
   chess: { min: 2, max: 2 },
   ludo: { min: 2, max: 4 },

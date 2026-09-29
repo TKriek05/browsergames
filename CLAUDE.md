@@ -86,6 +86,9 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
   Bots mogen alleen zien wat hun seat mag zien (gebruik `rules.view`).
 - Client: `createBoardModule(spec)` uit `public/games/board/kit.js`; houd lokale UI-state in `f.local`.
 - `simultaneous: true` in de regels = iedereen tegelijk (geen beurten, bv. Mijnenveger); `botPace` = seconden per botzet.
+- Dammen voor 4: `shared/rules/checkers4.js` (kruisbord, arm per stoel via `state.arms`, wie niet kan zetten is af en zijn
+  stukken gaan van het bord, `ranking` in het resultaat); bot = max-n met tijdsbudget in `server/ai/checkers4.js`.
+  De client draait het bord zodat je eigen arm onderaan ligt (`toView`/`fromView`).
 - Merknamen vermijden: "Erger je niet!" i.p.v. het merk mens-erger-je-niet, "Reversi" i.p.v. Othello.
 
 ## 3D (three.js)

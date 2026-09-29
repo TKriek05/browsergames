@@ -91,6 +91,7 @@ In het spel zet 🎵 de muziek aan/uit (onthouden in de browser); 🔊 dempt all
 | Vier op een rij | 2 | Schijven vallen door het bord, alpha-beta-bot |
 | Reversi | 2 | Automatisch passen, omdraai-animatie |
 | Dammen | 2 | 10×10, Nederlandse regels: verplicht meeste slaan, vliegende dam, Turkse slag |
+| Dammen voor 4 | 2-4 | Dammen op een kruisbord (14 × 14 zonder hoeken): 12 stukken per speler, slaan is verplicht (elke tegenstander), meeste slag gaat voor, vliegende dammen; wie niet meer kan is af |
 | Schaken | 2 | Volledige regels, perft-getest, engine in een worker thread |
 | Erger je niet! | 2-4 | Geïnspireerd op mens-erger-je-niet, eigen naam |
 | Ganzenbord | 2-6 | Klassieke vakjes: ganzen, brug, herberg, put, doolhof, gevangenis, dood |

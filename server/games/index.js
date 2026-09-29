@@ -60,6 +60,7 @@ import tictactoe from '../../shared/rules/tictactoe.js';
 import connect4 from '../../shared/rules/connect4.js';
 import reversi from '../../shared/rules/reversi.js';
 import checkers from '../../shared/rules/checkers.js';
+import checkers4 from '../../shared/rules/checkers4.js';
 import chess from '../../shared/rules/chess.js';
 import ludo from '../../shared/rules/ludo.js';
 import goose from '../../shared/rules/goose.js';
@@ -69,7 +70,7 @@ import mines from '../../shared/rules/mines.js';
 import pesten from '../../shared/rules/pesten.js';
 
 // Board games are pure rules modules wrapped by the generic adapter.
-const BOARD_RULES = [tictactoe, connect4, reversi, checkers, chess, ludo, goose, battleship, memory, mines, pesten];
+const BOARD_RULES = [tictactoe, connect4, reversi, checkers, checkers4, chess, ludo, goose, battleship, memory, mines, pesten];
 
 // Custom modules (realtime or not) that are not generic board games.
 const REALTIME = [tag, duckshoot, tanks, kartrace, snake, paddle, breakout, invaders, rocks, blocks, ghosts, bomber, minigolf, paintball, quiz, penguins, artillery, fish, kladder, archery];

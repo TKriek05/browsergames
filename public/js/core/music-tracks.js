@@ -149,6 +149,7 @@ export const GAME_MUSIC = {
   tictactoe: { style: 'jazz', root: 43, bpm: 94 },
   connect4: { style: 'jazz', root: 41, bpm: 100 },
   checkers: { style: 'jazz', root: 46, bpm: 88 },
+  checkers4: { style: 'jazz', root: 44, bpm: 92, chords: [0, 5, 1, 4] },
   reversi: { style: 'jazz', root: 38, scale: 'dorian', chords: [0, 3, 0, 3, 1, 4, 0, 0], bpm: 96 },
   chess: { style: 'jazz', root: 45, scale: 'harmonic', chords: [1, 4, 0, 0, 3, 4, 0, 0], bpm: 84 },
   ludo: { style: 'folk', root: 43, bpm: 110 },

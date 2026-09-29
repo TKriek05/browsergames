@@ -59,6 +59,11 @@ const entries = [
     controls: 'Klik je stuk en daarna het doelveld (bij twijfel ook de tussenvelden)',
   },
   {
+    id: 'checkers4', title: 'Dammen voor 4', tagline: 'Dammen met z’n vieren op een kruisbord: slaan is verplicht, wie niet meer kan is af.',
+    kind: 'board', phase: 7, available: true, bots: true,
+    controls: 'Klik je stuk en daarna het doelveld (bij twijfel ook de tussenvelden), of pijltjes + Enter',
+  },
+  {
     id: 'reversi', title: 'Reversi', tagline: 'Sluit stenen in en draai ze om.',
     kind: 'board', phase: 1, available: true, bots: true, controls: 'Klik of tik op een vak met een stip, of pijltjes + Enter',
   },

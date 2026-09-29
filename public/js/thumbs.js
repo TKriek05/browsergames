@@ -282,6 +282,21 @@ const DRAW = {
     R(ctx, 20, 13, 7, 3, '#ff4d6d'); R(ctx, 26, 12, 1, 5, '#3a3a44'); R(ctx, 27, 14, 3, 1, '#3a3a44');
     R(ctx, 21, 16, 5, 1, '#c73a55');
   },
+  checkers4(ctx) {
+    R(ctx, 0, 0, 48, 32, W.oak);
+    R(ctx, 16, 1, 16, 30, W.walnut); R(ctx, 8, 9, 32, 14, W.walnut);
+    for (let y = 2; y < 30; y += 2) for (let x = 9; x < 39; x += 2) {
+      const inX = x >= 17 && x < 31;
+      const inY = y >= 10 && y < 22;
+      if (!inX && !inY) continue;
+      R(ctx, x + ((y / 2) % 2), y, 1, 1, '#e6c690');
+      R(ctx, x + 1 - ((y / 2) % 2), y, 1, 1, '#8a5a34');
+      R(ctx, x + ((y / 2) % 2), y + 1, 1, 1, '#8a5a34');
+      R(ctx, x + 1 - ((y / 2) % 2), y + 1, 1, 1, '#e6c690');
+    }
+    for (const [x, y, c] of [[20, 26, '#ff4d6d'], [26, 27, '#ff4d6d'], [20, 3, '#3ec5ff'], [26, 4, '#3ec5ff'], [10, 13, '#ffd23e'], [11, 18, '#ffd23e'], [36, 12, '#5dd46a'], [37, 17, '#5dd46a']]) disc(ctx, x, y, 1, c);
+    disc(ctx, 24, 16, 2, '#ff4d6d');
+  },
   archery(ctx) {
     for (let y = 0; y < 18; y++) R(ctx, 0, y, 48, 1, y < 9 ? '#5ea6e6' : '#9fcdef');
     R(ctx, 0, 14, 48, 4, '#3f7f3a');
