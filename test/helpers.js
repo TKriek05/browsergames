@@ -16,6 +16,7 @@ export async function startTestServer(overrides = {}) {
     maxRoomsPerIp: 1000,
     connectsPerMinute: 100_000,
     roomsPerMinute: 100_000,
+    immutableAssets: true, // test the production cache headers
     ...overrides,
     timing: { sweepIntervalMs: 50, ...(overrides.timing ?? {}) },
   });

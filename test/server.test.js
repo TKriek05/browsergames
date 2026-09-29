@@ -25,13 +25,27 @@ test('serves the hub with build id, CSP and correct MIME types', async () => {
   assert.match(res.headers.get('content-security-policy'), /default-src 'self'/);
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
   const html = await res.text();
-  assert.ok(html.includes('?v=testbuild') && !html.includes('__BUILD__'));
+  assert.ok(html.includes('/v/testbuild/public/js/hub.js') && !html.includes('__BUILD__'));
 
   const js = await fetch(`${server.base}/js/hub.js`);
   assert.match(js.headers.get('content-type'), /text\/javascript/);
   assert.equal(js.headers.get('cache-control'), 'no-cache');
-  const versioned = await fetch(`${server.base}/css/base.css?v=testbuild`);
-  assert.match(versioned.headers.get('cache-control'), /immutable/);
+  // Everything under /v/<current build>/ (also nested imports and shared/) is immutable.
+  for (const [path, plain] of [['/v/testbuild/public/css/base.css', '/css/base.css'], ['/v/testbuild/public/js/core/net.js', '/js/core/net.js'],
+    ['/v/testbuild/shared/constants.js', '/shared/constants.js']]) {
+    const versioned = await fetch(`${server.base}${path}`);
+    assert.equal(versioned.status, 200, path);
+    assert.match(versioned.headers.get('cache-control'), /immutable/, path);
+    assert.equal(await versioned.text(), await (await fetch(`${server.base}${plain}`)).text());
+  }
+  // The prefix mirrors the disk: ../../../shared from public/js/core/ lands in /v/<build>/shared/.
+  assert.equal(new URL('../../../shared/x.js', `${server.base}/v/testbuild/public/js/core/net.js`).pathname, '/v/testbuild/shared/x.js');
+  // An old build's prefix still works (the page is being replaced), but is never cached for long.
+  const old = await fetch(`${server.base}/v/oldbuild/public/js/hub.js`);
+  assert.equal(old.status, 200);
+  assert.equal(old.headers.get('cache-control'), 'no-cache');
+  const sneaky = await fetch(`${server.base}/v/testbuild/../../package.json`);
+  assert.equal(sneaky.status, 404);
   const shared = await fetch(`${server.base}/shared/constants.js`);
   assert.equal(shared.status, 200);
 
@@ -41,7 +55,7 @@ test('serves the hub with build id, CSP and correct MIME types', async () => {
 });
 
 test('every response tells search engines not to index', async () => {
-  for (const [path, status] of [['/', 200], ['/js/hub.js', 200], ['/css/base.css?v=testbuild', 200], ['/healthz', 200], ['/nope.html', 404], ['/ws', 426]]) {
+  for (const [path, status] of [['/', 200], ['/js/hub.js', 200], ['/v/testbuild/public/css/base.css', 200], ['/healthz', 200], ['/nope.html', 404], ['/ws', 426]]) {
     const res = await fetch(`${server.base}${path}`);
     assert.equal(res.status, status, path);
     assert.equal(res.headers.get('x-robots-tag'), 'noindex, nofollow, noarchive', path);

@@ -35,6 +35,13 @@ const gzipAsync = promisify(gzip);
 const ROBOTS_TAG = 'noindex, nofollow, noarchive';
 const cache = new Map(); // path -> { mtimeMs, size, body, etag, gz? }
 
+// Every asset lives under /v/<build>/public/… or /v/<build>/shared/… (the
+// layout on disk): relative ES module imports inherit that prefix, so each
+// file of a new build has a new URL (no stale modules mixed with fresh ones,
+// whatever a browser or proxy cached), and every import that is right on
+// disk is right as a URL too.
+const VERSIONED = /^\/v\/([\w.-]{1,64})\/(public|shared)(\/.*)$/;
+
 // Map a URL path to a file on disk, or null when it is not allowed.
 function resolvePath(pathname) {
   let decoded;
@@ -43,6 +50,8 @@ function resolvePath(pathname) {
   } catch {
     return null;
   }
+  const v = VERSIONED.exec(decoded);
+  if (v) decoded = v[2] === 'shared' ? `/shared${v[3]}` : v[3];
   if (decoded.includes('\0') || decoded.includes('\\')) return null;
   if (decoded.split('/').some((seg) => seg.startsWith('.'))) return null; // no dotfiles, no ..
 
@@ -104,17 +113,18 @@ export function createHttpHandler({ config, log, getStats }) {
     let entry = cache.get(full);
     if (!entry || entry.mtimeMs !== info.mtimeMs || entry.size !== info.size) {
       let body = await readFile(full);
-      // Inject the build id so the page can link assets with ?v=<build>.
+      // Inject the build id so the page links its assets under /v/<build>/.
       if (isHtml) body = Buffer.from(body.toString('utf8').replaceAll('__BUILD__', config.buildId));
       entry = { mtimeMs: info.mtimeMs, size: info.size, body, etag: `W/"${info.size.toString(36)}-${Math.floor(info.mtimeMs).toString(36)}-${config.buildId}"` };
       if (info.size <= MAX_CACHED_FILE) cache.set(full, entry);
     }
 
-    // HTML and un-versioned modules: always revalidate (cheap 304s).
-    // Anything requested with ?v=<build> never changes: cache for a year.
-    const versioned = url.searchParams.has('v');
+    // HTML and anything outside the current build: always revalidate (cheap
+    // 304s). Files under /v/<current build>/ never change: cache for a year.
+    const v = VERSIONED.exec(url.pathname);
+    const current = config.immutableAssets && ((v && v[1] === config.buildId) || url.searchParams.get('v') === config.buildId);
     res.setHeader('Content-Type', MIME[ext]);
-    res.setHeader('Cache-Control', !isHtml && versioned ? 'public, max-age=31536000, immutable' : 'no-cache');
+    res.setHeader('Cache-Control', !isHtml && current ? 'public, max-age=31536000, immutable' : 'no-cache');
     res.setHeader('ETag', entry.etag);
     if (isHtml) for (const [k, v] of Object.entries(securityHeaders(req, config))) res.setHeader(k, v);
     else res.setHeader('X-Content-Type-Options', 'nosniff');

@@ -207,7 +207,14 @@ session.on('error', (msg) => {
 });
 
 session.on('notice', (msg) => toast(msg.text));
+// A new version is live. Outside a game we reload right away (the session
+// token brings you back into your room); during a game we ask, so nobody
+// loses a match, and never load new game code into the old page.
 session.on('outdated', () => {
+  if (!gameHost.mounted) {
+    setTimeout(() => location.reload(), 300);
+    return;
+  }
   toast('Er is een nieuwe versie van de arcade.', { timeout: 0, action: { label: 'Ververs', run: () => location.reload() } });
 });
 

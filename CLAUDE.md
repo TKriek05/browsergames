@@ -29,8 +29,12 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 
 - **Server-authoritative.** Clients sturen alleen input; server valideert alles (snelheid, zetten, scores).
 - `shared/` bevat pure modules (geen DOM, geen Node-API's) die client én server importeren.
-  De server serveert `shared/` onder `/shared/`. Imports vanuit `public/` gebruiken paden die zowel
-  als URL als op schijf kloppen, bijv. `../../../shared/x.js` vanuit `public/js/core/`.
+  De server serveert `shared/` onder `/shared/`. Imports vanuit `public/` gebruiken paden die op schijf
+  kloppen, bijv. `../../../shared/x.js` vanuit `public/js/core/`; nooit absolute paden.
+- **Cache busting:** de pagina laadt alles onder `/v/<build>/public/…` en `/v/<build>/shared/…` (spiegel van de
+  schijf), dus elke relatieve import erft de build-versie. `buildId` = (`.build-id` +) een hash van de inhoud van
+  `public/` en `shared/`. In productie (`NODE_ENV=production`) zijn die URLs een jaar cachebaar, in dev `no-cache`.
+  Een verouderde pagina ververst zichzelf in de hub/lobby (`session 'outdated'`), tijdens een spel via een knop.
 - **Protocol** (`shared/messages.js`): JSON `{ t, v, … }`; binair `[u8 type][u8 version]…`.
   Wijzig je het wire-formaat → verhoog `PROTOCOL_VERSION` in `shared/constants.js`.
 - **Validatie** (`server/protocol.js`): elk C2S-type heeft een schema; alleen bekende velden worden

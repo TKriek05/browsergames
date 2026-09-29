@@ -1,5 +1,6 @@
 // Runtime configuration from environment variables (optionally a .env file).
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { APP_VERSION } from '../shared/constants.js';
@@ -24,15 +25,35 @@ function list(value) {
     .filter(Boolean);
 }
 
-// The deploy script writes .build-id; it is used for ?v= cache busting.
+// A hash of every file the browser can load (public/ and shared/): it
+// changes exactly when the site changes, also after a plain `git pull`.
+function contentHash() {
+  const hash = createHash('sha1');
+  const walk = (dir, rel) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (entry.name.startsWith('.')) continue;
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path, `${rel}/${entry.name}`);
+      else if (entry.isFile()) hash.update(`${rel}/${entry.name}\0`).update(readFileSync(path));
+    }
+  };
+  walk(join(ROOT_DIR, 'public'), 'public');
+  walk(join(ROOT_DIR, 'shared'), 'shared');
+  return hash.digest('hex').slice(0, 10);
+}
+
+// Build id for cache busting: every asset is served under /v/<build>/.
+// The deploy script's .build-id (if any) is kept in front, so /healthz
+// still shows which deploy is live.
 function buildId() {
   if (env.BUILD_ID) return env.BUILD_ID;
   const file = join(ROOT_DIR, '.build-id');
+  let prefix = APP_VERSION;
   if (existsSync(file)) {
     const id = readFileSync(file, 'utf8').trim();
-    if (/^[\w.-]{1,64}$/.test(id)) return id;
+    if (/^[\w.-]{1,40}$/.test(id)) prefix = id;
   }
-  return `${APP_VERSION}-${Date.now().toString(36)}`;
+  return `${prefix}-${contentHash()}`;
 }
 
 export function loadConfig(overrides = {}) {
@@ -52,6 +73,9 @@ export function loadConfig(overrides = {}) {
     trustProxy: ['always', 'never', 'loopback'].includes(env.TRUST_PROXY) ? env.TRUST_PROXY : 'loopback',
     logLevel: env.LOG_LEVEL || 'info',
     buildId: buildId(),
+    // Long-lived caching of /v/<build>/ assets. Off in development: there the
+    // build id is computed once at start, while public/ files keep changing.
+    immutableAssets: env.NODE_ENV === 'production',
     // Timing overrides are only used by tests.
     timing: {},
     ...overrides,
