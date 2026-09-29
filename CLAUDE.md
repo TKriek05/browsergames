@@ -211,3 +211,5 @@ clientmodule, tests.
    Onthoud 'm, Mijnenveger, Ruimtegolf, Rotsregen ✅
 6. Party-update: party-lobby (vrije keuze, willekeurig, toernooi), Spetterveld (3D-shooter), Pesten, Quizkoorts,
    Pinguïnbotsen (3D), Knalkanon, Hapvis ✅
+7. Uitbreidingen: cache buster, Boemstad-maps, power-ups (Hapvis, Pinguïnbotsen, Spetterveld), nieuwe stijl
+   Spetterveld, Kladderkoning (verfbattle), Raak de Roos (3D-boogschieten), Dammen voor 4 ✅
