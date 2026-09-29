@@ -1,6 +1,7 @@
 // Boemstad: arena, items and player movement shared by server and client.
 // Movement is deterministic (+ - * /, Math.abs/floor, float32) so your own
-// walker can be predicted.
+// walker can be predicted. Map layouts: shared/maps/bomber-arenas.js.
+import { BOMB_MAPS } from '../maps/bomber-arenas.js';
 export const BOMB_COLS = 15;
 export const BOMB_ROWS = 13;
 export const BTILE = 16;
@@ -22,20 +23,32 @@ export const tileIndex = (tx, ty) => ty * BOMB_COLS + tx;
 export const tileAt = (v) => Math.floor(v / BTILE);
 export const centre = (t) => t * BTILE + BTILE / 2;
 
-export function isFixedWall(tx, ty) {
-  return tx === 0 || ty === 0 || tx === BOMB_COLS - 1 || ty === BOMB_ROWS - 1 || (tx % 2 === 0 && ty % 2 === 0);
+// The layout character of a tile ('#', '~', 'T', '.', ',' or 'B'; see bomber-arenas.js).
+export function mapTile(mapId, tx, ty) {
+  if (tx === 0 || ty === 0 || tx === BOMB_COLS - 1 || ty === BOMB_ROWS - 1) return '#';
+  const layout = (BOMB_MAPS[mapId] ?? BOMB_MAPS.stad).layout;
+  if (!layout) return tx % 2 === 0 && ty % 2 === 0 ? '#' : '.';
+  return layout[ty][tx];
 }
 
-// A fresh arena: walls, pillars and random blocks (density 0..1).
-export function buildArena(rng, density = 0.72) {
+export function isFixedWall(tx, ty, mapId = 'stad') {
+  const c = mapTile(mapId, tx, ty);
+  return c === '#' || c === '~' || c === 'T';
+}
+
+// A fresh arena for a map: fixed walls, then random blocks on the open
+// tiles (density 0..1, the map's own by default).
+export function buildArena(rng, mapId = 'stad', density = (BOMB_MAPS[mapId] ?? BOMB_MAPS.stad).density) {
   const tiles = new Uint8Array(BOMB_COLS * BOMB_ROWS);
   const free = new Set();
   for (const [x, y] of SPAWNS) for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) free.add(tileIndex(x + dx, y + dy));
   for (let y = 0; y < BOMB_ROWS; y++) {
     for (let x = 0; x < BOMB_COLS; x++) {
       const i = tileIndex(x, y);
-      if (isFixedWall(x, y)) tiles[i] = BT.WALL;
-      else if (!free.has(i) && rng() < density) tiles[i] = BT.BLOCK;
+      const c = mapTile(mapId, x, y);
+      if (c === '#' || c === '~' || c === 'T') tiles[i] = BT.WALL;
+      else if (free.has(i) || c === ',') continue;
+      else if (c === 'B' || rng() < density) tiles[i] = BT.BLOCK;
     }
   }
   return tiles;
@@ -108,7 +121,7 @@ export function stepWalker(s, ax, ay, dt, tiles, bombs) {
 }
 
 // Order in which the walls close in during sudden death (outer ring first).
-export function spiralOrder() {
+export function spiralOrder(mapId = 'stad') {
   const order = [];
   let x0 = 1, y0 = 1, x1 = BOMB_COLS - 2, y1 = BOMB_ROWS - 2;
   while (x0 <= x1 && y0 <= y1) {
@@ -118,5 +131,5 @@ export function spiralOrder() {
     if (x1 > x0) for (let y = y1 - 1; y > y0; y--) order.push([x0, y]);
     x0++; y0++; x1--; y1--;
   }
-  return order.filter(([x, y]) => !isFixedWall(x, y));
+  return order.filter(([x, y]) => !isFixedWall(x, y, mapId));
 }

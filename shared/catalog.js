@@ -230,9 +230,21 @@ const entries = [
     kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Pijltjes, muis of joystick. Spatie/klik = bal afschieten',
   },
   {
-    id: 'bomber', title: 'Boemstad', tagline: 'Leg bommen, blaas muren op, blijf overeind. In 3D.',
+    id: 'bomber', title: 'Boemstad', tagline: 'Leg bommen, blaas muren op, blijf overeind. Vijf maps, in 3D.',
     kind: 'realtime', phase: 5, available: true, bots: true, controls: 'Pijltjes/WASD lopen, spatie of BOM om een bom te leggen',
     settings: [
+      {
+        key: 'map', label: 'Map', type: 'select',
+        options: [
+          { value: 'stad', label: 'Dorpsplein' },
+          { value: 'park', label: 'Stadspark' },
+          { value: 'haven', label: 'Haven' },
+          { value: 'kasteel', label: 'Kasteel' },
+          { value: 'winter', label: 'Winterdorp' },
+          { value: 'wissel', label: 'Elke ronde een andere' },
+        ],
+        default: 'stad',
+      },
       {
         key: 'wins', label: 'Winnen bij', type: 'select',
         options: [{ value: 1, label: '1 ronde' }, { value: 2, label: '2 rondes' }, { value: 3, label: '3 rondes' }],

@@ -1,11 +1,13 @@
 // Boemstad (server side): place bombs, blast blocks, grab power-ups and be
 // the last one standing. First to N round wins. After a while the walls
-// close in (sudden death).
+// close in (sudden death). Maps: shared/maps/bomber-arenas.js (one, or a
+// different one every round).
 import { ArcadeGame } from './arcade.js';
 import { BTN } from '../../shared/messages.js';
 import {
   BOMB_COLS, BOMB_ROWS, BT, ITEM, SPAWNS, MAX_SPEED_LV, buildArena, stepWalker, tileIndex, tileAt, centre, overlapped, spiralOrder,
 } from '../../shared/games/bomber.js';
+import { BOMB_MAPS, BOMB_MAP_IDS, BOMB_MAP_MIX } from '../../shared/maps/bomber-arenas.js';
 import { bomberBot } from './bomber-bots.js';
 
 const FUSE_S = 2.4;
@@ -14,12 +16,14 @@ const ITEM_CHANCE = 0.32;
 const ROUND_END_S = 3;
 const SUDDEN_AT_S = 90;
 const SUDDEN_EVERY_S = 0.45;
-const SPIRAL = spiralOrder();
+const SPIRALS = Object.fromEntries(BOMB_MAP_IDS.map((id) => [id, spiralOrder(id)]));
 
 class BomberGame extends ArcadeGame {
   constructor(room, settings) {
     super(room, settings);
     this.winsNeeded = settings.wins ?? 2;
+    this.mapSetting = BOMB_MAPS[settings.map] || settings.map === BOMB_MAP_MIX ? settings.map : 'stad';
+    this.mapId = 'stad';
     this.round = 0;
     this.addPlayers();
     this._newRound();
@@ -36,7 +40,12 @@ class BomberGame extends ArcadeGame {
 
   _newRound() {
     this.round++;
-    this.tiles = buildArena(this.rng);
+    // 'Every round another map': start somewhere random, then go down the list.
+    if (this.mapSetting === BOMB_MAP_MIX) {
+      const start = this.round === 1 ? Math.floor(this.rng() * BOMB_MAP_IDS.length) : BOMB_MAP_IDS.indexOf(this.mapId) + 1;
+      this.mapId = BOMB_MAP_IDS[start % BOMB_MAP_IDS.length];
+    } else this.mapId = this.mapSetting;
+    this.tiles = buildArena(this.rng, this.mapId);
     this.bombs = []; // { x, y, fuse, range, owner }
     this.bombAt = new Uint8Array(BOMB_COLS * BOMB_ROWS);
     this.flames = new Float32Array(BOMB_COLS * BOMB_ROWS); // seconds left per tile
@@ -58,7 +67,7 @@ class BomberGame extends ArcadeGame {
       e.bot = {};
     });
     this.startCountdown(3);
-    this.room.emit('round', { n: this.round });
+    this.room.emit('round', { n: this.round, map: this.mapId });
   }
 
   nextRound() {
@@ -190,6 +199,7 @@ class BomberGame extends ArcadeGame {
 
   // Sudden death: walls drop in a spiral from the outside in.
   _stepSudden(dt) {
+    const SPIRAL = SPIRALS[this.mapId];
     if (this.roundTime < SUDDEN_AT_S || this.sudden >= SPIRAL.length) return;
     if (this.sudden === 0 && this.suddenT === 0) this.room.emit('sudden');
     this.suddenT -= dt;
@@ -206,12 +216,12 @@ class BomberGame extends ArcadeGame {
     this.room.emit('wallDrop', { x, y });
   }
 
-  // Body: u8 phase, f32 left, u8 round, u8 winsNeeded, u8 sudden,
+  // Body: u8 phase, f32 left, u8 round, u8 winsNeeded, u8 sudden, u8 map (index in BOMB_MAP_IDS),
   // u8 n × [u8 slot, u8 flags, u16 ack, f32 x, f32 y, u8 dir, u8 alive, u8 bombsMax, u8 range, u8 speed, u8 wins],
   // tiles (2 bits each), u8 bombs × [u8 x, u8 y, u8 fuse(ds)], u8 flames × [u8 x, u8 y], u8 items × [u8 x, u8 y, u8 type]
   snapshot(w) {
     this.writePhase(w);
-    w.u8(this.round).u8(this.winsNeeded).u8(this.roundTime >= SUDDEN_AT_S ? 1 : 0);
+    w.u8(this.round).u8(this.winsNeeded).u8(this.roundTime >= SUDDEN_AT_S ? 1 : 0).u8(BOMB_MAP_IDS.indexOf(this.mapId));
     w.u8(this.ents.length);
     for (const e of this.ents) {
       w.u8(e.player.slot).u8(ArcadeGame.flags(e.player)).u16(e.queue.ackSeq).f32(e.s.x).f32(e.s.y);

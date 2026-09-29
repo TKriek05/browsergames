@@ -1,12 +1,13 @@
-// Boemstad in 3D: a sunny Dutch village on a green. Blocks are brick houses
-// with gabled roofs, the fixed walls are stone posts and a brick town wall,
-// bombs sizzle at the fuse, flames burn along the lanes.
+// Boemstad in 3D: each map has its own world (themes.js): a Dutch village,
+// a city park, a harbour, a castle or a snowy village. Bombs sizzle at the
+// fuse, flames burn along the lanes.
 // World mapping: game (x, y) → 3D (x, 0, y), like Tank Tumult.
 import { createRenderer3D } from '../../js/gl/renderer.js';
 import { MeshBuilder, rgb } from '../../js/gl/mesh.js';
 import { create, compose } from '../../js/gl/mat4.js';
 import { createParticles3D } from '../../js/gl/particles.js';
-import { BOMB_COLS, BOMB_ROWS, BTILE, BT, BOMB_WORLD, ITEM_COLORS, isFixedWall } from '../../../shared/games/bomber.js';
+import { BOMB_COLS, BOMB_ROWS, BTILE, BT, BOMB_WORLD, ITEM_COLORS, isFixedWall, mapTile } from '../../../shared/games/bomber.js';
+import { THEMES } from './themes.js';
 
 const CX = BOMB_WORLD.width / 2;
 const CZ = BOMB_WORLD.height / 2;
@@ -15,13 +16,7 @@ const YAW = [0, -Math.PI / 2, Math.PI, Math.PI / 2]; // dir → yaw (right, down
 export function createBomberScene(canvas, { reducedMotion }) {
   const r = createRenderer3D(canvas);
   if (!r) return null;
-  r.setColors({
-    sky: ['#4a93d8', '#d8ecf8'],
-    fog: ['#cfe0c8', 520, 1100],
-    light: { dir: [-0.4, -1, -0.5], color: '#ece2c8', ambient: '#6a7066' },
-    sun: null,
-  });
-  const floor = r.mesh(buildFloor());
+  const floor = r.mesh(new Float32Array(0));
   const walls = r.mesh(new Float32Array(0));
   const houses = r.mesh(new Float32Array(0));
   const bomb = r.mesh(buildBomb());
@@ -35,10 +30,23 @@ export function createBomberScene(canvas, { reducedMotion }) {
   let houseKey = '';
   let time = 0;
   let shake = 0;
+  let mapId = '';
+  let theme = THEMES.stad;
 
   return {
     r,
     particles,
+
+    // A new map (between rounds): its colours, its world, its walls.
+    setMap(id) {
+      if (id === mapId) return;
+      mapId = id;
+      theme = THEMES[id] ?? THEMES.stad;
+      r.setColors({ ...theme.colors, sun: null });
+      r.update(floor, buildWorld(theme));
+      wallKey = '';
+      houseKey = '';
+    },
 
     setTiles(tiles) {
       let wk = '';
@@ -47,14 +55,18 @@ export function createBomberScene(canvas, { reducedMotion }) {
         wk += tiles[i] === BT.WALL ? '1' : '0';
         hk += tiles[i] === BT.BLOCK ? '1' : '0';
       }
-      if (wk !== wallKey) { wallKey = wk; r.update(walls, buildWalls(tiles)); }
-      if (hk !== houseKey) { houseKey = hk; r.update(houses, buildHouses(tiles)); }
+      if (wk !== wallKey) { wallKey = wk; r.update(walls, buildWalls(tiles, theme, mapId)); }
+      if (hk !== houseKey) { houseKey = hk; r.update(houses, buildBlocks(tiles, theme)); }
     },
 
     update(dt) {
       time += dt;
       shake = Math.max(0, shake - dt * 14);
       particles.update(dt);
+      // Snowfall in the winter village.
+      if (theme.snow && !reducedMotion && Math.random() < 0.8) {
+        particles.spawn(Math.random() * (BOMB_WORLD.width + 200) - 100, 90, Math.random() * (BOMB_WORLD.height + 160) - 80, (Math.random() - 0.5) * 6, -14, (Math.random() - 0.5) * 6, 6, '#ffffff', 1.4, 0, 1);
+      }
     },
 
     shake(n) {
@@ -125,119 +137,41 @@ export function createBomberScene(canvas, { reducedMotion }) {
   };
 }
 
-function buildFloor() {
+function buildWorld(theme) {
   const b = new MeshBuilder();
-  let seed = 4242;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  // Its top sits just below the town floor: no z-fighting between the two.
-  b.color('#5f9a45').box(CX, -2.2, CZ, BOMB_WORLD.width + 600, 2, BOMB_WORLD.height + 500);
-  for (let y = 0; y < BOMB_ROWS; y++) {
-    for (let x = 0; x < BOMB_COLS; x++) {
-      b.color((x + y) % 2 ? '#78b556' : '#70ad4f');
-      b.face([[x * BTILE, 0, y * BTILE], [x * BTILE, 0, y * BTILE + BTILE], [x * BTILE + BTILE, 0, y * BTILE + BTILE], [x * BTILE + BTILE, 0, y * BTILE]], [0, 1, 0]);
-    }
-  }
-  // A brick road around the town wall, then trees and tulip fields.
-  const W = BOMB_WORLD.width;
-  const H = BOMB_WORLD.height;
-  b.color('#b8a58a');
-  for (const [x, z, w, d] of [[CX, -14, W + 56, 20], [CX, H + 14, W + 56, 20], [-14, CZ, 20, H + 8], [W + 14, CZ, 20, H + 8]]) {
-    b.face([[x - w / 2, 0.05, z - d / 2], [x - w / 2, 0.05, z + d / 2], [x + w / 2, 0.05, z + d / 2], [x + w / 2, 0.05, z - d / 2]], [0, 1, 0]);
-  }
-  const tulips = ['#e63946', '#ffb020', '#f4f4f4', '#d94f9a'];
-  for (let i = 0; i < 70; i++) {
-    const side = i % 4;
-    const along = rnd();
-    const out = 40 + rnd() * 110;
-    const x = side === 0 ? -out : side === 1 ? W + out : along * (W + 240) - 120;
-    const z = side === 2 ? -out : side === 3 ? H + out : along * (H + 200) - 100;
-    const s = 0.8 + rnd() * 0.5;
-    if (rnd() < 0.6) {
-      b.color('#6b4a2e').box(x, 0, z, 2.4 * s, 8 * s, 2.4 * s, { bottom: false });
-      b.color(['#3c8a45', '#4a9a4a', '#2f7a3b'][i % 3]).sphere(x, 13 * s, z, 7.5 * s, 6, 4);
-    } else {
-      b.color(tulips[i % tulips.length]);
-      for (let k = 0; k < 4; k++) b.box(x + (k - 1.5) * 5, 0, z, 3, 1.2, 14, { bottom: false });
-    }
-  }
-  // A canal with a little bridge along the north side, and a windmill.
-  b.color('#3a78b0', { emissive: 0.08 }).face([[-300, -0.6, -70], [-300, -0.6, -46], [W + 300, -0.6, -46], [W + 300, -0.6, -70]], [0, 1, 0]);
-  b.color('#6a5a48').box(CX, -2, -46, W + 600, 2.2, 2).box(CX, -2, -70, W + 600, 2.2, 2);
-  b.color('#9a4a36').box(CX, 0, -58, 24, 3, 30, { top: '#a8503a' });
-  const mx = W + 90;
-  const mz = -20;
-  b.color('#5e4a3a').cylinder(mx, 0, mz, 10, 34, 8, { top: '#4a3a2e' });
-  b.color('#6a6a3a').cone(mx, 34, mz, 11, 11, 8);
-  b.color('#e8e0d0');
-  for (let k = 0; k < 4; k++) {
-    const a = (k / 4) * Math.PI * 2 + 0.3;
-    const q = (along, across) => [mx - 11, 36 + Math.cos(a) * along - Math.sin(a) * across, mz + Math.sin(a) * along + Math.cos(a) * across];
-    const blade = [q(3, -1.4), q(30, -3), q(30, 3), q(3, 1.4)];
-    b.face(blade, [-1, 0, 0]).face(blade, [1, 0, 0]);
-  }
+  theme.world(b);
   return b.build();
 }
 
-function buildWalls(tiles) {
+function buildWalls(tiles, theme, mapId) {
   const b = new MeshBuilder();
   for (let y = 0; y < BOMB_ROWS; y++) {
     for (let x = 0; x < BOMB_COLS; x++) {
       if (tiles[y * BOMB_COLS + x] !== BT.WALL) continue;
-      const border = x === 0 || y === 0 || x === BOMB_COLS - 1 || y === BOMB_ROWS - 1;
-      const dropped = !isFixedWall(x, y);
-      const h = border ? 12 : 14;
       const cx = (x + 0.5) * BTILE;
       const cz = (y + 0.5) * BTILE;
-      if (border) {
-        // Town wall in red brick with a stone coping.
-        b.color('#9a4a36').box(cx, 0, cz, BTILE, h, BTILE, { top: '#a8503a', bottom: false });
-        b.color('#c8bcaa').box(cx, h, cz, BTILE - 6, 0.6, BTILE - 6, { bottom: false });
-        b.color('#7e3a2a').box(cx, h * 0.5, cz, BTILE + 0.3, 0.8, BTILE + 0.3, { bottom: false });
-      } else if (dropped) {
+      const border = x === 0 || y === 0 || x === BOMB_COLS - 1 || y === BOMB_ROWS - 1;
+      if (border) theme.border(b, cx, cz, x, y);
+      else if (!isFixedWall(x, y, mapId)) {
         // Sudden death: heavy crates dropped into the streets.
-        b.color('#5a4a3a').box(cx, 0, cz, BTILE, h, BTILE, { top: '#6a5846', bottom: false });
-        b.color('#e6b422').box(cx, h, cz, BTILE - 5, 0.5, 2, { bottom: false }).box(cx, h, cz, 2, 0.5, BTILE - 5, { bottom: false });
-      } else {
-        // Stone posts.
-        b.color('#8a8a92').box(cx, 0, cz, BTILE, h, BTILE, { top: '#a2a2aa', bottom: false });
-        b.color('#74747c').box(cx, h * 0.33, cz, BTILE + 0.3, 0.8, BTILE + 0.3, { bottom: false }).box(cx, h * 0.66, cz, BTILE + 0.3, 0.8, BTILE + 0.3, { bottom: false });
-      }
+        b.color('#5a4a3a').box(cx, 0, cz, BTILE, 14, BTILE, { top: '#6a5846', bottom: false });
+        b.color('#e6b422').box(cx, 14, cz, BTILE - 5, 0.5, 2, { bottom: false }).box(cx, 14, cz, 2, 0.5, BTILE - 5, { bottom: false });
+      } else theme.wall(b, cx, cz, mapTile(mapId, x, y), x * 7 + y * 3);
     }
   }
   return b.build();
 }
 
-// Destructible blocks: little Dutch houses with a gabled roof and windows.
-function buildHouses(tiles) {
+// Destructible blocks in the theme's style.
+function buildBlocks(tiles, theme) {
   const b = new MeshBuilder();
-  const bricks = ['#b5553c', '#a0472f', '#c9784e', '#d8c8a8'];
-  const roofs = ['#6a2a22', '#3a3a44', '#8a3a2a'];
   for (let y = 0; y < BOMB_ROWS; y++) {
     for (let x = 0; x < BOMB_COLS; x++) {
       if (tiles[y * BOMB_COLS + x] !== BT.BLOCK) continue;
-      const cx = (x + 0.5) * BTILE;
-      const cz = (y + 0.5) * BTILE;
-      const k = x * 7 + y * 3;
-      b.color(bricks[k % bricks.length]).box(cx, 0, cz, 13, 8, 13, { bottom: false });
-      gable(b, cx, 8, cz, 14, 14, 6, roofs[k % roofs.length], bricks[k % bricks.length]);
-      // White window frames with blue glass, a door
-      b.color('#f4f4f4').box(cx - 3, 3.6, cz + 6.55, 3.2, 3.2, 0.3, { bottom: false }).box(cx + 3, 3.6, cz + 6.55, 3.2, 3.2, 0.3, { bottom: false });
-      b.color('#7fb0d8').box(cx - 3, 4, cz + 6.75, 2.2, 2.4, 0.2, { bottom: false }).box(cx + 3, 4, cz + 6.75, 2.2, 2.4, 0.2, { bottom: false });
-      b.color('#2f5a3a').box(cx + 6.55, 0, cz, 0.3, 5.5, 3, { bottom: false });
+      theme.block(b, (x + 0.5) * BTILE, (y + 0.5) * BTILE, x * 7 + y * 3);
     }
   }
   return b.build();
-}
-
-// Gabled roof with its ridge along x: two slopes and two triangular ends.
-function gable(b, x, y, z, w, d, h, roof, wall) {
-  const x0 = x - w / 2, x1 = x + w / 2, z0 = z - d / 2, z1 = z + d / 2;
-  b.color(roof);
-  b.face([[x0, y, z1], [x1, y, z1], [x1, y + h, z], [x0, y + h, z]], [0, 1, 1]);
-  b.face([[x0, y, z0], [x0, y + h, z], [x1, y + h, z], [x1, y, z0]], [0, 1, -1]);
-  b.color(wall);
-  b.face([[x1 - 0.5, y, z0 + 0.5], [x1 - 0.5, y + h - 0.4, z], [x1 - 0.5, y, z1 - 0.5]], [1, 0, 0]);
-  b.face([[x0 + 0.5, y, z0 + 0.5], [x0 + 0.5, y, z1 - 0.5], [x0 + 0.5, y + h - 0.4, z]], [-1, 0, 0]);
 }
 
 function buildBomb() {

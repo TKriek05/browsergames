@@ -6,7 +6,7 @@ export const APP_VERSION = '0.1.0';
 
 // Bump whenever the wire format changes. A client with another version gets
 // a friendly "please refresh" message instead of weird bugs.
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 // ---------------------------------------------------------------------------
 // Rooms

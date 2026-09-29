@@ -98,7 +98,7 @@ In het spel zet 🎵 de muziek aan/uit (onthouden in de browser); 🔊 dempt all
 | Turbo Kart GP | 1-6 | 3D-racer met achtervolgcamera, drift + mini-turbo, boost-pads, 9 items (turbo, turbo ×3, stuiterbal, olievlek, schild, raket, bom, bliksem, superster), 6 circuits: 3 vlakke (Groene Vallei, Herfstbos, Strandboulevard) en 3 met hoogteverschil (Alpenpas, Rode Canyon, Vulkaaneiland), of een Grand Prix (Klassiek / Heuvels) met punten; motor met versnellingen, piepende banden en grasgeluid |
 | Tank Tumult | 2-6 | 3D (three.js, echte schaduwen), stuiterende kogels, kapotschietbare kratten, power-ups, op tijd of laatste tank |
 | Kwek Kwek Knal | 1-6 | Eenden schieten met muis, touch of toetsen. Lag compensation: de server spoelt terug naar wat jij zag. Tegen elkaar of samen (quotum per ronde) |
-| Boemstad | 2-6 | **3D.** Bommen leggen in een Hollands dorpje, power-ups, kettingreacties; na 90 s krimpt het dorp. Eerst N rondes |
+| Boemstad | 2-6 | **3D.** Bommen leggen, power-ups, kettingreacties; na 90 s krimpt het veld. Vijf maps (Dorpsplein, Stadspark, Haven, Kasteel, Winterdorp) of elke ronde een andere. Eerst N rondes |
 | Minigolf | 1-6 | **3D.** Negen holes in een zonnig park (zand, water, bumpers, heuvel), iedereen tegelijk. Sleep terug en laat los, of pijltjes + spatie |
 | Slangenstrijd | 2-6 | Battle royale met slangen, laatste die overblijft wint de ronde |
 | Paddle Party | 2-4 | Pong met een batje aan elke kant, levens per speler |

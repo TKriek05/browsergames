@@ -130,6 +130,9 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
   snapshot als het veranderd is (`sentRev` per speler, reset bij reconnect).
 - **Pinguïnbotsen** (`penguins`) en **Hapvis** (`fish`): voorspelde eigen beweging, botsen/opeten alleen op de server.
   Hapvis-plankton staat op vaste plekken uit de seed; de snapshot stuurt alleen een bitmasker.
+- Boemstad-maps: tekst-layouts in `shared/maps/bomber-arenas.js` (`#` muur, `~` water, `T` boom/toren, `.` open,
+  `,` altijd vrij, `B` blok); het uiterlijk per map in `public/games/bomber/themes.js`. Een test controleert dat
+  spawns vrij zijn en alle open vakjes bereikbaar. Map-index staat in de snapshot (`wissel` = elke ronde een andere).
 - Pesten: `shared/rules/pesten.js` + `server/ai/pesten.js`; kaarten als vectorvormen in `public/games/pesten/cards.js`.
 
 ## Turbo Kart GP

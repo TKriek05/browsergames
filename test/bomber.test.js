@@ -2,7 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import bomber from '../server/games/bomber.js';
-import { BOMB_COLS, BOMB_ROWS, BT, SPAWNS, buildArena, stepWalker, centre, tileIndex, spiralOrder } from '../shared/games/bomber.js';
+import { BOMB_COLS, BOMB_ROWS, BT, SPAWNS, buildArena, stepWalker, centre, tileIndex, spiralOrder, isFixedWall } from '../shared/games/bomber.js';
+import { BOMB_MAPS, BOMB_MAP_IDS } from '../shared/maps/bomber-arenas.js';
 import { ARCADE_PHASE } from '../shared/games/arcade.js';
 import { BTN } from '../shared/messages.js';
 import { ByteWriter, ByteReader } from '../shared/binary.js';
@@ -34,7 +35,7 @@ test('arena: walls around, pillars, free spawn corners, spiral covers the inside
 });
 
 test('walking: blocked by walls, slides around corners, deterministic', () => {
-  const tiles = buildArena(createRng(2), 0);
+  const tiles = buildArena(createRng(2), 'stad', 0);
   const bombs = new Uint8Array(BOMB_COLS * BOMB_ROWS);
   const s = { x: centre(1), y: centre(1), dir: 1, speed: 0 };
   for (let i = 0; i < 30; i++) stepWalker(s, -1, 0, DT, tiles, bombs);
@@ -87,6 +88,7 @@ test('snapshot encoding has the documented layout', () => {
   const r = new ByteReader(w.toBytes());
   assert.equal(r.u8(), ARCADE_PHASE.PLAY);
   r.f32(); r.u8(); r.u8(); r.u8();
+  assert.equal(r.u8(), BOMB_MAP_IDS.indexOf('stad'), 'map');
   assert.equal(r.u8(), 2);
   r.pos += 2 * 18 + Math.ceil((BOMB_COLS * BOMB_ROWS) / 4);
   const nb = r.u8();
@@ -95,4 +97,54 @@ test('snapshot encoding has the documented layout', () => {
   r.pos += nf * 2;
   const ni = r.u8();
   assert.equal(r.remaining, ni * 3);
+});
+
+test('maps: well-formed layouts, open spawns, every open tile reachable, a map per round', () => {
+  assert.ok(BOMB_MAP_IDS.length >= 5);
+  for (const id of BOMB_MAP_IDS) {
+    const { layout } = BOMB_MAPS[id];
+    if (layout) {
+      assert.equal(layout.length, BOMB_ROWS, id);
+      for (const row of layout) {
+        assert.equal(row.length, BOMB_COLS, `${id}: row ${row}`);
+        assert.match(row, /^[#~T.,B]+$/, id);
+      }
+    }
+    const tiles = buildArena(createRng(5), id, 0);
+    for (const [x, y] of SPAWNS) {
+      for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (!isFixedWall(x + dx, y + dy, id)) continue;
+        assert.ok(dx || dy, `${id}: spawn ${x},${y} is a wall`);
+      }
+      assert.equal(tiles[tileIndex(x, y)], BT.FLOOR, `${id}: spawn ${x},${y}`);
+    }
+    // Without blocks, every floor tile can be reached from the first spawn.
+    const seen = new Set([tileIndex(...SPAWNS[0])]);
+    const todo = [SPAWNS[0]];
+    while (todo.length) {
+      const [x, y] = todo.pop();
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const i = tileIndex(x + dx, y + dy);
+        if (tiles[i] === BT.WALL || seen.has(i)) continue;
+        seen.add(i);
+        todo.push([x + dx, y + dy]);
+      }
+    }
+    const floors = tiles.filter((t) => t !== BT.WALL).length;
+    assert.equal(seen.size, floors, `${id}: all open tiles connected`);
+    const spiral = spiralOrder(id);
+    assert.ok(spiral.every(([x, y]) => !isFixedWall(x, y, id)), `${id}: sudden death only drops on open tiles`);
+  }
+  // 'Every round another map'.
+  const room = fakeRoom([human('p1', 0), human('p2', 1)]);
+  const game = bomber.create(room, { wins: 3, seed: 4, map: 'wissel' });
+  const maps = [game.mapId];
+  for (let i = 0; i < 3; i++) {
+    game._newRound();
+    maps.push(game.mapId);
+  }
+  assert.equal(new Set(maps).size, 4, `four rounds, four maps (${maps})`);
+  assert.deepEqual(room.events.filter((e) => e.e === 'round').map((e) => e.map), maps);
+  const fixed = bomber.create(fakeRoom([human('p1', 0)]), { wins: 1, seed: 4, map: 'haven' });
+  assert.equal(fixed.mapId, 'haven');
 });

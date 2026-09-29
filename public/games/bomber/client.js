@@ -3,6 +3,7 @@
 // is interpolated. 3D view, 2D HUD; a flat fallback without WebGL.
 import { BTN } from '../../../shared/messages.js';
 import { BOMB_COLS, BOMB_ROWS, BTILE, BT, ITEM_COLORS, stepWalker } from '../../../shared/games/bomber.js';
+import { BOMB_MAPS, BOMB_MAP_IDS } from '../../../shared/maps/bomber-arenas.js';
 import { createArcadeCore, ARCADE_PHASE, lerp } from '../common/arcade.js';
 import { Predictor } from '../../js/core/predict.js';
 import { drawText, roundRect } from '../../js/core/hudtext.js';
@@ -23,6 +24,7 @@ function decode(r, time) {
   s.round = r.u8();
   s.winsNeeded = r.u8();
   s.sudden = r.u8() === 1;
+  s.map = BOMB_MAP_IDS[r.u8()] ?? 'stad';
   const n = r.u8();
   for (let i = 0; i < n; i++) {
     s.ents.push({
@@ -82,6 +84,7 @@ export function createGame() {
         core.reset();
         banner = null;
       }
+      scene?.setMap(s.map);
       scene?.setTiles(s.tiles);
     },
 
@@ -177,7 +180,7 @@ export function createGame() {
     },
 
     hud(s) {
-      drawText(ctx, `RONDE ${s.round}`, 6, 5, { color: '#ffffff', shadow: SHADOW });
+      drawText(ctx, `RONDE ${s.round} · ${(BOMB_MAPS[s.map]?.name ?? '').toUpperCase()}`, 6, 5, { color: '#ffffff', shadow: SHADOW });
       drawText(ctx, `WINNEN BIJ ${s.winsNeeded}`, 6, 15, { color: '#a3a8d6', shadow: SHADOW });
       let y = 5;
       for (const e of [...s.ents].sort((p, q) => q.wins - p.wins)) {
