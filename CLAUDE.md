@@ -144,6 +144,9 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 - **Kladderkoning** (`kladder`): verfgrid 60 × 40 alleen op de server; elke snapshot draagt de wijzigingen van de laatste
   3 ticks plus één volledige strook (8 stroken, RLE), zodat een client die snapshots mist binnen 8 snapshots weer klopt.
   De client tekent de verf als bolletjes per cel op een eigen laag die alleen bij wijzigingen opnieuw wordt getekend.
+- **Raak de Roos** (`archery`): eigen server-module (`realtime: false`, zoals Knalkanon) met een 3D-client (`meta.gl`,
+  `input: false`, eigen muis/toets/touch-besturing). Pijlvlucht in `shared/games/archery.js` (`flyArrow`, `solveAim`); de
+  client stuurt `{ yaw, pitch, draw, t }`, de server vliegt en scoort. Het vizier is ingesteld op volle trek zonder wind.
 - Pesten: `shared/rules/pesten.js` + `server/ai/pesten.js`; kaarten als vectorvormen in `public/games/pesten/cards.js`.
 
 ## Turbo Kart GP

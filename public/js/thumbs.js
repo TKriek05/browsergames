@@ -282,6 +282,16 @@ const DRAW = {
     R(ctx, 20, 13, 7, 3, '#ff4d6d'); R(ctx, 26, 12, 1, 5, '#3a3a44'); R(ctx, 27, 14, 3, 1, '#3a3a44');
     R(ctx, 21, 16, 5, 1, '#c73a55');
   },
+  archery(ctx) {
+    for (let y = 0; y < 18; y++) R(ctx, 0, y, 48, 1, y < 9 ? '#5ea6e6' : '#9fcdef');
+    R(ctx, 0, 14, 48, 4, '#3f7f3a');
+    for (let y = 18; y < 32; y++) R(ctx, 0, y, 48, 1, y % 4 < 2 ? '#6aa94c' : '#629f46');
+    R(ctx, 24, 20, 1, 12, '#8a5a2b'); R(ctx, 32, 20, 1, 12, '#8a5a2b');
+    R(ctx, 21, 5, 15, 15, '#d9bf7a');
+    for (const [r, c] of [[7, '#f4f4f0'], [6, '#1f1f22'], [5, '#2a8fd8'], [3, '#e4453a'], [1, '#ffd23e']]) disc(ctx, 28, 12, r, c);
+    R(ctx, 29, 11, 8, 1, '#c49a62'); R(ctx, 36, 10, 2, 1, '#ff4d6d'); R(ctx, 36, 12, 2, 1, '#ff4d6d');
+    R(ctx, 4, 8, 1, 18, '#6b4424'); R(ctx, 5, 6, 1, 3, '#6b4424'); R(ctx, 5, 25, 1, 3, '#6b4424'); R(ctx, 3, 9, 1, 16, '#f4f4f0');
+  },
 };
 
 export function drawThumb(canvas, gameId) {

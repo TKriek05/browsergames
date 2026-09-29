@@ -116,6 +116,7 @@ In het spel zet 🎵 de muziek aan/uit (onthouden in de browser); 🔊 dempt all
 | Knalkanon | 2-6 | Artillerie om de beurt: hoek, kracht, wind, drie wapens en kraters in het landschap |
 | Hapvis | 1-6 | Onder water: eet plankton en kleinere vissen, vlucht voor grotere; punten gaan nooit omlaag; power-ups (turbo, stekels, magneet, ×2, groeien) instelbaar |
 | Kladderkoning | 1-6 | Verfbattle in een schildersatelier: rol zoveel mogelijk van het doek in jouw kleur; een duw spettert je verf over een ander; drie doeken, power-ups (brede roller, turbo, verfbom) |
+| Raak de Roos | 1-6 | **3D.** Boogschieten: richt met het vizier, span de boog (houd vast) en laat los; zwaartekracht, wind (vlaggen), afstand 18 → 70 m, eventueel een bewegend doel. 3 pijlen per ronde, hoogste totaal wint |
 
 Bij alle bordspellen: beurtindicator, zet-animaties, **zet terugnemen alleen als de ander akkoord gaat**
 (tegen een bot mag het meteen), **nog een potje** (wie begint wisselt), score over alle potjes in de lobby,

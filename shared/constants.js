@@ -102,4 +102,5 @@ export const GAME_LIMITS = {
   artillery: { min: 2, max: 6 },
   fish: { min: 1, max: 6 },
   kladder: { min: 1, max: 6 },
+  archery: { min: 1, max: 6 },
 };

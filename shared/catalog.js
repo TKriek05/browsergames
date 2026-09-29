@@ -453,6 +453,28 @@ const entries = [
       { key: 'powerups', label: 'Power-ups (brede roller, turbo, verfbom)', type: 'toggle', default: true },
     ],
   },
+  {
+    id: 'archery', title: 'Raak de Roos', tagline: 'Boogschieten in 3D: let op de wind en de afstand, en schiet in de roos.',
+    kind: 'realtime', phase: 7, available: true, bots: true,
+    controls: 'Richt met de muis (of pijltjes), houd ingedrukt om te spannen en laat los om te schieten (of spatie)',
+    settings: [
+      {
+        key: 'ends', label: 'Rondes', type: 'select',
+        options: [{ value: 3, label: '3 rondes' }, { value: 5, label: '5 rondes' }, { value: 8, label: '8 rondes' }],
+        default: 5,
+      },
+      {
+        key: 'wind', label: 'Wind', type: 'select',
+        options: [{ value: 'uit', label: 'Geen wind' }, { value: 'licht', label: 'Licht' }, { value: 'normaal', label: 'Normaal' }, { value: 'sterk', label: 'Sterk' }],
+        default: 'normaal',
+      },
+      {
+        key: 'moving', label: 'Bewegend doel', type: 'select',
+        options: [{ value: 'uit', label: 'Nooit' }, { value: 'laatste', label: 'Laatste 2 rondes' }, { value: 'altijd', label: 'Altijd' }],
+        default: 'laatste',
+      },
+    ],
+  },
 ];
 
 // Fill in limits + defaults so consumers can rely on every field existing.
