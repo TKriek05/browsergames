@@ -270,6 +270,18 @@ const DRAW = {
     for (const [x, y] of [[16, 6], [22, 25], [40, 12], [8, 26], [33, 27]]) R(ctx, x, y, 1, 1, '#ffb3c7');
     R(ctx, 21, 4, 1, 1, C.white); R(ctx, 23, 2, 1, 1, C.white);
   },
+  kladder(ctx) {
+    R(ctx, 0, 0, 48, 32, '#b98a55');
+    for (let y = 3; y < 32; y += 6) R(ctx, 0, y, 48, 1, '#a8784a');
+    R(ctx, 4, 3, 40, 26, W.paper);
+    R(ctx, 3, 2, 6, 2, '#e8d9a8'); R(ctx, 39, 2, 6, 2, '#e8d9a8'); R(ctx, 3, 28, 6, 2, '#e8d9a8'); R(ctx, 39, 28, 6, 2, '#e8d9a8');
+    const blob = (x, y, r, c) => disc(ctx, x, y, r, c);
+    blob(12, 10, 5, '#ff4d6d'); blob(17, 8, 3, '#ff4d6d'); blob(9, 16, 3, '#ff4d6d');
+    blob(34, 21, 5, '#3ec5ff'); blob(29, 24, 3, '#3ec5ff'); blob(38, 15, 3, '#3ec5ff');
+    blob(30, 9, 3, '#ffd23e'); blob(14, 23, 3, '#5dd46a');
+    R(ctx, 20, 13, 7, 3, '#ff4d6d'); R(ctx, 26, 12, 1, 5, '#3a3a44'); R(ctx, 27, 14, 3, 1, '#3a3a44');
+    R(ctx, 21, 16, 5, 1, '#c73a55');
+  },
 };
 
 export function drawThumb(canvas, gameId) {

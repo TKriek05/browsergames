@@ -435,6 +435,24 @@ const entries = [
       { key: 'powerups', label: 'Power-ups (turbo, stekels, magneet …)', type: 'toggle', default: true },
     ],
   },
+  {
+    id: 'kladder', title: 'Kladderkoning', tagline: 'Verfbattle: rol zoveel mogelijk van het doek in jouw kleur. Duw = spetter!',
+    kind: 'realtime', phase: 7, available: true, bots: true,
+    controls: 'Pijltjes/WASD of joystick om te rollen, spatie of DUW voor een spetterstoot',
+    settings: [
+      {
+        key: 'duration', label: 'Speelduur', type: 'select',
+        options: [{ value: 90, label: '1,5 minuut' }, { value: 120, label: '2 minuten' }, { value: 180, label: '3 minuten' }],
+        default: 120,
+      },
+      {
+        key: 'map', label: 'Doek', type: 'select',
+        options: [{ value: 'atelier', label: 'Atelier' }, { value: 'open', label: 'Leeg doek' }, { value: 'doolhof', label: 'Doolhof' }],
+        default: 'atelier',
+      },
+      { key: 'powerups', label: 'Power-ups (brede roller, turbo, verfbom)', type: 'toggle', default: true },
+    ],
+  },
 ];
 
 // Fill in limits + defaults so consumers can rely on every field existing.

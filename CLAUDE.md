@@ -141,6 +141,9 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 - Boemstad-maps: tekst-layouts in `shared/maps/bomber-arenas.js` (`#` muur, `~` water, `T` boom/toren, `.` open,
   `,` altijd vrij, `B` blok); het uiterlijk per map in `public/games/bomber/themes.js`. Een test controleert dat
   spawns vrij zijn en alle open vakjes bereikbaar. Map-index staat in de snapshot (`wissel` = elke ronde een andere).
+- **Kladderkoning** (`kladder`): verfgrid 60 × 40 alleen op de server; elke snapshot draagt de wijzigingen van de laatste
+  3 ticks plus één volledige strook (8 stroken, RLE), zodat een client die snapshots mist binnen 8 snapshots weer klopt.
+  De client tekent de verf als bolletjes per cel op een eigen laag die alleen bij wijzigingen opnieuw wordt getekend.
 - Pesten: `shared/rules/pesten.js` + `server/ai/pesten.js`; kaarten als vectorvormen in `public/games/pesten/cards.js`.
 
 ## Turbo Kart GP

@@ -174,6 +174,7 @@ export const GAME_MUSIC = {
   penguins: { style: 'ice' },
   artillery: { style: 'march', root: 41, bpm: 104 },
   fish: { style: 'underwater' },
+  kladder: { style: 'carnival', root: 48, bpm: 126, scale: 'major', chords: [0, 3, 4, 0, 5, 3, 4, 4] },
 };
 
 // Stable 32-bit seed from a game id (FNV-1a).
