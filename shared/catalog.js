@@ -395,6 +395,7 @@ const entries = [
         options: [{ value: 2, label: '2 rondes' }, { value: 3, label: '3 rondes' }, { value: 5, label: '5 rondes' }],
         default: 3,
       },
+      { key: 'powerups', label: 'Power-ups (visje, ijzers, bokshandschoen …)', type: 'toggle', default: true },
     ],
   },
   {

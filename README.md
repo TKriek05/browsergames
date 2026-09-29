@@ -112,7 +112,7 @@ In het spel zet 🎵 de muziek aan/uit (onthouden in de browser); 🔊 dempt all
 | Spetterveld | 2-6 | **3D first-person shooter** (paintball): muis via pointer lock + WASD, lag compensation, 3 velden (opblaasbunkers, bos, boerenerf), verf blijft plakken |
 | Pesten | 2-6 | Het Nederlandse kaartspel: 2 en joker (stapelen), 7 blijft kleven, 8 wacht, aas keert, boer vraagt een kleur |
 | Quizkoorts | 1-6 | Kennisquiz in een tv-studio: 186 eigen vragen in 9 onderwerpen, snel én goed = meeste punten |
-| Pinguïnbotsen | 2-6 | **3D.** Glibberen en duwen op een smeltende ijsschots; laatste pinguïn op het ijs wint de ronde |
+| Pinguïnbotsen | 2-6 | **3D.** Glibberen en duwen op een smeltende ijsschots; laatste pinguïn op het ijs wint de ronde; een duw verdooft even; power-ups (visje, ijzers, zwaargewicht, bokshandschoen, schokgolf) instelbaar |
 | Knalkanon | 2-6 | Artillerie om de beurt: hoek, kracht, wind, drie wapens en kraters in het landschap |
 | Hapvis | 1-6 | Onder water: eet plankton en kleinere vissen, vlucht voor grotere; punten gaan nooit omlaag; power-ups (turbo, stekels, magneet, ×2, groeien) instelbaar |
 

@@ -1,16 +1,17 @@
 // Pinguïnbotsen bots: stay away from the edge, sneak around to the side of a
 // victim that faces the middle and dash into them, so they fly outwards.
-// Easy bots steer sloppily and dash at random moments.
+// Easy bots steer sloppily and dash at random moments. Power-ups that lie
+// safely on the ice nearby are worth a detour.
 import { PG } from '../../shared/games/penguins.js';
 
 const LEVELS = {
-  easy: { think: 0.5, margin: 20, err: 0.6, dashAlign: 0.55, dashRange: 46, careless: 0.25, lookAhead: 0.15 },
-  normal: { think: 0.3, margin: 28, err: 0.3, dashAlign: 0.8, dashRange: 40, careless: 0.08, lookAhead: 0.35 },
-  hard: { think: 0.16, margin: 32, err: 0.1, dashAlign: 0.85, dashRange: 38, careless: 0, lookAhead: 0.55 },
+  easy: { think: 0.5, margin: 20, err: 0.6, dashAlign: 0.55, dashRange: 46, careless: 0.25, lookAhead: 0.15, greed: 70 },
+  normal: { think: 0.3, margin: 28, err: 0.3, dashAlign: 0.8, dashRange: 40, careless: 0.08, lookAhead: 0.35, greed: 120 },
+  hard: { think: 0.16, margin: 32, err: 0.1, dashAlign: 0.85, dashRange: 38, careless: 0, lookAhead: 0.55, greed: 160 },
 };
 
 export function createPenguinBot() {
-  return { think: 0, target: null, err: 0, out: { ax: 0, ay: 0, a: 0 } };
+  return { think: 0, target: null, power: null, err: 0, out: { ax: 0, ay: 0, a: 0 } };
 }
 
 export function stepPenguinBot(e, game, dt, rng) {
@@ -32,6 +33,16 @@ export function stepPenguinBot(e, game, dt, rng) {
       if (d < bestD) { bestD = d; best = o; }
     }
     b.target = best;
+    // A power-up close by (and not near the water) beats a victim that is not
+    // within dashing range yet.
+    b.power = null;
+    const victimD = best ? Math.hypot(best.s.x - s.x, best.s.y - s.y) : Infinity;
+    let powerD = victimD < cfg.dashRange ? 0 : cfg.greed;
+    for (const p of game.powers?.list ?? []) {
+      if (Math.hypot(p.x, p.y) > game.radius - cfg.margin) continue;
+      const d = Math.hypot(p.x - s.x, p.y - s.y);
+      if (d < powerD) { powerD = d; b.power = p; }
+    }
     if (rng() < cfg.careless && s.cool <= 0) out.a = 1; // a random dash now and then
   }
 
@@ -47,6 +58,9 @@ export function stepPenguinBot(e, game, dt, rng) {
     // Too close to the water: back to the middle (and brake the outward speed).
     mx = -s.x / dist - s.vx * 0.012;
     my = -s.y / dist - s.vy * 0.012;
+  } else if (b.power && game.powers.list.includes(b.power)) {
+    mx = b.power.x - s.x - s.vx * 0.25;
+    my = b.power.y - s.y - s.vy * 0.25;
   } else if (b.target) {
     const t = b.target.s;
     const td = Math.hypot(t.x, t.y) || 1;

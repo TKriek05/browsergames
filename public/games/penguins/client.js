@@ -1,13 +1,15 @@
 // Pinguïnbotsen (client side): your penguin is predicted with the shared
 // movement, the others are interpolated; bumps and falls come from the
-// server. HUD: rounds won (fish), who pushed whom into the water, banners.
+// server. HUD: rounds won (fish), who pushed whom into the water, banners,
+// running power-ups.
 import { BTN } from '../../../shared/messages.js';
-import { PG, PG_FLAG, stepPenguin } from '../../../shared/games/penguins.js';
+import { PG, PG_FLAG, PG_POWER, PG_POWERS, stepPenguin } from '../../../shared/games/penguins.js';
 import { createArcadeCore, ARCADE_PHASE } from '../common/arcade.js';
 import { Predictor } from '../../js/core/predict.js';
 import { rgb } from '../../js/gl/mesh.js';
 import { drawText, roundRect } from '../../js/core/hudtext.js';
 import { createPenguinScene } from './scene.js';
+import { drawPowerHud } from './powers.js';
 
 export const meta = {
   width: 480,
@@ -22,7 +24,7 @@ const SHADOW = '#10263a';
 const FEED_S = 4;
 
 function decode(r, time) {
-  const s = { time, phase: r.u8(), endsAt: 0, round: 0, radius: 0, ents: [] };
+  const s = { time, phase: r.u8(), endsAt: 0, round: 0, radius: 0, ents: [], powers: [] };
   s.endsAt = time + r.f32() * 1000;
   s.round = r.u8();
   s.radius = r.f32();
@@ -32,15 +34,19 @@ function decode(r, time) {
     const flags = r.u8();
     s.ents.push({
       slot, flags, ack: r.u16(),
-      x: r.f32(), y: r.f32(), vx: r.f32(), vy: r.f32(), fx: r.f32(), fy: r.f32(), dash: r.f32(), cool: r.f32(), prevA: r.u8(),
-      wins: r.u8(), pushes: r.u8(), sink: r.u8() / 10,
+      x: r.f32(), y: r.f32(), vx: r.f32(), vy: r.f32(), fx: r.f32(), fy: r.f32(), dash: r.f32(), cool: r.f32(),
+      stun: r.f32(), boost: r.f32(), grip: r.f32(), prevA: r.u8(),
+      wins: r.u8(), pushes: r.u8(), sink: r.u8() / 10, heavy: r.u8() / 10, punch: r.u8() / 10,
       alive: (flags & PG_FLAG.ALIVE) !== 0,
     });
   }
+  const m = r.u8();
+  for (let i = 0; i < m; i++) s.powers.push({ id: r.u8(), type: r.u8(), x: r.i16() / 10, y: r.i16() / 10, age: r.u8() / 4 });
   return s;
 }
 
-const KEYS = ['x', 'y', 'vx', 'vy', 'fx', 'fy', 'dash', 'cool', 'prevA'];
+const KEYS = ['x', 'y', 'vx', 'vy', 'fx', 'fy', 'dash', 'cool', 'stun', 'boost', 'grip', 'prevA'];
+const HEAVY_SIZE = 1.3;
 
 export function createGame() {
   let view, ctx, input, sfx, scene, reduced;
@@ -48,8 +54,10 @@ export function createGame() {
   let lastRound = 0;
   const feed = [];
   const scratch = { x: 0, y: 0, depth: 0 };
+  const fx = { punch: false, stun: false, size: 1 };
+  const timers = [[PG_POWER.TURBO, 0], [PG_POWER.GRIP, 0], [PG_POWER.HEAVY, 0], [PG_POWER.PUNCH, 0]];
   const predictor = new Predictor({
-    create: () => ({ x: 0, y: 0, vx: 0, vy: 0, fx: 1, fy: 0, dash: 0, cool: 0, prevA: 0 }),
+    create: () => ({ x: 0, y: 0, vx: 0, vy: 0, fx: 1, fy: 0, dash: 0, cool: 0, stun: 0, boost: 0, grip: 0, prevA: 0 }),
     copy: (d, s) => { for (const k of KEYS) d[k] = s[k]; },
     step: (s, inp) => stepPenguin(s, inp.ax, inp.ay, inp.buttons & BTN.A, PG.DT),
   });
@@ -70,6 +78,12 @@ export function createGame() {
     ctx.arc(cx, cy, L.radius * s, 0, Math.PI * 2);
     ctx.fillStyle = '#f2f8fc';
     ctx.fill();
+    for (const p of L.powers) {
+      ctx.beginPath();
+      ctx.arc(cx + p.x * s, cy + p.y * s, 4, 0, Math.PI * 2);
+      ctx.fillStyle = PG_POWERS[p.type].color;
+      ctx.fill();
+    }
     for (const e of L.ents) {
       if (!e.alive) continue;
       const mine = e.slot === me && predictor.ready;
@@ -129,6 +143,24 @@ export function createGame() {
           sfx.play(msg.s === me ? 'win' : 'countdown');
           break;
         }
+        case 'power': {
+          const p = PG_POWERS[msg.type];
+          scene?.pickup(msg.x, msg.y, p.color);
+          if (msg.s === me) {
+            banner = { text: p.name.toUpperCase() + '!', sub: p.tip, color: p.color, until: now() + 1.5 };
+            sfx.play('item');
+          } else sfx.play('coin');
+          break;
+        }
+        case 'punch':
+          scene?.bump(msg.x, msg.y, 200);
+          sfx.play('explode');
+          if (msg.s === me) banner = { text: 'KNAL!', sub: `${core.name(msg.v)} vliegt weg`, color: '#ff5a5a', until: now() + 1.2 };
+          break;
+        case 'shock':
+          scene?.shockwave(msg.x, msg.y);
+          sfx.play('zap');
+          break;
         case 'end': sfx.play('win'); break;
         default: break;
       }
@@ -165,6 +197,7 @@ export function createGame() {
       const sample = core.sample();
       const labels = [];
       if (scene) {
+        for (const p of L.powers) scene.item(p.x, p.y, p.type, p.age, p.id);
         core.each(sample, 'ents', 'slot', (eb, x, y) => {
           const mine = eb.slot === me && predictor.ready && eb.alive;
           const px = mine ? predictor.get('x', alpha) : x;
@@ -172,10 +205,15 @@ export function createGame() {
           const st = mine ? predictor.state : eb;
           const speed = Math.hypot(st.vx, st.vy);
           const dashing = st.dash > 0;
+          const size = eb.heavy > 0 ? HEAVY_SIZE : 1;
           if (eb.alive) {
-            scene.penguin(px, py, st.fx, st.fy, speed, dashing, rgb(core.hex(eb.slot)));
-            if (dashing || speed > 70) scene.trail(px, py);
-            labels.push([px, py, eb.slot]);
+            scene.penguin(px, py, st.fx, st.fy, speed, dashing, rgb(core.hex(eb.slot)), 0, size);
+            fx.punch = eb.punch > 0;
+            fx.stun = st.stun > 0;
+            fx.size = size;
+            scene.effects(px, py, st.fx, st.fy, fx);
+            if (dashing || speed > 70 || st.boost > 0) scene.trail(px, py);
+            labels.push([px, py, eb.slot, size]);
           } else if (eb.sink > 0) {
             scene.penguin(px, py, st.fx, st.fy, 0, false, rgb(core.hex(eb.slot)), 1 - eb.sink / 1.4);
           }
@@ -184,8 +222,8 @@ export function createGame() {
       }
 
       // --- HUD ---
-      for (const [x, y, slot] of labels) {
-        const p = scene.project(x, y, 22, scratch);
+      for (const [x, y, slot, size] of labels) {
+        const p = scene.project(x, y, 22 * size, scratch);
         if (p) drawText(ctx, core.name(slot), p.x, p.y - 8, { color: core.hex(slot), align: 'center', shadow: SHADOW });
       }
       // Rounds won: a fish per round.
@@ -242,6 +280,11 @@ export function createGame() {
         ctx.fillStyle = cool > 0 ? '#9fb4c4' : '#ffe14d';
         roundRect(ctx, view.width / 2 - 30, view.height - 12, 60 * Math.max(0.08, k), 7, 3.5);
         ctx.fill();
+        timers[0][1] = predictor.state.boost;
+        timers[1][1] = predictor.state.grip;
+        timers[2][1] = mine.heavy;
+        timers[3][1] = mine.punch;
+        drawPowerHud(ctx, timers, 6, view.height - 22, SHADOW);
       }
     },
 

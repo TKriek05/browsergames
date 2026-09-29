@@ -130,6 +130,9 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
   snapshot als het veranderd is (`sentRev` per speler, reset bij reconnect).
 - **Pinguïnbotsen** (`penguins`) en **Hapvis** (`fish`): voorspelde eigen beweging, botsen/opeten alleen op de server.
   Hapvis-plankton staat op vaste plekken uit de seed; de snapshot stuurt alleen een bitmasker.
+  Pinguïnbotsen-botsingen in `server/games/penguins-collide.js`: paden in sub-stappen (niemand glijdt door een ander),
+  daarna ontwarren; wie niet botst eindigt exact waar de voorspelling hem zet. Een dash-duw geeft `stun` (gedeelde
+  status, voorspeld). Power-ups in `server/games/penguins-powers.js` (turbo/ijzers gedeeld, zwaar/handschoen server).
   Hapvis-power-ups (instelling `powerups`): `server/games/fish-powers.js`; turbo zit als `boost` in de gedeelde
   visstatus (voorspeld), stekels/magneet/dubbel zijn servertimers (u8 ds in de snapshot).
 - Boemstad-maps: tekst-layouts in `shared/maps/bomber-arenas.js` (`#` muur, `~` water, `T` boom/toren, `.` open,

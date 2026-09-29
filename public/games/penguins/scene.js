@@ -1,17 +1,20 @@
 // Pinguïnbotsen in 3D: a cold sea with icebergs and snowy mountains, the
 // melting ice floe in the middle (rebuilt as it shrinks) and low-poly
 // penguins with a scarf and hat in the player's colour. They waddle, lean
-// into a dash and sink with a splash. Game (x, y) → 3D (x, height, y).
+// into a dash and sink with a splash. Power-ups float above the ice.
+// Game (x, y) → 3D (x, height, y).
 import { createRenderer3D } from '../../js/gl/renderer.js';
-import { MeshBuilder } from '../../js/gl/mesh.js';
+import { MeshBuilder, rgb } from '../../js/gl/mesh.js';
 import { create, compose, yawFromDir } from '../../js/gl/mat4.js';
 import { createParticles3D } from '../../js/gl/particles.js';
 import { createRng } from '../../../shared/rng.js';
-import { PG } from '../../../shared/games/penguins.js';
+import { PG, PG_POWERS, PG_POWER_RULES } from '../../../shared/games/penguins.js';
+import { buildPowerMeshes, buildEffectMeshes } from './powers.js';
 
 const TOP = 2; // height of the ice surface
 const SEG = 40;
 const MODEL_SCALE = 1.25; // penguins look a bit bigger than their hitbox
+const ITEM_SCALE = 1.6;
 
 export function createPenguinScene(canvas, { reducedMotion }) {
   const r = createRenderer3D(canvas);
@@ -27,6 +30,11 @@ export function createPenguinScene(canvas, { reducedMotion }) {
   const floe = r.mesh(new Float32Array(0));
   const body = r.mesh(buildPenguin());
   const shadow = r.mesh(new MeshBuilder().color('#1d3a4a').cylinder(0, 0, 0, PG.RADIUS * 0.95, 0.05, 14).build());
+  const items = buildPowerMeshes().map((data) => r.mesh(data));
+  const fx = buildEffectMeshes();
+  const glove = r.mesh(fx.glove);
+  const star = r.mesh(fx.star);
+  const glow = r.mesh(new MeshBuilder().color('#ffffff', { emissive: 0.6, tint: 1 }).cylinder(0, 0, 0, 8, 0.1, 16).build());
   const particles = createParticles3D(500, { reducedMotion });
   const m = create();
   let floeR = -1;
@@ -67,17 +75,57 @@ export function createPenguinScene(canvas, { reducedMotion }) {
     },
 
     // A penguin at (x, y) facing (fx, fy). sink: 0 on the ice … 1 gone.
-    penguin(x, y, fx, fy, speed, dashing, color, sink = 0) {
+    // size: bigger while heavy.
+    penguin(x, y, fx, fy, speed, dashing, color, sink = 0, size = 1) {
       const yaw = yawFromDir(fx, fy);
       const wobble = reducedMotion ? 0 : Math.sin(time * 11 + x * 0.1) * Math.min(1, speed / 40) * 0.14;
       const lean = dashing ? -0.35 : 0;
       const y0 = TOP - sink * 20;
-      compose(m, x, y0, y, yaw, wobble, lean + sink * 0.9, MODEL_SCALE);
+      compose(m, x, y0, y, yaw, wobble, lean + sink * 0.9, MODEL_SCALE * size);
       r.draw(body, m, color);
       if (!sink && !r.shadows) {
         compose(m, x, TOP + 0.05, y);
         r.draw(shadow, m, undefined, 0.35);
       }
+    },
+
+    // Glove in front (punch power-up), stars around the head (stunned).
+    effects(x, y, fx, fy, { punch, stun, size = 1 }) {
+      if (punch) {
+        const reach = 7 + (reducedMotion ? 0 : Math.sin(time * 6) * 0.8);
+        compose(m, x + fx * reach, TOP + 7 * size, y + fy * reach, yawFromDir(fx, fy), 0, 0, 1.4 * size);
+        r.draw(glove, m);
+      }
+      if (stun) {
+        for (let i = 0; i < 3; i++) {
+          const a = time * 5 + (i * Math.PI * 2) / 3;
+          compose(m, x + Math.cos(a) * 6, TOP + 23 * size, y + Math.sin(a) * 6, a, 0, 0, 1.6);
+          r.draw(star, m);
+        }
+      }
+    },
+
+    // A power-up above the ice; it blinks before it melts away.
+    item(x, y, type, age, id) {
+      if (PG_POWER_RULES.LIFE_S - age < 3 && Math.sin(time * 16) < -0.3) return;
+      const bob = reducedMotion ? 0 : Math.sin(time * 2.6 + id) * 1.2;
+      compose(m, x, TOP + 0.08, y);
+      r.draw(glow, m, rgb(PG_POWERS[type].color), 0.35 + Math.sin(time * 4 + id) * 0.1);
+      compose(m, x, TOP + 8 + bob, y, time * 1.6 + id, 0, 0, ITEM_SCALE);
+      r.draw(items[type], m);
+    },
+
+    pickup(x, y, color) {
+      particles.burst(x, TOP + 6, y, color, reducedMotion ? 6 : 22, { speed: 30, life: 0.6, size: 1.4, gravity: -30, up: 0.9 });
+    },
+
+    shockwave(x, y) {
+      const n = reducedMotion ? 12 : 48;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        particles.spawn(x + Math.cos(a) * 6, TOP + 3, y + Math.sin(a) * 6, Math.cos(a) * 90, 6, Math.sin(a) * 90, 0.5, i % 2 ? '#ffe14d' : '#ffffff', 1.8, 0, 0.92);
+      }
+      this.shake(5);
     },
 
     splash(x, y) {
