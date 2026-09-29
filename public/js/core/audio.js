@@ -35,6 +35,12 @@ for (const type of ['pointerdown', 'keydown', 'touchend']) {
   window.addEventListener(type, unlockAudio, { once: true, passive: true, capture: true });
 }
 
+// For music.js: the running context, the master bus and the noise buffer;
+// null until the browser allows audio.
+export function audioOut() {
+  return ctx && ctx.state === 'running' ? { ctx, master, noise: noiseBuffer } : null;
+}
+
 export function isMuted() {
   return muted;
 }

@@ -71,6 +71,17 @@ laten weten wat hij wil spelen; de stemmen staan als gekleurde stipjes op de kaa
 - Maak een party-lobby met de knoppen **Party-lobby**, **Stemmen**, **Willekeurig** of **Toernooi** bovenaan de startpagina.
   *Maak kamer* bij een game kan ook: daarna kun je in de lobby gewoon van game wisselen.
 
+## Muziek en geluid
+
+Elke game heeft eigen achtergrondmuziek, live gemaakt met WebAudio (geen audiobestanden). Een stijl per soort game
+(synthwave, chiptune, fanfare, race, jazz voor de bordspellen, folk, spooky, onderwater, quiz-funk, …) plus een eigen
+melodie per game: de melodie wordt uit de game-id berekend en is dus elke keer hetzelfde.
+In het spel zet 🎵 de muziek aan/uit (onthouden in de browser); 🔊 dempt alles.
+
+- `public/js/core/music-song.js`: pure songgenerator (akkoorden, bas, arpeggio, drums, melodie uit een motief).
+- `public/js/core/music-tracks.js`: klanken, stijlen en de track per game (`GAME_MUSIC`).
+- `public/js/core/music.js`: synth-stemmen en een look-ahead-planner; volgt de mute van `audio.js`.
+
 ## Spellen
 
 | Spel | Spelers | Bijzonderheden |
@@ -119,7 +130,7 @@ server/            http (statische bestanden + /healthz) en WebSocket, kamers, p
 shared/            code die client én server gebruiken (pure ES modules; party.js = party-regels en toernooipunten)
   physics/ maps/ rules/  fysica, levels als data, bordspelregels
 public/            alles wat de browser krijgt
-  js/core/         net, session, input, touch, audio, storage, loop, canvas, interp, predict, qr, ui, pixelfont, fx
+  js/core/         net, session, input, touch, audio, music, storage, loop, canvas, interp, predict, qr, ui, pixelfont, fx
   js/gl/           eigen WebGL-mini-engine voor de 3D-games (mesh, renderer, mat4, particles)
   js/lobby.js      gedeelde lobby
   js/party.js      party-deel van de lobby: gamekiezer, stemmen, roulette, party-modus, toernooistand

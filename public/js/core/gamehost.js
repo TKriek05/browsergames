@@ -25,6 +25,7 @@ import { createLoop } from './loop.js';
 import { Input, isTouchDevice } from './input.js';
 import { createTouchControls } from './touch.js';
 import * as sfx from './audio.js';
+import * as music from './music.js';
 import { h, clear, prefersReducedMotion, confirmDialog } from './ui.js';
 
 const modules = new Map();
@@ -124,6 +125,7 @@ export class GameHost {
       render: (alpha) => this.game.render(alpha),
     });
     this.loop.start();
+    music.playMusic(start.game);
     this.view.canvas.focus?.();
   }
 
@@ -137,6 +139,11 @@ export class GameHost {
       muteBtn.textContent = m ? '🔇' : '🔊';
       muteBtn.setAttribute('aria-pressed', String(m));
     }));
+    const musicBtn = h('button', {
+      class: 'hud__btn hud__btn--music', type: 'button', 'aria-label': 'Muziek', title: 'Muziek aan/uit',
+      'aria-pressed': String(music.isMusicOn()), onclick: () => music.setMusicOn(!music.isMusicOn()),
+    }, '🎵');
+    this.cleanups.push(music.onMusicChange((on) => musicBtn.setAttribute('aria-pressed', String(on))));
 
     const t = this.session.room?.party?.tournament;
     const hud = h('div', { class: 'hud' },
@@ -145,6 +152,7 @@ export class GameHost {
       h('span', { class: 'hud__code', 'aria-label': `Kamercode ${this.session.room?.code ?? ''}` }, this.session.room?.code ?? ''),
       h('span', { class: 'hud__spacer' }),
       this.pingEl,
+      musicBtn,
       muteBtn,
     );
     if (document.fullscreenEnabled) {
@@ -188,6 +196,7 @@ export class GameHost {
     this.mounted = false;
     this.loop?.stop();
     this.loop = null;
+    music.stopMusic();
     try {
       this.game?.unmount();
     } catch (err) {

@@ -131,7 +131,16 @@ en `createGame()` → `mount(view, net, ctx)`, `onSnapshot(snap)`, `onEvent?`, `
 `update?(dt)`, `render(alpha)`, `unmount()`.
 
 Nieuwe game: limiet in `GAME_LIMITS`, catalogus-entry (`available: true`) in `shared/catalog.js`,
-thumbnail in `public/js/thumbs.js`, server- en clientmodule, tests.
+thumbnail in `public/js/thumbs.js`, muziektrack in `GAME_MUSIC` (`public/js/core/music-tracks.js`), server- en
+clientmodule, tests.
+
+## Muziek
+
+- Procedureel via WebAudio: `music-song.js` (puur, getest), `music-tracks.js` (klanken + stijlen + track per game),
+  `music.js` (stemmen + planner). `gamehost.js` start de track bij mount en stopt hem bij unmount.
+- Muziek loopt via de master van `audio.js` (🔊 dempt alles) en heeft een eigen schakelaar (🎵, `local 'music'`).
+- Nooit een AudioContext maken zonder gebaar van de gebruiker: `audioOut()` geeft `null` tot audio mag.
+- Muziek blijft onder de effecten (RMS ± 0,01–0,02 op de master); bordspellen rustiger dan actiegames.
 
 ## Kwaliteit
 

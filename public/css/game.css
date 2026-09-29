@@ -34,6 +34,7 @@ body[data-view="game"] main { padding: 0; }
 }
 .hud__btn:hover { border-color: var(--cyan); }
 .hud__btn--text { font-weight: 650; font-size: 0.85rem; }
+.hud__btn--music[aria-pressed="false"] { opacity: 0.45; filter: grayscale(1); }
 
 .game__stage {
   flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden;
