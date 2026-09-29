@@ -124,6 +124,9 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
   `gl.clear(DEPTH_BUFFER_BIT)` getekend. Beweging gedeeld (`shared/physics/paintball.js`), schoten als JSON-actie
   `{ a, t, x, y }` met lag compensation; de server vertrouwt de meegestuurde loop-positie tot `MAX_SHOT_OFFSET`.
   Game-specifieke toetsen via `meta.keys` (→ `new Input(meta.keys)`, extra acties met `input.pressed('turnLeft')`).
+  Stijl: verf als geometrie (`public/games/paintball/splat.js`, in brokken van 24 per mesh, alleen de nieuwste wordt
+  herbouwd), verfvlekken op spelers per treffer, velden `haven`/`avond` in `world-extra.js`. Power-ups op de `pads`
+  van elk veld (`server/games/paintball-powers.js`); sprint zit als `boost` in de gedeelde runner-status.
 - **Quizkoorts** (`quiz`): eigen server-module (`realtime: false`); de vragenbank staat alleen op de server
   (`server/games/quiz-questions.js`), het goede antwoord gaat pas mee bij de onthulling. Catalogus-soort `kind: 'quiz'`.
 - **Knalkanon** (`artillery`): beurtspel met eigen server-module; het terrein (720 hoogtes) gaat alleen in de

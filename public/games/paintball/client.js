@@ -2,18 +2,21 @@
 // the shared physics; the others are interpolated. Mouse look via pointer
 // lock (click the field), WASD to walk, click/space to shoot. Touch: stick on
 // the left, drag on the right to look. Your shots show at once; the server
-// decides what they hit (lag compensated) and tells everyone.
+// decides what they hit (lag compensated) and tells everyone. Power-ups lie
+// on four pads; paint stays where it lands, also on the players.
 import { INTERP_DELAY_MS } from '../../../shared/constants.js';
 import { BTN, C2S } from '../../../shared/messages.js';
 import { PB_ARENAS } from '../../../shared/maps/paintball-arenas.js';
 import { PB_PHYS, stepRunner, raycast, rayCircle, lineOfSight } from '../../../shared/physics/paintball.js';
-import { PB_RULES as R, PB_FLAG, i16ToYaw, wrapAngle } from '../../../shared/games/paintball.js';
+import { PB_RULES as R, PB_FLAG, PB_POWERS, PB_POWER, PB_POWER_RULES as PR, i16ToYaw, wrapAngle } from '../../../shared/games/paintball.js';
 import { createArcadeCore, ARCADE_PHASE } from '../common/arcade.js';
 import { Predictor } from '../../js/core/predict.js';
 import { isTouchDevice } from '../../js/core/input.js';
 import { rgb } from '../../js/gl/mesh.js';
 import { createPaintScene } from './scene.js';
 import { createPaintHud, createFallback2D } from './hud.js';
+import { createControls } from './controls.js';
+import { drawPowerHud } from './powers.js';
 
 export const meta = {
   width: 480,
@@ -34,15 +37,15 @@ export const meta = {
   },
 };
 
-const MOUSE_SENS = 0.0026; // rad per pixel
-const TOUCH_SENS = 0.007;
 const KEY_TURN = 2.6; // rad/s
 const PAD_TURN = 3.4;
 const ASSIST_RAD = 0.085; // touch/gamepad: shots snap to a player this close to the crosshair
 const FEED_S = 6;
+const MAX_MARKS = 4; // paint spots on a player
+const CAMO_ALPHA = 0.14;
 
 function decode(r, time) {
-  const s = { time, phase: r.u8(), endsAt: 0, ents: [] };
+  const s = { time, phase: r.u8(), endsAt: 0, ents: [], pads: [] };
   s.endsAt = time + r.f32() * 1000;
   const n = r.u8();
   for (let i = 0; i < n; i++) {
@@ -50,26 +53,26 @@ function decode(r, time) {
     const flags = r.u8();
     s.ents.push({
       slot, flags, ack: r.u16(),
-      x: r.f32(), y: r.f32(), vx: r.f32(), vy: r.f32(), yaw: i16ToYaw(r.i16()),
+      x: r.f32(), y: r.f32(), vx: r.f32(), vy: r.f32(), boost: r.f32(), yaw: i16ToYaw(r.i16()),
       hp: r.u8(), ammo: r.u8(), kills: r.i16(), deaths: r.u8(), respawn: r.u8() / 10, reload: r.u8() / 10,
+      armor: r.u8(), rapid: r.u8() / 10, spread: r.u8() / 10, camo: r.u8() / 10,
       alive: (flags & PB_FLAG.ALIVE) !== 0,
     });
   }
+  const m = r.u8();
+  for (let i = 0; i < m; i++) s.pads.push(r.u8());
   return s;
 }
 
 const lerpAngle = (a, b, t) => a + wrapAngle(b - a) * t;
+// Radius of the round obstacle a ray hit (0 = flat): splats bend around it.
+const bendOf = (arena, i) => (i >= 0 && arena.obstacles[i].t === 'can' ? arena.obstacles[i].r : 0);
 
 export function createGame() {
-  let net, session, input, sfx, view, scene, hud, flat, arena, reduced;
+  let net, input, sfx, view, scene, hud, flat, arena, reduced, controls;
   let yaw = 0;
   let syncYaw = true;
-  let locked = false;
-  let lockFailed = false;
-  let mouseFire = false;
   let touch = false;
-  let lookId = null;
-  let lookX = 0;
   let ammo = R.HOPPER;
   let reload = 0;
   let cooldown = 0;
@@ -85,20 +88,24 @@ export function createGame() {
   const walk = new Map(); // slot → walk phase
   const shownYaw = new Map(); // slot → smoothed body angle
   const drawn = new Map(); // slot → { x, y } where others were drawn (for local hit tests)
+  const marks = new Map(); // slot → paint colours on that player
   const scratch = { x: 0, y: 0, depth: 0 };
   const ray = { nx: 0, ny: 0, obstacle: -1 };
-  const cleanups = [];
+  const timers = [[PB_POWER.RAPID, 0], [PB_POWER.SPREAD, 0], [PB_POWER.SPRINT, 0], [PB_POWER.CAMO, 0], [PB_POWER.ARMOR, 0]];
 
   const predictor = new Predictor({
-    create: () => ({ x: 0, y: 0, vx: 0, vy: 0 }),
-    copy: (d, s) => { d.x = s.x; d.y = s.y; d.vx = s.vx; d.vy = s.vy; },
+    create: () => ({ x: 0, y: 0, vx: 0, vy: 0, boost: 0 }),
+    copy: (d, s) => { d.x = s.x; d.y = s.y; d.vx = s.vx; d.vy = s.vy; d.boost = s.boost; },
     step: (s, inp) => stepRunner(s, inp.ax, inp.ay, PB_PHYS.DT, arena.obstacles),
   });
   const core = createArcadeCore({
     decode,
     predictor,
-    toServer: (m, o) => { o.x = m.x; o.y = m.y; o.vx = m.vx; o.vy = m.vy; },
+    toServer: (m, o) => { o.x = m.x; o.y = m.y; o.vx = m.vx; o.vy = m.vy; o.boost = m.boost; },
   });
+  const turnFromControls = () => {
+    if (controls) yaw = wrapAngle(yaw + controls.take());
+  };
   const nowS = () => performance.now() / 1000;
 
   function startReload() {
@@ -109,7 +116,7 @@ export function createGame() {
 
   // Touch and gamepad players get a little help: aim at a visible player right next to the crosshair.
   function assisted(a, px, py) {
-    if (input.lastSource === 'keyboard' || locked) return a;
+    if (input.lastSource === 'keyboard' || controls.locked) return a;
     let best = a;
     let bestD = ASSIST_RAD;
     for (const [, p] of drawn) {
@@ -122,29 +129,40 @@ export function createGame() {
     return best;
   }
 
-  function fire() {
+  function fire(mine) {
     if (cooldown > 0 || reload > 0) return;
     if (ammo <= 0) return startReload();
-    cooldown = R.COOLDOWN_S;
-    ammo--;
+    const rapid = (mine.flags & PB_FLAG.RAPID) !== 0;
+    cooldown = rapid ? PR.RAPID_COOLDOWN_S : R.COOLDOWN_S;
+    if (!rapid) ammo--;
     lastShotAt = nowS();
     const px = predictor.state.x;
     const py = predictor.state.y;
     const a = assisted(yaw, px, py);
     net.send(C2S.INPUT, { data: { a, t: net.serverNow() - INTERP_DELAY_MS, x: Math.round(px * 100) / 100, y: Math.round(py * 100) / 100 } });
-    // Show the ball right away: it stops at the first wall or player we see.
-    const dx = Math.cos(a);
-    const dy = Math.sin(a);
-    let end = raycast(arena.obstacles, px, py, dx, dy, R.RANGE, ray);
-    let wall = ray.obstacle >= 0;
-    for (const [, p] of drawn) {
-      const d = rayCircle(px, py, dx, dy, p.x, p.y, PB_PHYS.HIT_RADIUS);
-      if (d < end) { end = d; wall = false; }
+    // Show the ball(s) right away: each stops at the first wall or player we see.
+    const offsets = mine.flags & PB_FLAG.SPREAD ? [0, -PR.SPREAD_RAD, PR.SPREAD_RAD] : [0];
+    for (const off of offsets) {
+      const dx = Math.cos(a + off);
+      const dy = Math.sin(a + off);
+      let end = raycast(arena.obstacles, px, py, dx, dy, R.RANGE, ray);
+      let wall = ray.obstacle >= 0;
+      for (const [, p] of drawn) {
+        const d = rayCircle(px, py, dx, dy, p.x, p.y, PB_PHYS.HIT_RADIUS);
+        if (d < end) { end = d; wall = false; }
+      }
+      scene?.ball(px + dx * 4, py + dy * 4, px + dx * end, py + dy * end, core.hex(core.mySlot()), wall, ray.nx, ray.ny, bendOf(arena, ray.obstacle));
     }
-    scene?.ball(px + dx * 4, py + dy * 4, px + dx * end, py + dy * end, core.hex(core.mySlot()), wall, ray.nx, ray.ny);
     scene?.kick();
     sfx.play('marker');
     if (ammo === 0) startReload();
+  }
+
+  function addMark(slot, color) {
+    const list = marks.get(slot) ?? [];
+    list.push(color);
+    if (list.length > MAX_MARKS) list.shift();
+    marks.set(slot, list);
   }
 
   // Keep the local hopper in step with the server when we are not shooting.
@@ -158,79 +176,16 @@ export function createGame() {
     }
   }
 
-  function bindControls(canvas) {
-    const onClick = () => {
-      if (touch || locked || lockFailed) return;
-      try {
-        const p = canvas.requestPointerLock?.();
-        p?.catch?.(() => { lockFailed = true; });
-      } catch {
-        lockFailed = true;
-      }
-    };
-    const onLockChange = () => {
-      locked = document.pointerLockElement === canvas;
-      if (!locked) mouseFire = false;
-    };
-    const onLockError = () => { lockFailed = true; };
-    const onMove = (e) => {
-      if (locked) yaw = wrapAngle(yaw + e.movementX * MOUSE_SENS);
-      else if (lockFailed && e.buttons & 1 && e.pointerType === 'mouse') yaw = wrapAngle(yaw + e.movementX * MOUSE_SENS);
-    };
-    const onDown = (e) => {
-      if (e.pointerType === 'touch') {
-        if (lookId === null) {
-          lookId = e.pointerId;
-          lookX = e.clientX;
-        }
-        return;
-      }
-      if (e.button === 0 && (locked || lockFailed)) mouseFire = true;
-    };
-    const onTouchMove = (e) => {
-      if (e.pointerId !== lookId) return;
-      yaw = wrapAngle(yaw + (e.clientX - lookX) * TOUCH_SENS);
-      lookX = e.clientX;
-    };
-    const onUp = (e) => {
-      if (e.pointerId === lookId) lookId = null;
-      if (e.pointerType !== 'touch' && e.button === 0) mouseFire = false;
-    };
-    const menu = (e) => e.preventDefault();
-    canvas.addEventListener('click', onClick);
-    canvas.addEventListener('pointerdown', onDown);
-    canvas.addEventListener('pointermove', onTouchMove);
-    canvas.addEventListener('contextmenu', menu);
-    document.addEventListener('pointerlockchange', onLockChange);
-    document.addEventListener('pointerlockerror', onLockError);
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-    cleanups.push(() => {
-      canvas.removeEventListener('click', onClick);
-      canvas.removeEventListener('pointerdown', onDown);
-      canvas.removeEventListener('pointermove', onTouchMove);
-      canvas.removeEventListener('contextmenu', menu);
-      document.removeEventListener('pointerlockchange', onLockChange);
-      document.removeEventListener('pointerlockerror', onLockError);
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-      if (document.pointerLockElement === canvas) document.exitPointerLock?.();
-    });
-  }
-
   return {
     mount(v, netRef, ctx) {
       view = v;
       net = netRef;
-      session = ctx.session;
       input = ctx.input;
       sfx = ctx.sfx;
       reduced = ctx.reducedMotion;
       touch = isTouchDevice();
       core.mount(netRef, ctx);
-      arena = PB_ARENAS[ctx.start.settings.arena] ?? PB_ARENAS.opblaas;
+      arena = PB_ARENAS[ctx.start.settings.arena] ?? PB_ARENAS.haven;
       hud = createPaintHud(view);
       scene = view.glCanvas ? createPaintScene(view.glCanvas, { arena, reducedMotion: reduced }) : null;
       if (!scene) {
@@ -238,7 +193,7 @@ export function createGame() {
         flat = createFallback2D(view, arena);
       }
       view.canvas.style.touchAction = 'none';
-      bindControls(view.canvas);
+      controls = createControls(view.canvas, touch);
     },
 
     onSnapshot(snap) {
@@ -261,7 +216,7 @@ export function createGame() {
             raycast(arena.obstacles, msg.x0, msg.y0, dx / len, dy / len, len + 1, ray);
             wall = ray.obstacle >= 0;
           }
-          scene?.ball(msg.x0 + (dx / len) * 4, msg.y0 + (dy / len) * 4, msg.x1, msg.y1, core.hex(msg.s), wall, ray.nx, ray.ny);
+          scene?.ball(msg.x0 + (dx / len) * 4, msg.y0 + (dy / len) * 4, msg.x1, msg.y1, core.hex(msg.s), wall, ray.nx, ray.ny, wall ? bendOf(arena, ray.obstacle) : 0);
           scene?.muzzle(msg.x0, msg.y0, Math.atan2(dy, dx), core.hex(msg.s));
           sfx.play('markerFar');
           break;
@@ -269,6 +224,7 @@ export function createGame() {
         case 'hit': {
           const p = drawn.get(msg.s);
           if (p) scene?.paintHit(p.x, p.y, core.hex(msg.by), false);
+          addMark(msg.s, core.hex(msg.by));
           if (msg.s === me) {
             hud.splash(core.hex(msg.by));
             sfx.play('hit');
@@ -295,7 +251,29 @@ export function createGame() {
           break;
         }
         case 'block': sfx.play('react'); break;
+        case 'armor': {
+          const p = drawn.get(msg.s);
+          if (p) scene?.deflect(p.x, p.y);
+          sfx.play(msg.s === me ? 'thud' : 'react');
+          if (msg.by === me) hitAt = nowS();
+          break;
+        }
+        case 'power': {
+          const pw = PB_POWERS[msg.type];
+          const pad = arena.pads[msg.pad];
+          if (pad) scene?.pickup(pad.x, pad.y, pw.color);
+          if (msg.s === me) {
+            banner = { text: pw.name.toUpperCase() + '!', sub: pw.tip, color: pw.color, until: nowS() + 1.6 };
+            sfx.play('item');
+            if (msg.type === PB_POWER.RAPID) {
+              ammo = R.HOPPER;
+              reload = 0;
+            }
+          } else sfx.play('coin');
+          break;
+        }
         case 'spawn':
+          marks.delete(msg.s);
           if (msg.s === me) {
             predictor.reset();
             syncYaw = true;
@@ -333,6 +311,7 @@ export function createGame() {
       const alive = !!mine && mine.alive;
       if (alive && !wasAlive) syncYaw = true;
       wasAlive = alive;
+      turnFromControls();
       if (syncYaw && alive) {
         yaw = mine.yaw;
         syncYaw = false;
@@ -358,11 +337,12 @@ export function createGame() {
       if (len > 1) { wx /= len; wy /= len; }
       core.send(wx, wy, inp.buttons & BTN.B, yaw);
       if (inp.buttons & BTN.B) startReload();
-      if (inp.buttons & BTN.A || mouseFire) fire();
+      if (inp.buttons & BTN.A || controls.mouseFire) fire(mine);
     },
 
     render(alpha) {
       hud.clear();
+      turnFromControls();
       const frameNow = performance.now();
       const frameDt = lastFrame ? Math.min(0.1, (frameNow - lastFrame) / 1000) : 0;
       lastFrame = frameNow;
@@ -388,9 +368,11 @@ export function createGame() {
       const labels = [];
       const shields = [];
       drawn.clear();
+      if (scene) scene.pads(arena.pads, L.pads);
       core.each(sample, 'ents', 'slot', (eb, x, y) => {
         if (!eb.alive) return;
         const hex = core.hex(eb.slot);
+        const camo = (eb.flags & PB_FLAG.CAMO) !== 0;
         if (eb.slot === me) {
           if (!scene) flat.player(px, py, yaw, hex, true);
           return;
@@ -401,16 +383,17 @@ export function createGame() {
         const w = (walk.get(eb.slot) ?? 0) + sp * frameDt * 0.2;
         walk.set(eb.slot, w);
         drawn.set(eb.slot, { x, y });
-        if (scene) scene.player(x, y, sy, w, sp, rgb(hex));
-        else flat.player(x, y, sy, hex, false);
-        if (eb.flags & PB_FLAG.SHIELD) shields.push([x, y, hex]);
-        if (me < 0 || !alive || lineOfSight(arena.obstacles, px, py, x, y)) labels.push([x, y, eb.slot, hex]);
+        const near = Math.hypot(x - px, y - py) < PR.CAMO_SIGHT;
+        if (scene) scene.player(x, y, sy, w, sp, rgb(hex), marks.get(eb.slot), camo ? CAMO_ALPHA : 1);
+        else if (!camo || near) flat.player(x, y, sy, hex, false);
+        if (eb.flags & PB_FLAG.SHIELD && (!camo || near)) shields.push([x, y, hex]);
+        if ((!camo || near || me < 0) && (me < 0 || !alive || lineOfSight(arena.obstacles, px, py, x, y))) labels.push([x, y, eb.slot, hex]);
       });
       if (scene) {
         scene.balls();
         for (const [x, y, hex] of shields) scene.shield(x, y, rgb(hex));
         scene.endWorld();
-        if (alive) scene.viewGun(px, py, yaw, rgb(core.hex(me)), bob, reload > 0);
+        if (alive) scene.viewGun(px, py, yaw, rgb(core.hex(me)), bob, reload > 0, mine.camo > 0);
       }
 
       // --- HUD ---
@@ -429,18 +412,24 @@ export function createGame() {
       if (alive) {
         hud.crosshair(t - hitAt, core.hex(me));
         hud.health(mine.hp);
-        hud.ammo(ammo, reload, core.hex(me));
+        hud.ammo(ammo, reload, core.hex(me), (mine.flags & PB_FLAG.RAPID) !== 0);
+        timers[0][1] = mine.rapid;
+        timers[1][1] = mine.spread;
+        timers[2][1] = predictor.state.boost;
+        timers[3][1] = mine.camo;
+        timers[4][1] = mine.armor;
+        drawPowerHud(hud.ctx, timers, 8, view.height - 42);
       }
       if (L.phase === ARCADE_PHASE.COUNTDOWN) hud.center(String(Math.max(1, Math.ceil(left))), 'SPETTER ZE ONDER DE VERF!');
       else if (L.phase === ARCADE_PHASE.END) hud.center('EINDE!', '');
       else if (mine && !mine.alive) hud.center('GESPETTERD!', `${killer ? `door ${killer} · ` : ''}terug over ${Math.max(1, Math.ceil(mine.respawn))}`, '#ff5c7a');
       else if (banner && t < banner.until) hud.center(banner.text, banner.sub, banner.color);
       else if (me < 0) hud.center('', 'JE KIJKT MEE');
-      if (alive && !touch && !locked && !lockFailed) hud.hint('Klik om te richten met de muis · Esc = muis los');
+      if (alive && !touch && !controls.locked && !controls.lockFailed) hud.hint('Klik om te richten met de muis · Esc = muis los');
     },
 
     unmount() {
-      for (const fn of cleanups) fn();
+      controls?.destroy();
       scene?.destroy();
       core.reset();
     },

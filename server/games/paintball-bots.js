@@ -2,9 +2,14 @@
 // towards the target), strafe while they have a clear shot, turn their view
 // at a limited speed and only fire when the target is close to the crosshair.
 // Easy bots aim sloppily and react slowly; hard bots are quick and precise.
+// Without a target in sight they fetch a power-up from a pad nearby, and a
+// camouflaged player is only noticed up close.
 import { PB_FIELD } from '../../shared/maps/paintball-arenas.js';
 import { PB_PHYS, lineOfSight } from '../../shared/physics/paintball.js';
-import { PB_RULES as R, wrapAngle } from '../../shared/games/paintball.js';
+import { PB_RULES as R, PB_POWER_RULES as PR, wrapAngle } from '../../shared/games/paintball.js';
+import { PAD_EMPTY } from './paintball-powers.js';
+
+const PAD_REACH = 150; // bots walk this far for a power-up
 
 // lagMs: bots see where you were this long ago (like a human's reaction),
 // so strafing makes you harder to hit.
@@ -117,12 +122,26 @@ function pickTarget(e, game) {
   for (const o of game.ents) {
     if (o === e || !o.alive) continue;
     const d = Math.hypot(o.s.x - e.s.x, o.s.y - e.s.y);
+    if (o.camo > 0 && d > PR.CAMO_SIGHT) continue;
     const seen = lineOfSight(game.obstacles, e.s.x, e.s.y, o.s.x, o.s.y);
     const score = d * (seen ? 1 : 1.8) * (o.shield > 0 ? 2 : 1);
     if (score < bestScore) { bestScore = score; best = o; }
   }
   return best;
 }
+
+function nearestPad(e, game) {
+  let best = null;
+  let bestD = PAD_REACH;
+  for (const pad of game.powers?.pads ?? []) {
+    if (pad.type === PAD_EMPTY) continue;
+    const d = Math.hypot(pad.x - e.s.x, pad.y - e.s.y);
+    if (d < bestD) { bestD = d; best = pad; }
+  }
+  return best;
+}
+
+export const pickTargetForTest = pickTarget;
 
 const dir = { x: 0, y: 0 };
 const seen = { x: 0, y: 0 };
@@ -145,7 +164,11 @@ export function stepPaintBot(e, game, dt, rng) {
     b.target = pickTarget(e, game);
     let gx;
     let gy;
-    if (b.target) {
+    const pad = b.target && lineOfSight(game.obstacles, s.x, s.y, b.target.s.x, b.target.s.y) ? null : nearestPad(e, game);
+    if (pad) {
+      gx = pad.x;
+      gy = pad.y;
+    } else if (b.target) {
       gx = b.target.s.x;
       gy = b.target.s.y;
     } else {

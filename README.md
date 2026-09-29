@@ -109,7 +109,7 @@ In het spel zet 🎵 de muziek aan/uit (onthouden in de browser); 🔊 dempt all
 | Spookjesdoolhof | 1-4 | Samen stipjes eten en spoken ontwijken, krachtpillen maken ze bang |
 | Onthoud 'm | 2-6 | Memory: kaartjes omdraaien en paren zoeken (16, 24 of 36 kaarten) |
 | Mijnenveger | 1-6 | Samen tegelijk hetzelfde veld vegen, gedeelde levens |
-| Spetterveld | 2-6 | **3D first-person shooter** (paintball): muis via pointer lock + WASD, lag compensation, 3 velden (opblaasbunkers, bos, boerenerf), verf blijft plakken |
+| Spetterveld | 2-6 | **3D first-person shooter** (paintball): muis via pointer lock + WASD, lag compensation, 5 velden (containerhaven, avondveld onder schijnwerpers, opblaasbunkers, bos, boerenerf), verf blijft overal plakken (ook op spelers), power-ups op 4 pads (snelvuur, hagel, pantser, sprint, camouflage) |
 | Pesten | 2-6 | Het Nederlandse kaartspel: 2 en joker (stapelen), 7 blijft kleven, 8 wacht, aas keert, boer vraagt een kleur |
 | Quizkoorts | 1-6 | Kennisquiz in een tv-studio: 186 eigen vragen in 9 onderwerpen, snel én goed = meeste punten |
 | Pinguïnbotsen | 2-6 | **3D.** Glibberen en duwen op een smeltende ijsschots; laatste pinguïn op het ijs wint de ronde; een duw verdooft even; power-ups (visje, ijzers, zwaargewicht, bokshandschoen, schokgolf) instelbaar |

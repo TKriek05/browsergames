@@ -4,6 +4,7 @@
 import { MeshBuilder } from '../../js/gl/mesh.js';
 import { createRng } from '../../../shared/rng.js';
 import { PB_FIELD } from '../../../shared/maps/paintball-arenas.js';
+import { extraObstacle, havenSurroundings, avondSurroundings } from './world-extra.js';
 
 const W = PB_FIELD.width;
 const H = PB_FIELD.height;
@@ -56,6 +57,8 @@ export function buildWorld(arena, th) {
   // --- Scenery outside ------------------------------------------------------------------------
   if (arena.key === 'opblaas') speedballSurroundings(b, th, rnd);
   else if (arena.key === 'bos') forestSurroundings(b, th, rnd);
+  else if (arena.key === 'haven') havenSurroundings(b, th, rnd);
+  else if (arena.key === 'avond') avondSurroundings(b, th, rnd);
   else farmSurroundings(b, th, rnd);
   return b.build();
 }
@@ -164,6 +167,7 @@ function obstacle(b, o, i, th, rnd) {
       break;
     }
     default:
+      if (extraObstacle(b, o, i, th, rnd)) break;
       b.color('#888888');
       if (o.t === 'can') b.cylinder(o.x, 0, o.y, o.r, h, 10);
       else b.box(o.x, 0, o.y, o.w, h, o.h);

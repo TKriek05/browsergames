@@ -2,6 +2,7 @@
 // than the players' eyes, so the 2D world (x, y) is enough for the game.
 // Obstacles: { t: 'box', x, y, w, h, hgt, kind } (centre + size) or
 //            { t: 'can', x, y, r, hgt, kind }. `kind` only changes the looks.
+// Pads: the four spots where power-ups appear (symmetric, on open ground).
 export const PB_FIELD = { width: 420, height: 280 };
 
 const box = (x, y, w, h, hgt, kind) => ({ t: 'box', x, y, w, h, hgt, kind });
@@ -39,6 +40,7 @@ export const PB_ARENAS = {
     key: 'opblaas',
     name: 'Opblaasveld',
     spawns: SPAWNS,
+    pads: [{ x: 210, y: 60 }, { x: 210, y: 220 }, { x: 150, y: 140 }, { x: 270, y: 140 }],
     obstacles: [
       box(210, 140, 30, 20, 24, 'bunker'),
       can(210, 92, 7, 26, 'can'), can(210, 188, 7, 26, 'can'),
@@ -60,6 +62,7 @@ export const PB_ARENAS = {
     key: 'bos',
     name: 'Bosveld',
     spawns: SPAWNS,
+    pads: [{ x: 210, y: 100 }, { x: 210, y: 180 }, { x: 95, y: 140 }, { x: 325, y: 140 }],
     obstacles: [
       box(210, 140, 44, 32, 34, 'hut'),
       ...quad([
@@ -83,6 +86,7 @@ export const PB_ARENAS = {
     key: 'erf',
     name: 'Boerenerf',
     spawns: SPAWNS,
+    pads: [{ x: 210, y: 100 }, { x: 210, y: 182 }, { x: 85, y: 140 }, { x: 335, y: 140 }],
     obstacles: [
       can(210, 140, 14, 30, 'tank'),
       box(210, 70, 70, 12, 30, 'barn'),
@@ -97,6 +101,49 @@ export const PB_ARENAS = {
       ...mirror([
         box(40, 140, 12, 26, 21, 'hay'),
         box(272 + 10, 140, 12, 30, 21, 'hay'),
+      ]),
+    ],
+  },
+  // Container yard at the harbour, late in the afternoon: grey concrete, so
+  // the paint really shows.
+  haven: {
+    key: 'haven',
+    name: 'Containerhaven',
+    spawns: SPAWNS,
+    pads: [{ x: 210, y: 100 }, { x: 210, y: 180 }, { x: 100, y: 140 }, { x: 320, y: 140 }],
+    obstacles: [
+      box(210, 140, 40, 14, 28, 'container'),
+      ...quad([
+        box(130, 60, 44, 13, 27, 'container'),
+        box(172, 28, 12, 26, 27, 'container'),
+        can(170, 100, 6, 20, 'tires'),
+        can(88, 108, 8, 20, 'reel'),
+        box(58, 62, 14, 14, 21, 'pallets'),
+      ]),
+      ...mirror([
+        box(70, 140, 13, 36, 27, 'container'),
+        can(132, 140, 7, 20, 'tires'),
+      ]),
+    ],
+  },
+  // Speedball in the evening under floodlights.
+  avond: {
+    key: 'avond',
+    name: 'Avondveld',
+    spawns: SPAWNS,
+    pads: [{ x: 210, y: 95 }, { x: 210, y: 185 }, { x: 88, y: 140 }, { x: 332, y: 140 }],
+    obstacles: [
+      can(210, 140, 11, 26, 'dome'),
+      ...quad([
+        box(150, 100, 12, 12, 22, 'bunker'),
+        can(112, 70, 7, 26, 'can'),
+        box(170, 50, 34, 10, 22, 'bunker'),
+        box(80, 108, 10, 24, 22, 'bunker'),
+        can(58, 52, 8, 26, 'can'),
+      ]),
+      ...mirror([
+        box(122, 140, 14, 24, 22, 'bunker'),
+        can(48, 140, 7, 26, 'can'),
       ]),
     ],
   },

@@ -6,28 +6,61 @@ import { PB_FIELD } from '../../../shared/maps/paintball-arenas.js';
 import { PB_RULES } from '../../../shared/games/paintball.js';
 
 const SHADOW = '#101418';
+const SPLASH_S = 2.2;
 
 export function createPaintHud(view) {
   const { ctx, width: W, height: H } = view;
-  const splashes = []; // { x, y, r, color, born, blobs }
+  const splashes = []; // { x, y, r, color, born, seed, drips }
 
-  function blob(x, y, r, color, alpha, seed) {
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = color;
+  // Your goggles got hit: an irregular splat with droplets and drips that
+  // run down while it fades. Same seed → same shape every frame.
+  function splat(s, age) {
+    let seed = s.seed;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const fade = Math.max(0, 1 - age / SPLASH_S);
+    ctx.save();
+    ctx.globalAlpha = 0.88 * Math.min(1, fade * 1.6);
+    ctx.fillStyle = s.color;
     ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
+    const n = 16;
+    for (let k = 0; k <= n; k++) {
+      const a = (k / n) * Math.PI * 2;
+      const rr = s.r * (0.8 + rnd() * 0.3) * (rnd() < 0.25 ? 1.3 : 1);
+      const px = s.x + Math.cos(a) * rr;
+      const py = s.y + Math.sin(a) * rr;
+      if (k === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
     ctx.fill();
-    for (let k = 0; k < 7; k++) {
-      const a = seed + k * 0.9;
-      const d = r * (0.9 + ((k * 37) % 5) / 10);
+    for (let i = 0; i < 5; i++) {
+      const a = rnd() * Math.PI * 2;
+      const d = s.r * (1.2 + rnd() * 0.8);
       ctx.beginPath();
-      ctx.arc(x + Math.cos(a) * d, y + Math.sin(a) * d, r * (0.18 + ((k * 13) % 4) / 20), 0, Math.PI * 2);
+      ctx.arc(s.x + Math.cos(a) * d, s.y + Math.sin(a) * d, s.r * (0.08 + rnd() * 0.12), 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.globalAlpha = 1;
+    // Drips: grow downwards over time.
+    for (const d of s.drips) {
+      const len = Math.min(d.len, age * d.speed);
+      const x = s.x + d.u * s.r;
+      ctx.fillRect(x - d.w / 2, s.y, d.w, s.r * 0.5 + len);
+      ctx.beginPath();
+      ctx.arc(x, s.y + s.r * 0.5 + len, d.w * 0.75, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Wet shine.
+    ctx.globalAlpha *= 0.35;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(s.x - s.r * 0.3, s.y - s.r * 0.35, s.r * 0.28, s.r * 0.14, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   return {
+    ctx,
+
     clear() {
       ctx.clearRect(0, 0, W, H);
     },
@@ -68,7 +101,10 @@ export function createPaintHud(view) {
 
     // You got hit: a splash of the shooter's paint on the "goggles".
     splash(color) {
-      splashes.push({ x: W * (0.2 + Math.random() * 0.6), y: H * (0.2 + Math.random() * 0.6), r: 16 + Math.random() * 14, color, born: performance.now(), seed: Math.random() * 6 });
+      const drips = Array.from({ length: 1 + Math.floor(Math.random() * 3) }, () => ({
+        u: (Math.random() - 0.5) * 1.2, w: 2 + Math.random() * 2.5, len: 14 + Math.random() * 30, speed: 12 + Math.random() * 16,
+      }));
+      splashes.push({ x: W * (0.15 + Math.random() * 0.7), y: H * (0.15 + Math.random() * 0.55), r: 16 + Math.random() * 16, color, born: performance.now(), seed: 1 + Math.floor(Math.random() * 1e6), drips });
       if (splashes.length > 6) splashes.shift();
     },
 
@@ -77,11 +113,11 @@ export function createPaintHud(view) {
       for (let i = splashes.length - 1; i >= 0; i--) {
         const s = splashes[i];
         const age = (now - s.born) / 1000;
-        if (age > 1.6) {
+        if (age > SPLASH_S) {
           splashes.splice(i, 1);
           continue;
         }
-        blob(s.x, s.y + age * 10, s.r, s.color, 0.75 * (1 - age / 1.6), s.seed);
+        splat(s, age);
       }
     },
 
@@ -99,10 +135,14 @@ export function createPaintHud(view) {
       }
     },
 
-    // Hopper: one dot per ball, or a reload bar.
-    ammo(n, reload, color) {
+    // Hopper: one dot per ball, or a reload bar (rapid fire: no hopper needed).
+    ammo(n, reload, color, rapid = false) {
       const x0 = W - 10;
       const y = H - 14;
+      if (rapid) {
+        drawText(ctx, 'SNELVUUR', x0, y - 5, { color: '#ff8a1e', align: 'right', shadow: SHADOW });
+        return;
+      }
       if (reload > 0) {
         const k = 1 - reload / PB_RULES.RELOAD_S;
         ctx.fillStyle = 'rgba(20,20,26,0.6)';

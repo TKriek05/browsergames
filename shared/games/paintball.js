@@ -14,7 +14,27 @@ export const PB_RULES = {
 };
 
 // Player flag bits in the snapshot.
-export const PB_FLAG = { BOT: 1, CONNECTED: 2, ALIVE: 4, SHIELD: 8, RELOAD: 16 };
+export const PB_FLAG = { BOT: 1, CONNECTED: 2, ALIVE: 4, SHIELD: 8, RELOAD: 16, CAMO: 32, RAPID: 64, SPREAD: 128 };
+
+// Power-ups on the pads of a field (setting 'powerups'). The id is the index
+// and the wire value. Sprint lives in the shared runner state (predicted).
+export const PB_POWER = { RAPID: 0, SPREAD: 1, ARMOR: 2, SPRINT: 3, CAMO: 4 };
+export const PB_POWERS = [
+  { id: 'rapid', name: 'Snelvuur', tip: 'Dubbel zo snel schieten, zonder herladen', color: '#ff8a1e', seconds: 7 },
+  { id: 'spread', name: 'Hagel', tip: 'Drie ballen per schot', color: '#b36bff', seconds: 8 },
+  { id: 'armor', name: 'Pantser', tip: 'De volgende twee treffers kaats je af', color: '#9fb4c8', seconds: 0 },
+  { id: 'sprint', name: 'Sprint', tip: 'Je rent een stuk sneller', color: '#2bd4a4', seconds: 8 },
+  { id: 'camo', name: 'Camouflage', tip: 'Je bent bijna onzichtbaar', color: '#8fbf5a', seconds: 9 },
+];
+export const PB_POWER_RULES = {
+  FIRST_S: 5, // the pads fill up this long after the start
+  RESPAWN_S: [12, 18], // a taken pad gets a new power-up after this long
+  PAD_R: 6, // pick-up reach (plus the body radius)
+  RAPID_COOLDOWN_S: 0.1,
+  SPREAD_RAD: 0.075, // angle between the balls of a spread shot
+  ARMOR: 2,
+  CAMO_SIGHT: 45, // bots only spot a camouflaged player this close
+};
 
 // View angle travels as i16.
 export const yawToI16 = (a) => Math.round(Math.max(-Math.PI, Math.min(Math.PI, a)) / Math.PI * 32767);

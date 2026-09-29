@@ -330,7 +330,7 @@ const entries = [
 
   // --- Party update ---------------------------------------------------------------
   {
-    id: 'paintball', title: 'Spetterveld', tagline: 'Paintball in 3D: spetter je vrienden onder de verf.',
+    id: 'paintball', title: 'Spetterveld', tagline: 'Paintball in 3D: spetter je vrienden onder de verf. De verf blijft overal zitten.',
     kind: 'realtime', phase: 6, available: true, bots: true,
     controls: 'Klik om te richten met de muis, WASD lopen, klik = schieten, R = herladen. Toetsen: pijltjes draaien, spatie schiet',
     settings: [
@@ -341,9 +341,13 @@ const entries = [
       },
       {
         key: 'arena', label: 'Veld', type: 'select',
-        options: [{ value: 'opblaas', label: 'Opblaasveld' }, { value: 'bos', label: 'Bosveld' }, { value: 'erf', label: 'Boerenerf' }],
-        default: 'opblaas',
+        options: [
+          { value: 'haven', label: 'Containerhaven' }, { value: 'avond', label: 'Avondveld' }, { value: 'opblaas', label: 'Opblaasveld' },
+          { value: 'bos', label: 'Bosveld' }, { value: 'erf', label: 'Boerenerf' },
+        ],
+        default: 'haven',
       },
+      { key: 'powerups', label: 'Power-ups (snelvuur, hagel, pantser …)', type: 'toggle', default: true },
     ],
   },
   {

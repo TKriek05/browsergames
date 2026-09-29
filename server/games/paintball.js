@@ -1,30 +1,34 @@
 // Spetterveld (server side): first-person paintball. Movement uses the shared
 // deterministic physics (predicted by the owner's client); shots are instant
 // rays judged with lag compensation against what the shooter saw.
+// Optional power-ups on four pads per field: paintball-powers.js.
 import { ArcadeGame } from './arcade.js';
 import { ARCADE_PHASE } from '../../shared/games/arcade.js';
 import { PB_ARENAS, PB_FIELD } from '../../shared/maps/paintball-arenas.js';
 import { PB_PHYS, createRunner, stepRunner, collide, raycast, rayCircle } from '../../shared/physics/paintball.js';
-import { PB_RULES as R, PB_FLAG, yawToI16, wrapAngle } from '../../shared/games/paintball.js';
+import { PB_RULES as R, PB_FLAG, PB_POWER_RULES as PR, yawToI16, wrapAngle } from '../../shared/games/paintball.js';
 import { BTN } from '../../shared/messages.js';
 import { LagHistory } from '../lagcomp.js';
 import { createPaintBot, stepPaintBot } from './paintball-bots.js';
+import { PaintPowers } from './paintball-powers.js';
 
 const COUNTDOWN_S = 3;
 const END_HOLD_S = 4;
 const LATE_JOIN_S = 1;
 const round1 = (v) => Math.round(v * 10) / 10;
+const ds = (t) => Math.min(255, Math.ceil(Math.max(0, t) * 10));
 
 class PaintballGame extends ArcadeGame {
   constructor(room, settings) {
     super(room, settings, { countdown: COUNTDOWN_S, endHold: END_HOLD_S });
-    this.arena = PB_ARENAS[settings.arena] ?? PB_ARENAS.opblaas;
+    this.arena = PB_ARENAS[settings.arena] ?? PB_ARENAS.haven;
     this.obstacles = this.arena.obstacles;
     this.duration = settings.duration ?? 180;
     this.endsAt = this.phaseEnd + this.duration;
     this.history = new LagHistory({ frames: 16, capacity: 8 });
     this.pos = { x: 0, y: 0 };
     this.ray = { nx: 0, ny: 0, obstacle: -1 };
+    this.powers = new PaintPowers(this, settings.powerups !== false);
     this.addPlayers();
     this.ents.forEach((e, i) => this._place(e, this.arena.spawns[i % this.arena.spawns.length]));
     this._record();
@@ -36,6 +40,7 @@ class PaintballGame extends ArcadeGame {
       s: createRunner(), yaw: 0, hp: R.HP, alive: true, respawn: 0, shield: R.SHIELD_S,
       ammo: R.HOPPER, reload: 0, cooldown: 0, calm: 0,
       kills: 0, deaths: 0, hits: 0, shots: 0,
+      rapid: 0, spread: 0, camo: 0, armor: 0,
       bot: createPaintBot(),
     };
   }
@@ -70,6 +75,7 @@ class PaintballGame extends ArcadeGame {
     e.reload = 0;
     e.cooldown = 0.3;
     e.calm = 0;
+    PaintPowers.clear(e);
   }
 
   // The spawn farthest from every living opponent.
@@ -100,6 +106,7 @@ class PaintballGame extends ArcadeGame {
     }
     for (const e of this.ents) this._stepEnt(e, dt);
     this._separate();
+    this.powers.tick(dt);
     this._record();
   }
 
@@ -193,12 +200,14 @@ class PaintballGame extends ArcadeGame {
     this.room.emit('reload', { s: e.player.slot });
   }
 
-  // One paintball: an instant ray from the muzzle. Opponents are rewound to
-  // `time` (what the shooter saw). Returns the victim or null.
+  // One trigger pull: an instant ray from the muzzle (three with the spread
+  // power-up). Opponents are rewound to `time` (what the shooter saw).
+  // Returns the (first) victim or null.
   shoot(e, yaw, time, from) {
     if (!this.playing || !e.alive || e.cooldown > 0 || e.reload > 0 || e.ammo <= 0) return null;
-    e.cooldown = R.COOLDOWN_S;
-    e.ammo--;
+    const rapid = e.rapid > 0;
+    e.cooldown = rapid ? PR.RAPID_COOLDOWN_S : R.COOLDOWN_S;
+    if (!rapid) e.ammo--;
     e.shots++;
     e.shield = 0; // firing ends spawn protection
     if (e.ammo === 0) this._startReload(e);
@@ -210,6 +219,13 @@ class PaintballGame extends ArcadeGame {
       x0 = from.x;
       y0 = from.y;
     }
+    if (!(e.spread > 0)) return this._ball(e, x0, y0, yaw, time);
+    let first = null;
+    for (const off of [0, -PR.SPREAD_RAD, PR.SPREAD_RAD]) first = this._ball(e, x0, y0, yaw + off, time) ?? first;
+    return first;
+  }
+
+  _ball(e, x0, y0, yaw, time) {
     const dx = Math.cos(yaw);
     const dy = Math.sin(yaw);
     let best = raycast(this.obstacles, x0, y0, dx, dy, R.RANGE, this.ray);
@@ -242,6 +258,11 @@ class PaintballGame extends ArcadeGame {
       this.room.emit('block', { s: v.player.slot });
       return;
     }
+    if (v.armor > 0) {
+      v.armor--;
+      this.room.emit('armor', { s: v.player.slot, by: by.player.slot, left: v.armor });
+      return;
+    }
     v.hp--;
     v.calm = 0;
     by.hits++;
@@ -260,21 +281,25 @@ class PaintballGame extends ArcadeGame {
   // Snapshot + results
   // ---------------------------------------------------------------------------
   // Body: u8 phase, f32 seconds left, u8 n × [u8 slot, u8 flags, u16 ack,
-  //   f32 x, f32 y, f32 vx, f32 vy, i16 yaw, u8 hp, u8 ammo, i16 kills, u8 deaths,
-  //   u8 respawn (ds), u8 reload (ds)]
+  //   f32 x, f32 y, f32 vx, f32 vy, f32 boost, i16 yaw, u8 hp, u8 ammo, i16 kills, u8 deaths,
+  //   u8 respawn (ds), u8 reload (ds), u8 armor, u8 rapid, spread, camo (ds)],
+  //   power-up pads (PaintPowers.write)
   snapshot(w) {
     const left = this.phase === ARCADE_PHASE.PLAY ? this.endsAt - this.time : this.phaseEnd - this.time;
     this.writePhase(w, left);
     w.u8(this.ents.length);
     for (const e of this.ents) {
       const p = e.player;
-      const flags = ArcadeGame.flags(p) | (e.alive ? PB_FLAG.ALIVE : 0) | (e.shield > 0 ? PB_FLAG.SHIELD : 0) | (e.reload > 0 ? PB_FLAG.RELOAD : 0);
+      const flags = ArcadeGame.flags(p) | (e.alive ? PB_FLAG.ALIVE : 0) | (e.shield > 0 ? PB_FLAG.SHIELD : 0) | (e.reload > 0 ? PB_FLAG.RELOAD : 0)
+        | (e.camo > 0 ? PB_FLAG.CAMO : 0) | (e.rapid > 0 ? PB_FLAG.RAPID : 0) | (e.spread > 0 ? PB_FLAG.SPREAD : 0);
       const s = e.s;
       w.u8(p.slot).u8(flags).u16(e.queue.ackSeq);
-      w.f32(s.x).f32(s.y).f32(s.vx).f32(s.vy).i16(yawToI16(e.yaw));
+      w.f32(s.x).f32(s.y).f32(s.vx).f32(s.vy).f32(s.boost).i16(yawToI16(e.yaw));
       w.u8(e.hp).u8(e.ammo).i16(Math.max(-32000, Math.min(32000, e.kills))).u8(Math.min(255, e.deaths));
-      w.u8(Math.min(255, Math.ceil(Math.max(0, e.respawn) * 10))).u8(Math.min(255, Math.ceil(Math.max(0, e.reload) * 10)));
+      w.u8(ds(e.respawn)).u8(ds(e.reload));
+      w.u8(e.armor).u8(ds(e.rapid)).u8(ds(e.spread)).u8(ds(e.camo));
     }
+    this.powers.write(w);
   }
 
   results() {

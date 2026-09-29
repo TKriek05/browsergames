@@ -10,6 +10,7 @@ export const PB_PHYS = {
   RADIUS: 4, // body (collision)
   HIT_RADIUS: 5.2, // a little generous for shots
   SPEED: 50,
+  SPRINT: 1.4, // speed factor with the sprint power-up (s.boost > 0)
   ACCEL: 420, // per second, towards the wish velocity
   EYE: 15, // eye height (3D only)
   GUN: 13, // shots fly at this height (3D only)
@@ -18,13 +19,15 @@ export const PB_PHYS = {
 const f = Math.fround;
 
 export function createRunner(x = 0, y = 0) {
-  return { x, y, vx: 0, vy: 0 };
+  return { x, y, vx: 0, vy: 0, boost: 0 };
 }
 
 export function stepRunner(s, ax, ay, dt, obstacles) {
   const P = PB_PHYS;
-  let dvx = ax * P.SPEED - s.vx;
-  let dvy = ay * P.SPEED - s.vy;
+  const speed = s.boost > 0 ? P.SPEED * P.SPRINT : P.SPEED;
+  if (s.boost > 0) s.boost = f(s.boost - dt > 0 ? s.boost - dt : 0);
+  let dvx = ax * speed - s.vx;
+  let dvy = ay * speed - s.vy;
   const len = Math.sqrt(dvx * dvx + dvy * dvy);
   const max = P.ACCEL * dt;
   if (len > max) {

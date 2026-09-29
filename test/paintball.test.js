@@ -1,10 +1,12 @@
-// Spetterveld: deterministic movement, rays, lag-compensated shots, bots.
+// Spetterveld: deterministic movement, rays, lag-compensated shots, power-ups, bots.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import paintball from '../server/games/paintball.js';
 import { PB_ARENAS, PB_FIELD } from '../shared/maps/paintball-arenas.js';
 import { PB_PHYS, createRunner, stepRunner, collide, raycast, rayBox, rayCircle, lineOfSight } from '../shared/physics/paintball.js';
-import { PB_RULES, i16ToYaw, yawToI16 } from '../shared/games/paintball.js';
+import { PB_RULES, PB_FLAG, PB_POWER, PB_POWERS, PB_POWER_RULES, i16ToYaw, yawToI16 } from '../shared/games/paintball.js';
+import { PAD_EMPTY } from '../server/games/paintball-powers.js';
+import { pickTargetForTest } from '../server/games/paintball-bots.js';
 import { ARCADE_PHASE } from '../shared/games/arcade.js';
 import { ByteWriter, ByteReader, quantizeAxis } from '../shared/binary.js';
 import { createRng } from '../shared/rng.js';
@@ -206,9 +208,125 @@ test('snapshot has the documented layout', () => {
   assert.equal(r.u8(), 2);
   for (let i = 0; i < 2; i++) {
     r.u8(); r.u8(); r.u16();
-    for (let k = 0; k < 4; k++) assert.ok(Number.isFinite(r.f32()));
+    for (let k = 0; k < 5; k++) assert.ok(Number.isFinite(r.f32()));
     r.i16(); assert.ok(r.u8() <= PB_RULES.HP); assert.ok(r.u8() <= PB_RULES.HOPPER);
     r.i16(); r.u8(); r.u8(); r.u8();
+    r.u8(); r.u8(); r.u8(); r.u8();
+  }
+  assert.equal(r.u8(), PB_ARENAS.bos.pads.length);
+  for (let k = 0; k < PB_ARENAS.bos.pads.length; k++) {
+    const t = r.u8();
+    assert.ok(t === PAD_EMPTY || t < PB_POWERS.length);
   }
   assert.equal(r.remaining, 0);
+});
+
+// --- Power-ups ------------------------------------------------------------------------------
+
+test('every field: four pads on open ground, away from the spawns', () => {
+  for (const a of Object.values(PB_ARENAS)) {
+    assert.equal(a.pads.length, 4, a.key);
+    for (const p of a.pads) {
+      const probe = { x: p.x, y: p.y };
+      collide(probe, a.obstacles, PB_PHYS.RADIUS + 2);
+      assert.ok(Math.hypot(probe.x - p.x, probe.y - p.y) < 1e-6, `${a.key} pad ${p.x},${p.y} is free`);
+      for (const sp of a.spawns) assert.ok(Math.hypot(sp.x - p.x, sp.y - p.y) > 50, `${a.key} pad ${p.x},${p.y} not at a spawn`);
+    }
+  }
+});
+
+function duel(settings = {}) {
+  const room = fakeRoom([human('p1', 0), human('p2', 1)]);
+  const game = paintball.create(room, { arena: 'opblaas', duration: 60, seed: 2, ...settings });
+  run(game, room, 3.2);
+  const ea = game.ent('p1');
+  const eb = game.ent('p2');
+  ea.s.x = 20; ea.s.y = 12; eb.s.x = 100; eb.s.y = 12;
+  run(game, room, 0.1); // the lag history knows where they are
+  eb.shield = 0;
+  return { room, game, ea, eb };
+}
+
+test('pads fill up, a power-up is taken by walking over it and comes back later', () => {
+  const { room, game, ea } = duel();
+  run(game, room, PB_POWER_RULES.FIRST_S + 0.2);
+  assert.ok(game.powers.pads.every((p) => p.type !== PAD_EMPTY), 'all pads have something');
+  const pad = game.powers.pads[0];
+  pad.type = PB_POWER.SPRINT;
+  ea.s.x = pad.x;
+  ea.s.y = pad.y;
+  run(game, room, 0.1);
+  assert.equal(pad.type, PAD_EMPTY);
+  assert.ok(ea.s.boost > 0, 'sprint is in the runner state');
+  assert.ok(room.events.some((e) => e.e === 'power' && e.s === 0 && e.type === PB_POWER.SPRINT && e.pad === 0));
+  ea.s.x = 20;
+  ea.s.y = 12;
+  run(game, room, PB_POWER_RULES.RESPAWN_S[1] + 0.2);
+  assert.notEqual(pad.type, PAD_EMPTY, 'a new one');
+});
+
+test('sprint is faster and predicted exactly', () => {
+  const walk = (boost) => {
+    const s = createRunner(20, 12);
+    s.boost = boost;
+    for (let i = 0; i < 30; i++) stepRunner(s, 1, 0, DT, arena.obstacles);
+    return s;
+  };
+  assert.ok(walk(5).x - 40 > (walk(0).x - 40) * 1.3);
+  assert.deepEqual(walk(5), walk(5));
+  const s = walk(0.5);
+  assert.equal(s.boost, 0, 'runs out');
+});
+
+test('rapid fire: shorter cooldown and no ammo used; spread: three balls', () => {
+  const { room, game, ea } = duel();
+  game.powers.apply(ea, PB_POWER.RAPID);
+  ea.cooldown = 0;
+  game.shoot(ea, Math.PI / 2, room.now(), null);
+  assert.equal(ea.ammo, PB_RULES.HOPPER);
+  assert.ok(ea.cooldown <= PB_POWER_RULES.RAPID_COOLDOWN_S + 1e-9);
+  ea.rapid = 0;
+  game.powers.apply(ea, PB_POWER.SPREAD);
+  const before = room.events.filter((e) => e.e === 'shot').length;
+  ea.cooldown = 0;
+  game.shoot(ea, Math.PI / 2, room.now(), null);
+  assert.equal(room.events.filter((e) => e.e === 'shot').length - before, 3);
+  assert.equal(ea.ammo, PB_RULES.HOPPER - 1, 'one ball from the hopper');
+});
+
+test('armor soaks up two hits', () => {
+  const { room, game, ea, eb } = duel();
+  game.powers.apply(eb, PB_POWER.ARMOR);
+  for (let i = 0; i < 2; i++) {
+    ea.cooldown = 0;
+    game.shoot(ea, 0, room.now(), null);
+  }
+  assert.equal(eb.hp, PB_RULES.HP);
+  assert.equal(eb.armor, 0);
+  assert.equal(room.events.filter((e) => e.e === 'armor').length, 2);
+  ea.cooldown = 0;
+  game.shoot(ea, 0, room.now(), null);
+  assert.equal(eb.hp, PB_RULES.HP - 1);
+});
+
+test('camouflage: flagged in the snapshot, bots only notice it up close', () => {
+  const { room, game, ea, eb } = duel();
+  game.powers.apply(eb, PB_POWER.CAMO);
+  const w = new ByteWriter(64);
+  game.snapshot(w);
+  const r = new ByteReader(w.toBytes());
+  r.u8(); r.f32(); r.u8();
+  r.u8(); r.u8(); r.u16(); for (let k = 0; k < 5; k++) r.f32(); r.i16(); r.u8(); r.u8(); r.i16(); r.u8(); r.u8(); r.u8(); r.u8(); r.u8(); r.u8(); r.u8();
+  r.u8(); assert.ok(r.u8() & PB_FLAG.CAMO, 'camo flag on player 2');
+  assert.equal(pickTargetForTest(ea, game), null, 'too far away to be seen');
+  eb.s.x = ea.s.x + PB_POWER_RULES.CAMO_SIGHT - 5;
+  assert.equal(pickTargetForTest(ea, game), eb);
+  void room;
+});
+
+test('no power-ups when the setting is off', () => {
+  const { room, game } = duel({ powerups: false });
+  run(game, room, 30);
+  assert.ok(game.powers.pads.every((p) => p.type === PAD_EMPTY));
+  assert.ok(!room.events.some((e) => e.e === 'power'));
 });
