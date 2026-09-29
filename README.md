@@ -4,7 +4,7 @@ Multiplayer browsergames voor **2 t/m 6 spelers** met een simpele kamercode.
 Eén Node.js-app serveert de frontend én de WebSockets. Geen framework, geen
 build-stap, geen database, geen accounts, geen tracking.
 
-- **Frontend:** vanilla JavaScript (ES modules), HTML, CSS, Canvas
+- **Frontend:** vanilla JavaScript (ES modules), HTML, CSS, Canvas; 3D met [three.js](https://threejs.org) (lokaal meegeleverd, geen CDN)
 - **Backend:** Node.js (LTS, ≥ 22) met precies één dependency: [`ws`](https://github.com/websockets/ws)
 - **Status:** 29 spellen (bordspellen, kaartspel, quiz, realtime arcade en zes games in 3D), allemaal met bots,
   plus een **party-lobby**: de host kiest de games, iedereen stemt, de arcade kiest, of je speelt een toernooi.
@@ -96,7 +96,7 @@ In het spel zet 🎵 de muziek aan/uit (onthouden in de browser); 🔊 dempt all
 | Ganzenbord | 2-6 | Klassieke vakjes: ganzen, brug, herberg, put, doolhof, gevangenis, dood |
 | Zeeslag | 2 | Verborgen vloot per speler, slimme bot met kansenkaart |
 | Turbo Kart GP | 1-6 | 3D-racer met achtervolgcamera, drift + mini-turbo, boost-pads, items (turbo, stuiterbal, olievlek, schild), 3 circuits (Groene Vallei, Herfstbos, Strandboulevard) of een Grand Prix met punten |
-| Tank Tumult | 2-6 | 3D (eigen WebGL-engine), stuiterende kogels, kapotschietbare kratten, power-ups, op tijd of laatste tank |
+| Tank Tumult | 2-6 | 3D (three.js, echte schaduwen), stuiterende kogels, kapotschietbare kratten, power-ups, op tijd of laatste tank |
 | Kwek Kwek Knal | 1-6 | Eenden schieten met muis, touch of toetsen. Lag compensation: de server spoelt terug naar wat jij zag. Tegen elkaar of samen (quotum per ronde) |
 | Boemstad | 2-6 | **3D.** Bommen leggen in een Hollands dorpje, power-ups, kettingreacties; na 90 s krimpt het dorp. Eerst N rondes |
 | Minigolf | 1-6 | **3D.** Negen holes in een zonnig park (zand, water, bumpers, heuvel), iedereen tegelijk. Sleep terug en laat los, of pijltjes + spatie |
@@ -131,7 +131,8 @@ shared/            code die client én server gebruiken (pure ES modules; party.
   physics/ maps/ rules/  fysica, levels als data, bordspelregels
 public/            alles wat de browser krijgt
   js/core/         net, session, input, touch, audio, music, storage, loop, canvas, interp, predict, qr, ui, pixelfont, fx
-  js/gl/           eigen WebGL-mini-engine voor de 3D-games (mesh, renderer, mat4, particles)
+  js/gl/           3D voor de games: renderer op three.js (schaduwen, mist, lucht), mesh, mat4, particles
+  vendor/three/    three.js 0.186.1 (MIT), geminificeerd; zie README daar
   js/lobby.js      gedeelde lobby
   js/party.js      party-deel van de lobby: gamekiezer, stemmen, roulette, party-modus, toernooistand
   js/hub.js        startpagina + wisselen tussen hub/lobby/spel

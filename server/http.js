@@ -1,7 +1,9 @@
 // HTTP handler: static files from public/ (and shared/ under /shared/),
-// /healthz, correct MIME types, ETags and cache headers. No framework.
+// /healthz, correct MIME types, ETags, cache headers and gzip. No framework.
 import { stat, readFile } from 'node:fs/promises';
 import { join, normalize, sep, extname } from 'node:path';
+import { gzip } from 'node:zlib';
+import { promisify } from 'node:util';
 import { ROOT_DIR } from './config.js';
 import { APP_VERSION, PROTOCOL_VERSION, WS_PATH } from '../shared/constants.js';
 
@@ -25,10 +27,13 @@ const MIME = {
 };
 
 const MAX_CACHED_FILE = 512 * 1024;
+const GZIP_MIN = 1024; // smaller text files are not worth compressing
+const COMPRESSIBLE = new Set(['.html', '.js', '.mjs', '.css', '.json', '.webmanifest', '.svg', '.txt']);
+const gzipAsync = promisify(gzip);
 // Keep the whole site out of search engines. Sent on every response (pages,
 // assets, errors), so crawlers must be allowed to fetch: no robots.txt block.
 const ROBOTS_TAG = 'noindex, nofollow, noarchive';
-const cache = new Map(); // path -> { mtimeMs, size, body, etag }
+const cache = new Map(); // path -> { mtimeMs, size, body, etag, gz? }
 
 // Map a URL path to a file on disk, or null when it is not allowed.
 function resolvePath(pathname) {
@@ -114,12 +119,21 @@ export function createHttpHandler({ config, log, getStats }) {
     if (isHtml) for (const [k, v] of Object.entries(securityHeaders(req, config))) res.setHeader(k, v);
     else res.setHeader('X-Content-Type-Options', 'nosniff');
 
+    const compressible = COMPRESSIBLE.has(ext) && entry.body.length >= GZIP_MIN;
+    if (compressible) res.setHeader('Vary', 'Accept-Encoding');
     if (req.headers['if-none-match'] === entry.etag) {
       res.statusCode = 304;
       return res.end();
     }
-    res.setHeader('Content-Length', entry.body.length);
-    res.end(req.method === 'HEAD' ? undefined : entry.body);
+    let body = entry.body;
+    if (compressible && /\bgzip\b/.test(req.headers['accept-encoding'] ?? '')) {
+      // Compressed once per file version (async: the game loop keeps ticking).
+      entry.gz ??= await gzipAsync(entry.body, { level: 9 });
+      body = entry.gz;
+      res.setHeader('Content-Encoding', 'gzip');
+    }
+    res.setHeader('Content-Length', body.length);
+    res.end(req.method === 'HEAD' ? undefined : body);
   }
 
   function notFound(res) {

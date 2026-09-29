@@ -175,8 +175,7 @@ export function createPaintScene(canvas, { arena, reducedMotion }) {
 
     // Your own marker in front of the camera (drawn over the world).
     viewGun(x, y, yaw, color, bob, reloading) {
-      const gl = r.gl;
-      gl.clear(gl.DEPTH_BUFFER_BIT);
+      r.clearDepth();
       const f = 4.6 - kick * 0.6;
       const side = 2.1;
       const down = reloading ? 3.6 : 2.6;

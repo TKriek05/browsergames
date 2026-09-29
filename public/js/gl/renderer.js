@@ -1,68 +1,42 @@
-// A tiny WebGL renderer for our low-poly 3D games (no libraries):
-// flat-shaded vertex-colour meshes with one directional light, fog, emissive
-// (glowing) parts, a gradient sky with an optional sun (plain or retro
-// striped) and puffy clouds, and round point particles. WebGL 1 + GLSL ES 1.00, so it runs on practically every device.
-// Rendered at screen resolution (smooth) or at a low resolution scaled up
-// pixelated, see core/canvas.js.
+// 3D renderer for our low-poly games, built on three.js (vendored in
+// public/vendor/three, MIT). The games keep a small immediate-mode API:
+// upload MeshBuilder data once (mesh), then per frame begin() → draw() per
+// object → points() for particles. Behind it the renderer reuses pooled
+// three.js objects and renders the frame right after the game's render()
+// (a microtask), with real-time shadows from the sun, flat-shaded Lambert
+// light, fog, emissive (glowing) parts, a gradient sky with an optional sun
+// (plain or retro striped) and clouds, and soft round particles.
+import * as THREE from '../../vendor/three/three.module.js';
 import { create, perspective, lookAt, multiply, transform4, invert } from './mat4.js';
 import { FLOATS_PER_VERTEX, rgb } from './mesh.js';
 
-const MESH_VS = `
-attribute vec3 aPos;
-attribute vec3 aNormal;
-attribute vec3 aColor;
-attribute float aEmit;
-attribute float aTint;
-uniform mat4 uViewProj;
-uniform mat4 uView;
-uniform mat4 uModel;
-uniform vec3 uTint;
-varying vec3 vColor;
-varying vec3 vNormal;
-varying float vEmit;
-varying float vDist;
-void main() {
-  vec4 world = uModel * vec4(aPos, 1.0);
-  gl_Position = uViewProj * world;
-  vDist = -(uView * world).z;
-  vNormal = (uModel * vec4(aNormal, 0.0)).xyz;
-  vColor = mix(aColor, uTint * (0.35 + 0.65 * aColor), aTint);
-  vEmit = aEmit;
-}`;
+// Our colours are plain sRGB numbers used as-is (like the old renderer).
+THREE.ColorManagement.enabled = false;
 
-const MESH_FS = `
-precision mediump float;
-varying vec3 vColor;
-varying vec3 vNormal;
-varying float vEmit;
-varying float vDist;
-uniform vec3 uLightDir;
-uniform vec3 uLightColor;
-uniform vec3 uAmbient;
-uniform vec3 uFogColor;
-uniform vec2 uFog;
-uniform float uAlpha;
-uniform float uFlash;
-void main() {
-  vec3 n = normalize(vNormal);
-  float diff = max(dot(n, -uLightDir), 0.0);
-  vec3 lit = vColor * (uAmbient + uLightColor * diff);
-  lit = mix(lit, vColor * 1.15, vEmit);
-  float fog = clamp((vDist - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0) * (1.0 - 0.6 * vEmit);
-  vec3 c = mix(lit, uFogColor, fog);
-  gl_FragColor = vec4(mix(c, vec3(1.0), uFlash), uAlpha);
-}`;
+// three.js Lambert divides by π: these intensities keep "colour × light" as before.
+const LIGHT_SCALE = Math.PI;
+const SHADOW_INTENSITY = 0.72; // 1 = only ambient light in the shadow
+const SHADOW_FIT = 0.85; // shadow area (half size) = camera distance × this …
+const SHADOW_MIN = 110; // … but at least / at most this many world units
+const SHADOW_MAX = 520;
+const SHADOW_AHEAD = 0.3; // centre the shadow area this far ahead of the camera target (× span)
+const WHITE = [1, 1, 1];
+
+const FOG_GLSL = `
+#ifdef USE_FOG
+  float fogFactor = clamp((vFogDepth - fogNear) / (fogFar - fogNear), 0.0, 1.0) * (1.0 - 0.6 * vEmit);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);
+#endif
+gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), uFlash);`;
 
 const SKY_VS = `
-attribute vec2 aPos;
 varying vec2 vPos;
 void main() {
-  vPos = aPos;
-  gl_Position = vec4(aPos, 0.9999, 1.0);
+  vPos = position.xy;
+  gl_Position = vec4(position.xy, 0.9999, 1.0);
 }`;
 
 const SKY_FS = `
-precision mediump float;
 varying vec2 vPos;
 uniform vec3 uTop;
 uniform vec3 uBottom;
@@ -105,20 +79,17 @@ void main() {
 }`;
 
 const POINTS_VS = `
-attribute vec3 aPos;
-attribute vec4 aColor;
-attribute float aSize;
-uniform mat4 uViewProj;
+attribute vec4 pcolor;
+attribute float psize;
 uniform float uScale;
 varying vec4 vColor;
 void main() {
-  gl_Position = uViewProj * vec4(aPos, 1.0);
-  gl_PointSize = max(1.0, aSize * uScale / max(0.1, gl_Position.w));
-  vColor = aColor;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = max(1.0, psize * uScale / max(0.1, gl_Position.w));
+  vColor = pcolor;
 }`;
 
 const POINTS_FS = `
-precision mediump float;
 varying vec4 vColor;
 void main() {
   // Round, soft-edged dots instead of squares.
@@ -127,141 +98,274 @@ void main() {
   gl_FragColor = vec4(vColor.rgb, vColor.a * (1.0 - smoothstep(0.32, 0.5, r)));
 }`;
 
-export function createRenderer3D(canvas) {
-  const gl = canvas.getContext('webgl', { antialias: !!canvas.smooth, alpha: false, depth: true, powerPreference: 'high-performance' });
-  if (!gl) return null;
+// Lambert with our vertex layout: tintable faces, emissive faces and the
+// per-draw flash. One shader program for all of them.
+function meshMaterial(transparent) {
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent, depthWrite: !transparent });
+  const u = { uTint: { value: new THREE.Color(1, 1, 1) }, uFlash: { value: 0 } };
+  mat.userData.u = u;
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, u);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float emit;\nattribute float tintAmt;\nuniform vec3 uTint;\nvarying float vEmit;')
+      .replace('#include <color_vertex>', '#include <color_vertex>\nvColor.rgb = mix(vColor.rgb, uTint * (0.35 + 0.65 * vColor.rgb), tintAmt);\nvEmit = emit;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uFlash;\nvarying float vEmit;')
+      .replace('#include <opaque_fragment>', 'outgoingLight = mix(outgoingLight, diffuseColor.rgb * 1.15, vEmit);\n#include <opaque_fragment>')
+      .replace('#include <fog_fragment>', FOG_GLSL);
+  };
+  mat.customProgramCacheKey = () => 'arcade-mesh';
+  return mat;
+}
 
-  const meshes = new Set();
+function geometryOf(data) {
+  const g = new THREE.BufferGeometry();
+  const ib = new THREE.InterleavedBuffer(data, FLOATS_PER_VERTEX);
+  g.setAttribute('position', new THREE.InterleavedBufferAttribute(ib, 3, 0));
+  g.setAttribute('normal', new THREE.InterleavedBufferAttribute(ib, 3, 3));
+  g.setAttribute('color', new THREE.InterleavedBufferAttribute(ib, 3, 6));
+  g.setAttribute('emit', new THREE.InterleavedBufferAttribute(ib, 1, 9));
+  g.setAttribute('tintAmt', new THREE.InterleavedBufferAttribute(ib, 1, 10));
+  if (data.length) g.computeBoundingSphere();
+  return g;
+}
+
+function hasWebGL2() {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    gl?.getExtension('WEBGL_lose_context')?.loseContext(); // only a probe: free it right away
+    return !!gl;
+  } catch {
+    return false;
+  }
+}
+
+export function createRenderer3D(canvas) {
+  if (!hasWebGL2()) return null; // three.js needs WebGL 2: the games fall back to 2D
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: !!canvas.smooth, alpha: false, powerPreference: 'high-performance' });
+  } catch {
+    return null;
+  }
+  renderer.setPixelRatio(1); // canvas.js already sizes the canvas in device pixels
+  renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+  renderer.toneMapping = THREE.NoToneMapping;
+  renderer.autoClear = false;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  const smallScreen = Math.min(window.screen?.width ?? 1024, window.screen?.height ?? 768) < 700;
+  const shadowSize = smallScreen ? 1024 : 2048;
+
+  // --- Scene: the world, and an overlay (e.g. a first-person gun) drawn after a depth clear.
+  const scene = new THREE.Scene();
+  const overlay = new THREE.Scene();
+  const fog = new THREE.Fog(0x000000, 200, 800);
+  scene.fog = fog;
+  overlay.fog = fog;
+  const camera = new THREE.PerspectiveCamera(60, 1, 1, 1000);
+  const sun = new THREE.DirectionalLight(0xffffff, LIGHT_SCALE);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(shadowSize, shadowSize);
+  sun.shadow.intensity = SHADOW_INTENSITY;
+  sun.shadow.radius = 2;
+  sun.shadow.bias = -0.0005;
+  const ambient = new THREE.AmbientLight(0xffffff, LIGHT_SCALE);
+  scene.add(sun, sun.target, ambient);
+  const overSun = new THREE.DirectionalLight(0xffffff, LIGHT_SCALE);
+  const overAmbient = new THREE.AmbientLight(0xffffff, LIGHT_SCALE);
+  overlay.add(overSun, overSun.target, overAmbient);
+
+  const skyUniforms = {
+    uTop: { value: new THREE.Color() }, uBottom: { value: new THREE.Color() }, uHorizon: { value: 0 },
+    uSun: { value: new THREE.Vector4(0, 0, 1, 0) }, uSunRetro: { value: 0 }, uAspect: { value: 1 },
+    uSunTop: { value: new THREE.Color() }, uSunBottom: { value: new THREE.Color() },
+    uClouds: { value: new Float32Array(64) }, uCloudCount: { value: 0 },
+    uCloudColor: { value: new THREE.Color(1, 1, 1) }, uCloudShade: { value: new THREE.Color() },
+    uYaw: { value: 0 }, uTanHalf: { value: 1 },
+  };
+  const skyGeo = new THREE.BufferGeometry();
+  skyGeo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
+  const sky = new THREE.Mesh(skyGeo, new THREE.ShaderMaterial({
+    vertexShader: SKY_VS, fragmentShader: SKY_FS, uniforms: skyUniforms, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+  }));
+  sky.frustumCulled = false;
+  sky.renderOrder = -1e6;
+  scene.add(sky);
+
+  // --- Our own camera maths (project, groundPoint, sky), same as the game code expects.
   const view = create();
   const proj = create();
   const viewProj = create();
   const invViewProj = create();
   const tmp4 = new Float32Array(4);
   const tmpB = new Float32Array(4);
-  const white = [1, 1, 1];
+  const tmpSize = new THREE.Vector2();
   const cam = { x: 0, y: 10, z: 10, tx: 0, ty: 0, tz: 0, fov: 1, near: 1, far: 1000 };
-  const scene = {
+  const state = {
     light: [-0.4, -1, -0.3], lightColor: [0.85, 0.85, 0.85], ambient: [0.42, 0.42, 0.5],
-    fogColor: [0.1, 0.05, 0.2], fog: [200, 800],
-    skyTop: [0.1, 0.05, 0.25], skyBottom: [0.9, 0.4, 0.6], sun: null, sunTop: [1, 0.9, 0.3], sunBottom: [1, 0.2, 0.6],
-    sunRetro: 0, clouds: new Float32Array(64), cloudCount: 0, cloudColor: [1, 1, 1], cloudShade: [0.85, 0.88, 0.95],
-    flash: 0,
+    fogColor: [0.1, 0.05, 0.2], sun: null, shadow: null,
   };
-  let progs = null;
-  let skyBuf = null;
-  let pointBuf = null;
-  let pointCap = 0;
+
+  // --- Pools, reused every frame (no allocations while playing).
+  const meshes = new Set();
+  const pools = { world: { list: [], used: 0, scene }, over: { list: [], used: 0, scene: overlay } };
+  const pointPools = { world: { list: [], used: 0, scene }, over: { list: [], used: 0, scene: overlay } };
+  const emptyGeo = new THREE.BufferGeometry();
+  let pass = pools.world;
+  let pointPass = pointPools.world;
+  let order = 0;
+  let frameOpen = false;
   let lost = false;
 
-  function compile(vs, fs) {
-    const p = gl.createProgram();
-    for (const [type, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
-      const s = gl.createShader(type);
-      gl.shaderSource(s, src);
-      gl.compileShader(s);
-      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS) && !gl.isContextLost()) throw new Error(`shader: ${gl.getShaderInfoLog(s)}`);
-      gl.attachShader(p, s);
+  canvas.addEventListener('webglcontextlost', () => { lost = true; });
+  canvas.addEventListener('webglcontextrestored', () => { lost = false; });
+
+  function takeMesh(pool) {
+    let o = pool.list[pool.used];
+    if (!o) {
+      o = new THREE.Mesh(emptyGeo);
+      o.matrixAutoUpdate = false;
+      o.userData.opaque = meshMaterial(false);
+      o.userData.clear = meshMaterial(true);
+      o.material = o.userData.opaque;
+      pool.list.push(o);
+      pool.scene.add(o);
     }
-    gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS) && !gl.isContextLost()) throw new Error(`link: ${gl.getProgramInfoLog(p)}`);
-    const u = {};
-    const a = {};
-    const nu = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
-    for (let i = 0; i < nu; i++) {
-      const info = gl.getActiveUniform(p, i);
-      u[info.name] = gl.getUniformLocation(p, info.name);
+    pool.used++;
+    return o;
+  }
+
+  function takePoints(pool) {
+    let p = pool.list[pool.used];
+    if (!p) {
+      const make = (blending) => new THREE.ShaderMaterial({
+        vertexShader: POINTS_VS, fragmentShader: POINTS_FS, uniforms: { uScale: { value: 1 } },
+        transparent: true, depthWrite: false, blending,
+      });
+      p = new THREE.Points(new THREE.BufferGeometry());
+      p.userData.cap = 0;
+      p.userData.normal = make(THREE.NormalBlending);
+      p.userData.additive = make(THREE.AdditiveBlending);
+      p.frustumCulled = false;
+      p.matrixAutoUpdate = false;
+      pool.list.push(p);
+      pool.scene.add(p);
     }
-    const na = gl.getProgramParameter(p, gl.ACTIVE_ATTRIBUTES);
-    for (let i = 0; i < na; i++) {
-      const info = gl.getActiveAttrib(p, i);
-      a[info.name] = gl.getAttribLocation(p, info.name);
+    pool.used++;
+    return p;
+  }
+
+  function hideUnused(pool) {
+    for (let i = pool.used; i < pool.list.length; i++) pool.list[i].visible = false;
+    pool.used = 0;
+  }
+
+  // The sun's shadow follows the camera: an area around (and a bit ahead of)
+  // what the camera looks at, snapped to shadow-map texels against shimmering.
+  const lightDir = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  const up = new THREE.Vector3();
+  const centre = new THREE.Vector3();
+  function placeSun() {
+    const L = state.light;
+    lightDir.set(L[0], L[1], L[2]).normalize();
+    const fx = cam.tx - cam.x;
+    const fz = cam.tz - cam.z;
+    const flat = Math.hypot(fx, fz) || 1;
+    const dist = Math.hypot(fx, cam.ty - cam.y, fz);
+    const span = state.shadow?.span ?? Math.min(SHADOW_MAX, Math.max(SHADOW_MIN, dist * SHADOW_FIT));
+    const ahead = span * (state.shadow?.ahead ?? SHADOW_AHEAD);
+    centre.set(cam.tx + (fx / flat) * ahead, cam.ty, cam.tz + (fz / flat) * ahead);
+    right.set(0, 1, 0).cross(lightDir);
+    if (right.lengthSq() < 1e-6) right.set(1, 0, 0);
+    right.normalize();
+    up.copy(lightDir).cross(right).normalize();
+    const texel = (2 * span) / shadowSize;
+    const cr = Math.round(centre.dot(right) / texel) * texel;
+    const cu = Math.round(centre.dot(up) / texel) * texel;
+    const cd = centre.dot(lightDir);
+    centre.copy(right).multiplyScalar(cr).addScaledVector(up, cu).addScaledVector(lightDir, cd);
+    sun.target.position.copy(centre);
+    sun.position.copy(centre).addScaledVector(lightDir, -span * 2);
+    const sc = sun.shadow.camera;
+    sc.left = -span;
+    sc.right = span;
+    sc.top = span;
+    sc.bottom = -span;
+    sc.near = 1;
+    sc.far = span * 4;
+    sc.updateProjectionMatrix();
+    sun.shadow.normalBias = texel * 1.5;
+    overSun.position.copy(sun.position);
+    overSun.target.position.copy(sun.target.position);
+  }
+
+  function updateSky(aspect) {
+    const fx = cam.tx - cam.x;
+    const fz = cam.tz - cam.z;
+    const fl = Math.hypot(fx, fz) || 1;
+    // Where the horizon ends up on screen: project a far point straight ahead at eye height.
+    transform4(tmp4, viewProj, cam.x + (fx / fl) * cam.far * 0.9, cam.y, cam.z + (fz / fl) * cam.far * 0.9);
+    skyUniforms.uHorizon.value = tmp4[3] > 0 ? Math.max(-1, Math.min(1, tmp4[1] / tmp4[3])) : -1;
+    skyUniforms.uAspect.value = aspect;
+    skyUniforms.uYaw.value = Math.atan2(fz, fx);
+    skyUniforms.uTanHalf.value = Math.tan(cam.fov / 2);
+    const s = skyUniforms.uSun.value;
+    s.set(0, 0, 1, 0);
+    if (state.sun) {
+      const [sx, sy, sz, rad] = state.sun; // world direction + angular radius
+      transform4(tmp4, viewProj, cam.x + sx * cam.far * 0.9, cam.y + sy * cam.far * 0.9, cam.z + sz * cam.far * 0.9);
+      if (tmp4[3] > 0) s.set(tmp4[0] / tmp4[3], tmp4[1] / tmp4[3], rad / Math.tan(cam.fov / 2), 1);
     }
-    return { p, u, a };
   }
 
-  function init() {
-    progs = { mesh: compile(MESH_VS, MESH_FS), sky: compile(SKY_VS, SKY_FS), points: compile(POINTS_VS, POINTS_FS) };
-    skyBuf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, skyBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    pointBuf = gl.createBuffer();
-    pointCap = 0;
-    for (const m of meshes) upload(m);
-    gl.enable(gl.DEPTH_TEST);
-    gl.enable(gl.CULL_FACE);
-    gl.cullFace(gl.BACK);
-    gl.frontFace(gl.CCW);
-  }
-
-  function upload(m) {
-    m.vbo = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, m.vbo);
-    gl.bufferData(gl.ARRAY_BUFFER, m.data, m.dynamic ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW);
-  }
-
-  canvas.addEventListener('webglcontextlost', (e) => {
-    e.preventDefault(); // allow a restore
-    lost = true;
-  });
-  canvas.addEventListener('webglcontextrestored', () => {
-    lost = false;
-    current = null;
-    init();
-  });
-  init();
-
-  let current = null;
-  function use(prog) {
-    if (current === prog) return;
-    // Attribute arrays are global state: switch cleanly between layouts.
-    for (let i = 0; i < 8; i++) gl.disableVertexAttribArray(i);
-    current = prog;
-    gl.useProgram(prog.p);
-  }
-
-  function bindMeshAttribs(prog) {
-    const stride = FLOATS_PER_VERTEX * 4;
-    const a = prog.a;
-    gl.enableVertexAttribArray(a.aPos);
-    gl.vertexAttribPointer(a.aPos, 3, gl.FLOAT, false, stride, 0);
-    gl.enableVertexAttribArray(a.aNormal);
-    gl.vertexAttribPointer(a.aNormal, 3, gl.FLOAT, false, stride, 12);
-    gl.enableVertexAttribArray(a.aColor);
-    gl.vertexAttribPointer(a.aColor, 3, gl.FLOAT, false, stride, 24);
-    gl.enableVertexAttribArray(a.aEmit);
-    gl.vertexAttribPointer(a.aEmit, 1, gl.FLOAT, false, stride, 36);
-    gl.enableVertexAttribArray(a.aTint);
-    gl.vertexAttribPointer(a.aTint, 1, gl.FLOAT, false, stride, 40);
+  // Renders the frame that begin() opened, once the game's render() is done.
+  function flush() {
+    if (!frameOpen) return;
+    frameOpen = false;
+    const overlayUsed = pools.over.used > 0 || pointPools.over.used > 0;
+    for (const pool of [pools.world, pools.over, pointPools.world, pointPools.over]) hideUnused(pool);
+    pass = pools.world;
+    pointPass = pointPools.world;
+    if (lost) return;
+    renderer.clear();
+    renderer.render(scene, camera);
+    if (overlayUsed) {
+      renderer.clearDepth();
+      renderer.render(overlay, camera);
+    }
   }
 
   const r = {
-    gl,
+    shadows: true, // real shadows from the sun: games skip their painted blob shadows
     get lost() { return lost; },
-    scene,
-    cam,
 
-    // Upload a Float32Array from MeshBuilder.build(). Kept in memory so it
-    // survives a lost WebGL context.
+    // Upload a Float32Array from MeshBuilder.build().
     mesh(data) {
-      const m = { data, vbo: null, count: data.length / FLOATS_PER_VERTEX, dynamic: false };
+      const m = { data, geo: geometryOf(data), count: data.length / FLOATS_PER_VERTEX };
       meshes.add(m);
-      if (!lost) upload(m);
       return m;
     },
 
     // Replace a mesh's vertices (e.g. destroyed crates).
     update(m, data) {
+      const attr = m.geo.getAttribute('position');
+      if (attr && attr.data.array.length === data.length) {
+        attr.data.array.set(data);
+        attr.data.needsUpdate = true;
+        if (data.length) m.geo.computeBoundingSphere();
+      } else {
+        m.geo.dispose();
+        m.geo = geometryOf(data);
+      }
       m.data = data;
       m.count = data.length / FLOATS_PER_VERTEX;
-      m.dynamic = true;
-      if (lost) return;
-      gl.bindBuffer(gl.ARRAY_BUFFER, m.vbo);
-      gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
     },
 
     free(m) {
       meshes.delete(m);
-      if (m.vbo && !lost) gl.deleteBuffer(m.vbo);
+      m.geo.dispose();
     },
 
     camera(x, y, z, tx, ty, tz, fov = 1.0, near = 1, far = 1000) {
@@ -272,125 +376,83 @@ export function createRenderer3D(canvas) {
       if (lost) return false;
       const w = canvas.width;
       const h = canvas.height;
-      gl.viewport(0, 0, w, h);
+      const size = renderer.getSize(tmpSize);
+      if (size.x !== w || size.y !== h) renderer.setSize(w, h, false);
       perspective(proj, cam.fov, w / h, cam.near, cam.far);
       lookAt(view, cam.x, cam.y, cam.z, cam.tx, cam.ty, cam.tz);
       multiply(viewProj, proj, view);
-      gl.depthMask(true);
-      gl.clearColor(scene.fogColor[0], scene.fogColor[1], scene.fogColor[2], 1);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-      r._sky(w / h);
-
-      const mp = progs.mesh;
-      use(mp);
-      gl.uniformMatrix4fv(mp.u.uViewProj, false, viewProj);
-      gl.uniformMatrix4fv(mp.u.uView, false, view);
-      const L = scene.light;
-      const len = Math.hypot(L[0], L[1], L[2]) || 1;
-      gl.uniform3f(mp.u.uLightDir, L[0] / len, L[1] / len, L[2] / len);
-      gl.uniform3fv(mp.u.uLightColor, scene.lightColor);
-      gl.uniform3fv(mp.u.uAmbient, scene.ambient);
-      gl.uniform3fv(mp.u.uFogColor, scene.fogColor);
-      gl.uniform2fv(mp.u.uFog, scene.fog);
-      gl.uniform1f(mp.u.uFlash, 0);
-      gl.enable(gl.DEPTH_TEST);
-      gl.disable(gl.BLEND);
+      camera.fov = (cam.fov * 180) / Math.PI;
+      camera.aspect = w / h;
+      camera.near = cam.near;
+      camera.far = cam.far;
+      camera.position.set(cam.x, cam.y, cam.z);
+      camera.lookAt(cam.tx, cam.ty, cam.tz);
+      camera.updateProjectionMatrix();
+      renderer.setClearColor(fog.color, 1);
+      updateSky(w / h);
+      placeSun();
+      if (!frameOpen) queueMicrotask(flush);
+      frameOpen = true;
+      order = 0;
+      pass = pools.world;
+      pointPass = pointPools.world;
       return true;
     },
 
-    _sky(aspect) {
-      const sp = progs.sky;
-      use(sp);
-      // Where the horizon ends up on screen: project a far point straight ahead at eye height.
-      const fx = cam.tx - cam.x;
-      const fz = cam.tz - cam.z;
-      const fl = Math.hypot(fx, fz) || 1;
-      transform4(tmp4, viewProj, cam.x + (fx / fl) * cam.far * 0.9, cam.y, cam.z + (fz / fl) * cam.far * 0.9);
-      const horizon = tmp4[3] > 0 ? Math.max(-1, Math.min(1, tmp4[1] / tmp4[3])) : -1;
-      gl.uniform3fv(sp.u.uTop, scene.skyTop);
-      gl.uniform3fv(sp.u.uBottom, scene.skyBottom);
-      gl.uniform1f(sp.u.uHorizon, horizon);
-      gl.uniform1f(sp.u.uAspect, aspect);
-      gl.uniform1f(sp.u.uSunRetro, scene.sunRetro);
-      gl.uniform1f(sp.u.uCloudCount, scene.cloudCount);
-      if (scene.cloudCount) {
-        gl.uniform4fv(sp.u['uClouds[0]'], scene.clouds);
-        gl.uniform3fv(sp.u.uCloudColor, scene.cloudColor);
-        gl.uniform3fv(sp.u.uCloudShade, scene.cloudShade);
-        gl.uniform1f(sp.u.uYaw, Math.atan2(fz, fx));
-        gl.uniform1f(sp.u.uTanHalf, Math.tan(cam.fov / 2));
-      }
-      let sunOn = 0;
-      if (scene.sun) {
-        const [sx, sy, sz, rad] = scene.sun; // world direction + angular radius
-        transform4(tmp4, viewProj, cam.x + sx * cam.far * 0.9, cam.y + sy * cam.far * 0.9, cam.z + sz * cam.far * 0.9);
-        if (tmp4[3] > 0) {
-          sunOn = 1;
-          gl.uniform4f(sp.u.uSun, tmp4[0] / tmp4[3], tmp4[1] / tmp4[3], rad / Math.tan(cam.fov / 2), 1);
-          gl.uniform3fv(sp.u.uSunTop, scene.sunTop);
-          gl.uniform3fv(sp.u.uSunBottom, scene.sunBottom);
-        }
-      }
-      if (!sunOn) gl.uniform4f(sp.u.uSun, 0, 0, 1, 0);
-      gl.depthMask(false);
-      gl.disable(gl.DEPTH_TEST);
-      gl.bindBuffer(gl.ARRAY_BUFFER, skyBuf);
-      gl.enableVertexAttribArray(sp.a.aPos);
-      gl.vertexAttribPointer(sp.a.aPos, 2, gl.FLOAT, false, 8, 0);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-      gl.depthMask(true);
+    // Everything drawn after this appears over the world (e.g. the gun in a first-person view).
+    clearDepth() {
+      pass = pools.over;
+      pointPass = pointPools.over;
     },
 
     // Draw a mesh with a model matrix. tint: [r, g, b] for tintable faces.
-    draw(m, model, tint = white, alpha = 1, flash = 0) {
-      if (lost || !m.count) return;
-      const mp = progs.mesh;
-      use(mp);
-      gl.uniformMatrix4fv(mp.u.uModel, false, model);
-      gl.uniform3fv(mp.u.uTint, tint);
-      gl.uniform1f(mp.u.uAlpha, alpha);
-      gl.uniform1f(mp.u.uFlash, flash);
-      if (alpha < 1) {
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.depthMask(false);
-      }
-      gl.bindBuffer(gl.ARRAY_BUFFER, m.vbo);
-      bindMeshAttribs(mp);
-      gl.drawArrays(gl.TRIANGLES, 0, m.count);
-      if (alpha < 1) {
-        gl.disable(gl.BLEND);
-        gl.depthMask(true);
-      }
+    draw(m, model, tint = WHITE, alpha = 1, flash = 0) {
+      if (!frameOpen || !m.count) return;
+      const o = takeMesh(pass);
+      const overlayPass = pass === pools.over;
+      o.geometry = m.geo;
+      o.matrix.fromArray(model);
+      o.matrixWorldNeedsUpdate = true;
+      const mat = alpha < 1 ? o.userData.clear : o.userData.opaque;
+      o.material = mat;
+      mat.opacity = alpha;
+      mat.userData.u.uTint.value.setRGB(tint[0], tint[1], tint[2]);
+      mat.userData.u.uFlash.value = flash;
+      o.castShadow = alpha >= 1 && !overlayPass;
+      o.receiveShadow = !overlayPass;
+      o.renderOrder = ++order;
+      o.visible = true;
     },
 
     // Round points. data: Float32Array of [x, y, z, r, g, b, a, size] × count.
     // additive: glowing (sparks, fire); otherwise normal alpha blending (dust, smoke).
     points(data, count, scale = 1, additive = false) {
-      if (lost || !count) return;
-      const pp = progs.points;
-      use(pp);
-      gl.uniformMatrix4fv(pp.u.uViewProj, false, viewProj);
-      gl.uniform1f(pp.u.uScale, (canvas.height / 2 / Math.tan(cam.fov / 2)) * scale);
-      gl.bindBuffer(gl.ARRAY_BUFFER, pointBuf);
-      if (data.length > pointCap) {
-        pointCap = data.length;
-        gl.bufferData(gl.ARRAY_BUFFER, pointCap * 4, gl.DYNAMIC_DRAW);
+      if (!frameOpen || !count) return;
+      const p = takePoints(pointPass);
+      if (p.userData.cap < count) {
+        const cap = Math.max(64, count * 2);
+        p.geometry.dispose();
+        const g = new THREE.BufferGeometry();
+        const ib = new THREE.InterleavedBuffer(new Float32Array(cap * 8), 8);
+        ib.setUsage(THREE.DynamicDrawUsage);
+        g.setAttribute('position', new THREE.InterleavedBufferAttribute(ib, 3, 0));
+        g.setAttribute('pcolor', new THREE.InterleavedBufferAttribute(ib, 4, 3));
+        g.setAttribute('psize', new THREE.InterleavedBufferAttribute(ib, 1, 7));
+        p.geometry = g;
+        p.userData.cap = cap;
+        p.userData.ib = ib;
       }
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, data.subarray(0, count * 8));
-      const stride = 32;
-      gl.enableVertexAttribArray(pp.a.aPos);
-      gl.vertexAttribPointer(pp.a.aPos, 3, gl.FLOAT, false, stride, 0);
-      gl.enableVertexAttribArray(pp.a.aColor);
-      gl.vertexAttribPointer(pp.a.aColor, 4, gl.FLOAT, false, stride, 12);
-      gl.enableVertexAttribArray(pp.a.aSize);
-      gl.vertexAttribPointer(pp.a.aSize, 1, gl.FLOAT, false, stride, 28);
-      gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA, additive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
-      gl.depthMask(false);
-      gl.drawArrays(gl.POINTS, 0, count);
-      gl.depthMask(true);
-      gl.disable(gl.BLEND);
+      const ib = p.userData.ib;
+      ib.array.set(data.subarray(0, count * 8));
+      ib.clearUpdateRanges();
+      ib.addUpdateRange(0, count * 8);
+      ib.needsUpdate = true;
+      p.geometry.setDrawRange(0, count);
+      const mat = additive ? p.userData.additive : p.userData.normal;
+      mat.uniforms.uScale.value = (canvas.height / 2 / Math.tan(cam.fov / 2)) * scale;
+      p.material = mat;
+      p.renderOrder = ++order;
+      p.visible = true;
     },
 
     // World position → logical canvas coordinates (null when behind the camera).
@@ -427,36 +489,74 @@ export function createRenderer3D(canvas) {
 
     // sun: { dir, radius, top, bottom, retro? } (retro = striped synthwave sun).
     // clouds: { count ≤ 16, color, shade, seed? } or null.
-    setColors({ sky, fog, light, sun, clouds } = {}) {
-      if (sky) { scene.skyTop = rgb(sky[0]); scene.skyBottom = rgb(sky[1]); }
-      if (fog) { scene.fogColor = rgb(fog[0]); scene.fog = [fog[1], fog[2]]; }
-      if (light) { scene.light = light.dir; scene.lightColor = rgb(light.color); scene.ambient = rgb(light.ambient); }
-      if (sun !== undefined) {
-        scene.sun = sun ? sun.dir.concat([sun.radius]) : null;
-        if (sun) { scene.sunTop = rgb(sun.top); scene.sunBottom = rgb(sun.bottom); scene.sunRetro = sun.retro ? 1 : 0; }
+    // shadow: { span?, ahead? } to size the shadow area by hand (optional).
+    setColors({ sky: skyColors, fog: fogSpec, light, sun: sunSpec, clouds, shadow } = {}) {
+      if (skyColors) {
+        skyUniforms.uTop.value.setRGB(...rgb(skyColors[0]));
+        skyUniforms.uBottom.value.setRGB(...rgb(skyColors[1]));
+      }
+      if (fogSpec) {
+        state.fogColor = rgb(fogSpec[0]);
+        fog.color.setRGB(...state.fogColor);
+        fog.near = fogSpec[1];
+        fog.far = fogSpec[2];
+      }
+      if (light) {
+        state.light = light.dir;
+        state.lightColor = rgb(light.color);
+        state.ambient = rgb(light.ambient);
+        for (const l of [sun, overSun]) l.color.setRGB(...state.lightColor);
+        for (const a of [ambient, overAmbient]) a.color.setRGB(...state.ambient);
+      }
+      if (shadow !== undefined) state.shadow = shadow;
+      if (sunSpec !== undefined) {
+        state.sun = sunSpec ? sunSpec.dir.concat([sunSpec.radius]) : null;
+        if (sunSpec) {
+          skyUniforms.uSunTop.value.setRGB(...rgb(sunSpec.top));
+          skyUniforms.uSunBottom.value.setRGB(...rgb(sunSpec.bottom));
+          skyUniforms.uSunRetro.value = sunSpec.retro ? 1 : 0;
+        }
       }
       if (clouds !== undefined) {
-        scene.cloudCount = clouds ? Math.min(16, clouds.count) : 0;
+        skyUniforms.uCloudCount.value = clouds ? Math.min(16, clouds.count) : 0;
         if (clouds) {
-          scene.cloudColor = rgb(clouds.color ?? '#ffffff');
-          scene.cloudShade = rgb(clouds.shade ?? '#d8def0');
+          skyUniforms.uCloudColor.value.setRGB(...rgb(clouds.color ?? '#ffffff'));
+          skyUniforms.uCloudShade.value.setRGB(...rgb(clouds.shade ?? '#d8def0'));
           // Deterministic spread around the horizon (no Math.random: same sky every time).
           let seed = clouds.seed ?? 7;
           const next = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+          const cl = skyUniforms.uClouds.value;
           for (let i = 0; i < 16; i++) {
-            scene.clouds[i * 4] = (i / 16) * Math.PI * 2 + next() * 0.3;
-            scene.clouds[i * 4 + 1] = 0.05 + next() * (clouds.height ?? 0.28);
-            scene.clouds[i * 4 + 2] = 0.1 + next() * 0.12;
-            scene.clouds[i * 4 + 3] = 0;
+            cl[i * 4] = (i / 16) * Math.PI * 2 + next() * 0.3;
+            cl[i * 4 + 1] = 0.05 + next() * (clouds.height ?? 0.28);
+            cl[i * 4 + 2] = 0.1 + next() * 0.12;
+            cl[i * 4 + 3] = 0;
           }
         }
       }
     },
 
     destroy() {
-      for (const m of meshes) if (m.vbo && !lost) gl.deleteBuffer(m.vbo);
+      frameOpen = false;
+      for (const m of meshes) m.geo.dispose();
       meshes.clear();
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      for (const pool of [pools.world, pools.over]) {
+        for (const o of pool.list) {
+          o.userData.opaque.dispose();
+          o.userData.clear.dispose();
+        }
+      }
+      for (const pool of [pointPools.world, pointPools.over]) {
+        for (const p of pool.list) {
+          p.geometry.dispose();
+          p.userData.normal.dispose();
+          p.userData.additive.dispose();
+        }
+      }
+      skyGeo.dispose();
+      sky.material.dispose();
+      renderer.dispose();
+      renderer.forceContextLoss();
     },
   };
   return r;

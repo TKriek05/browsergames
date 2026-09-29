@@ -126,6 +126,7 @@ export function createKartScene(canvas, { reducedMotion }) {
     },
 
     shadow(x, y) {
+      if (r.shadows) return; // the sun casts a real one
       compose(m, x, ROAD_Y + 0.1, y);
       r.draw(shadow, m, [1, 1, 1], 0.4);
     },

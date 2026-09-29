@@ -1,5 +1,6 @@
 // Integration tests against a real server: static files, handshake checks,
 // rooms, reconnect, host migration, full rooms, hostile clients.
+import { readFileSync } from 'node:fs';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import WebSocket from 'ws';
@@ -245,6 +246,19 @@ test('only the host can start, kick or change settings', async () => {
   assert.deepEqual(room.settings, { duration: 60, arena: 'pillars', powerups: true });
   host.close();
   guest.close();
+});
+
+test('text files are served gzip-compressed when the browser accepts it', async () => {
+  const path = '/vendor/three/three.core.js';
+  const disk = readFileSync(new URL(`../public${path}`, import.meta.url), 'utf8');
+  const zipped = await fetch(`${server.base}${path}`, { headers: { 'accept-encoding': 'gzip' } });
+  assert.equal(zipped.headers.get('content-encoding'), 'gzip');
+  assert.equal(zipped.headers.get('vary'), 'Accept-Encoding');
+  assert.equal(await zipped.text(), disk, 'unpacks to the same file');
+  const plain = await fetch(`${server.base}${path}`, { headers: { 'accept-encoding': 'identity' } });
+  assert.equal(plain.headers.get('content-encoding'), null);
+  assert.equal(Number(plain.headers.get('content-length')), Buffer.byteLength(disk));
+  await plain.arrayBuffer();
 });
 
 test('the host can kick a player (close 4001)', async () => {

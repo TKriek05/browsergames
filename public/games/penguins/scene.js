@@ -74,7 +74,7 @@ export function createPenguinScene(canvas, { reducedMotion }) {
       const y0 = TOP - sink * 20;
       compose(m, x, y0, y, yaw, wobble, lean + sink * 0.9, MODEL_SCALE);
       r.draw(body, m, color);
-      if (!sink) {
+      if (!sink && !r.shadows) {
         compose(m, x, TOP + 0.05, y);
         r.draw(shadow, m, undefined, 0.35);
       }

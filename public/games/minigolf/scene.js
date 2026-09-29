@@ -80,8 +80,10 @@ export function createGolfScene(canvas, { reducedMotion }) {
     // A ball in the player's colour (rgb 0..1) with its shadow.
     ball(x, y, color, sunk) {
       if (sunk) return;
-      compose(m, x, 0.3, y);
-      r.draw(shadow, m, [1, 1, 1], 0.35);
+      if (!r.shadows) {
+        compose(m, x, 0.3, y);
+        r.draw(shadow, m, [1, 1, 1], 0.35);
+      }
       compose(m, x, 0, y);
       r.draw(ball, m, color);
     },

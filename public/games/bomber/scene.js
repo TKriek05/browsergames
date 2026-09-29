@@ -100,6 +100,7 @@ export function createBomberScene(canvas, { reducedMotion }) {
     },
 
     shadow(x, y) {
+      if (r.shadows) return; // the sun casts a real one
       compose(m, x, 0.15, y);
       r.draw(shadow, m, [1, 1, 1], 0.4);
     },
@@ -128,7 +129,8 @@ function buildFloor() {
   const b = new MeshBuilder();
   let seed = 4242;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  b.color('#5f9a45').box(CX, -2, CZ, BOMB_WORLD.width + 600, 2, BOMB_WORLD.height + 500);
+  // Its top sits just below the town floor: no z-fighting between the two.
+  b.color('#5f9a45').box(CX, -2.2, CZ, BOMB_WORLD.width + 600, 2, BOMB_WORLD.height + 500);
   for (let y = 0; y < BOMB_ROWS; y++) {
     for (let x = 0; x < BOMB_COLS; x++) {
       b.color((x + y) % 2 ? '#78b556' : '#70ad4f');

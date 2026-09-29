@@ -123,6 +123,7 @@ export function createTankScene(canvas, { arena, reducedMotion }) {
 
     // Transparent things last: shadows under tanks and shield bubbles.
     shadow(x, y) {
+      if (r.shadows) return; // the sun casts a real one
       compose(m, x, 0.15, y);
       r.draw(shadow, m, [1, 1, 1], 0.45);
     },
@@ -183,7 +184,8 @@ function buildFloor(arena, th) {
   const T = TANK_TILE;
   const rnd = seeded(arena.key.length * 97 + 11);
   // Ground around the arena, then the arena floor in two soft tones.
-  b.color(th.outside).box(CX, -2, CZ, TANK_WORLD.width + 700, 2, TANK_WORLD.height + 600);
+  // Its top sits just below the arena floor: no z-fighting between the two.
+  b.color(th.outside).box(CX, -2.2, CZ, TANK_WORLD.width + 700, 2, TANK_WORLD.height + 600);
   for (let ty = 0; ty < TANK_ROWS; ty++) {
     for (let tx = 0; tx < TANK_COLS; tx++) {
       if (arena.tiles[ty * TANK_COLS + tx] === TILE.WALL) continue;

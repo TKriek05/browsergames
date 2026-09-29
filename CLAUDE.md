@@ -13,6 +13,8 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 ## Harde regels
 
 - **Frontend:** vanilla JS met ES modules, HTML, CSS, Canvas. Geen framework, geen build-stap, geen bundler.
+  Enige uitzondering: **three.js** voor 3D, vendored in `public/vendor/three/` (MIT, zie README daar); alleen
+  `public/js/gl/renderer.js` importeert het.
 - **Backend:** Node.js LTS, enige dependency `ws`. Geen Express/Socket.IO. Ook geen devDependencies.
 - Geen database, geen accounts, geen cookies, geen tracking, geen externe CDN's/fonts/assets.
 - Geen auteursrechtelijk materiaal: eigen namen, eigen pixel art (procedureel of eigen SVG), eigen WebAudio-geluiden.
@@ -82,13 +84,20 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 - `simultaneous: true` in de regels = iedereen tegelijk (geen beurten, bv. Mijnenveger); `botPace` = seconden per botzet.
 - Merknamen vermijden: "Erger je niet!" i.p.v. het merk mens-erger-je-niet, "Reversi" i.p.v. Othello.
 
-## 3D (WebGL)
+## 3D (three.js)
 
-- Eigen mini-engine in `public/js/gl/`: `mesh.js` (low-poly MeshBuilder, vertexkleuren, emissive, tint),
-  `renderer.js` (WebGL 1, licht + mist + luchtverloop met retro-zon, punten-deeltjes), `mat4.js`, `particles.js`.
+- `public/js/gl/`: `mesh.js` (low-poly MeshBuilder, vertexkleuren, emissive, tint), `renderer.js` (three.js achter een
+  kleine immediate-mode API: `mesh`, `update`, `begin`, `draw`, `points`, `clearDepth`, `camera`, `project`,
+  `groundPoint`, `setColors`), `mat4.js`, `particles.js`. Games gebruiken nooit rechtstreeks three.js.
+- De renderer hergebruikt gepoolde three.js-objecten en rendert het frame in een microtask na `render()`.
+  Echte schaduwen van de zon (`r.shadows === true`: geen geschilderde blob-schaduwen meer); het schaduwgebied volgt de
+  camera, eventueel handmatig via `setColors({ shadow: { span, ahead } })`.
+- Overlay (bv. eigen wapen in first person): `r.clearDepth()`, alles daarna komt over de wereld.
+- Vlakken die samenvallen geven z-fighting: leg de grond eromheen een fractie lager (zie Tank Tumult/Boemstad).
+- WebGL 2 is nodig (three.js); zonder geeft `createRenderer3D` `null`.
 - `meta.gl = true`: `view.glCanvas` (WebGL, lage resolutie, pixelated) met `view.canvas` als 2D-HUD erboven.
 - Spelwereld is 2D (x, y) → 3D (x, 0, y). Fysica blijft 2D en deterministisch in `shared/physics/`.
-- Geen WebGL? `createRenderer3D` geeft `null`: val terug op een eenvoudige 2D-weergave.
+- Geen WebGL 2? `createRenderer3D` geeft `null`: val terug op een eenvoudige 2D-weergave.
 - Lucht: `setColors({ sky, fog, light, sun: { …, retro? }, clouds })`. Zon is standaard gewoon; `retro: true` = synthwave-strepen.
 
 ## Stijl per game
