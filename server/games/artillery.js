@@ -187,7 +187,7 @@ class ArtilleryGame {
       if (!res.out) booms.push({ x: Math.round(res.x), y: Math.round(res.y), r: w.radius, hit: res.hit });
     }
     this.shotId++;
-    this.shot = { id: this.shotId, by: c.player.id, weapon: c.weapon, paths, booms: booms.map(({ x, y, r }) => ({ x, y, r })), t: flight };
+    this.shot = { id: this.shotId, by: c.player.id, weapon: c.weapon, paths, booms: booms.map(({ x, y, r }) => ({ x, y, r })), dur: flight };
     this.pending = { by: c, weapon: w, booms };
     this.phase = 'flight';
     this.phaseEnd = this.time + Math.min(ART.MAX_FLIGHT_S, flight) + 0.25;

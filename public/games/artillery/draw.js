@@ -124,7 +124,7 @@ export function drawSea(ctx, th, time) {
 }
 
 // A cannon: two wooden wheels, a body in the player's colour, the barrel at `angle`.
-export function drawCannon(ctx, c, color, { turn = false, time = 0, flash = 0 } = {}) {
+export function drawCannon(ctx, c, color, { turn = false, time = 0, flash = 0, recoil = 0, wreck = false } = {}) {
   const x = c.x;
   const y = sy(c.y);
   const a = (-c.angle * Math.PI) / 180;
@@ -143,15 +143,26 @@ export function drawCannon(ctx, c, color, { turn = false, time = 0, flash = 0 } 
   // Barrel.
   ctx.save();
   ctx.translate(x, y - 7);
-  ctx.rotate(a);
-  ctx.fillStyle = '#2f3138';
+  ctx.rotate(wreck ? 0.5 : a);
+  ctx.translate(-recoil * 4, 0);
+  ctx.fillStyle = wreck ? '#1d1e22' : '#2f3138';
   roundRect(ctx, -2, -2.6, 15, 5.2, 2.4);
   ctx.fill();
   ctx.fillStyle = '#44474f';
   ctx.fillRect(11, -3.2, 3, 6.4);
+  if (recoil > 0.6) {
+    // Muzzle flash.
+    ctx.fillStyle = '#ffd23e';
+    ctx.beginPath();
+    ctx.moveTo(14, -4);
+    ctx.lineTo(24 + recoil * 6, 0);
+    ctx.lineTo(14, 4);
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.restore();
   // Body and wheels.
-  ctx.fillStyle = color;
+  ctx.fillStyle = wreck ? '#3a3a3e' : color;
   roundRect(ctx, x - 9, y - 11, 18, 8, 3);
   ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.35)';

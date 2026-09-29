@@ -121,6 +121,7 @@ export function parseBinary(buf) {
 }
 
 // Server -> client JSON encoder: every message carries type + version.
+// They go last, so a payload field can never overwrite them.
 export function encode(t, payload) {
-  return JSON.stringify({ t, v: PROTOCOL_VERSION, ...payload });
+  return JSON.stringify({ ...payload, t, v: PROTOCOL_VERSION });
 }

@@ -2,7 +2,7 @@
 // input queue and the shared tag physics.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseJson, parseBinary } from '../server/protocol.js';
+import { parseJson, parseBinary, encode } from '../server/protocol.js';
 import { TokenBucket, IpLimiter } from '../server/ratelimit.js';
 import { InputQueue } from '../server/inputqueue.js';
 import { stepRunner, TAG_PHYS, touching } from '../shared/physics/tag.js';
@@ -15,6 +15,14 @@ test('parseJson accepts valid messages and copies only known fields', () => {
   const r = parseJson(msg({ t: 'join', code: 'KXQF', name: 'Timon', extra: 'x', token: 'A'.repeat(24) }));
   assert.equal(r.ok, true);
   assert.deepEqual(r.msg, { t: 'join', code: 'KXQF', name: 'Timon', token: 'A'.repeat(24) });
+});
+
+test('encode: payload fields can never overwrite the message type or version', () => {
+  const out = JSON.parse(encode('event', { e: 'shot', t: 1.5, v: 99, x: 3 }));
+  assert.equal(out.t, 'event');
+  assert.equal(out.v, PROTOCOL_VERSION);
+  assert.equal(out.e, 'shot');
+  assert.equal(out.x, 3);
 });
 
 test('parseJson rejects hostile input', () => {

@@ -200,7 +200,7 @@ class DuckGame {
     });
     this.nextDuckId = (this.nextDuckId % 65535) + 1;
     if (def.points > 0) this.roundTotal++;
-    this.room.emit('quack', { t: type });
+    this.room.emit('quack', { kind: type });
   }
 
   tick(dt) {

@@ -629,8 +629,9 @@ export class Room {
   }
 
   // Game events (sounds, effects): { e: 'name', ...data }
+  // Event data may not use the keys `t`, `v` or `e` (the envelope wins).
   emit(e, data = {}) {
-    this.broadcast(S2C.EVENT, { e, ...data });
+    this.broadcast(S2C.EVENT, { ...data, e });
   }
 
   notice(text) {

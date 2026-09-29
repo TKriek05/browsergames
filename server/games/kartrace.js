@@ -200,7 +200,7 @@ class KartGame {
     this.finishers++;
     k.raceDist = 1e9 - this.finishers; // finishers keep their order
     if (this.finishers === 1) this.endAt = this.raceTime + R.FINISH_GRACE_S;
-    this.room.emit('finish', { s: k.player.slot, place: this.finishers, t: Math.round(k.finishTime * 1000) });
+    this.room.emit('finish', { s: k.player.slot, place: this.finishers, ms: Math.round(k.finishTime * 1000) });
   }
 
   _rank() {

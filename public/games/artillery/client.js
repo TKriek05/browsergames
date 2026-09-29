@@ -30,6 +30,11 @@ export function createGame() {
   const aim = { angle: 60, power: 60, weapon: 0, editing: false };
   const keys = new Set();
   const anims = []; // shots in flight: { paths, booms, t0, color, done }
+  const recoil = new Map(); // cannon id → 1 … 0 after firing
+  const shownY = new Map(); // cannon id → drawn height (cannons drop onto new ground)
+  const floats = []; // damage numbers: { x, y, text, color, t0 }
+  const flashes = []; // explosion rings: { x, y, r, t0 }
+  const wrecks = new Map(); // cannon id → time it was destroyed
   const parts = []; // particles: { x, y, vx, vy, life, max, color, size, smoke }
   const el = {};
   const cleanups = [];
@@ -241,11 +246,30 @@ export function createGame() {
 
     onEvent(msg) {
       switch (msg.e) {
-        case 'shot':
-          anims.push({ paths: msg.paths, booms: msg.booms, t0: performance.now(), color: colorOf(msg.by), done: false });
-          sfx.play(msg.weapon === 1 ? 'explode' : 'shoot');
+        case 'shot': {
+          anims.push({ paths: msg.paths, booms: msg.booms, t0: performance.now(), color: colorOf(msg.by), done: false, weapon: msg.weapon });
+          recoil.set(msg.by, 1);
+          const c = snap?.cannons.find((x) => x.id === msg.by);
+          if (c) {
+            const m = muzzle(c.x, c.y, c.angle);
+            for (let i = 0; i < (reduced ? 3 : 10); i++) {
+              parts.push({ x: m.x, y: m.y, vx: (Math.random() - 0.5) * 30, vy: 10 + Math.random() * 25, life: 0.9, max: 0.9, color: '#cfc9bf', size: 3 + Math.random() * 3, smoke: true });
+            }
+          }
+          sfx.play('shoot');
           break;
+        }
+        case 'landed': {
+          // Damage numbers shortly after the boom (the snapshot with the crater follows).
+          for (const hit of msg.hits) {
+            const c = snap?.cannons.find((x) => x.id === hit.id);
+            if (c) floats.push({ x: c.x, y: c.y + 30, text: `-${hit.dmg}`, color: hit.id === me() ? '#ff6b5a' : '#ffffff', t0: performance.now() });
+          }
+          if (msg.hits.some((hit) => hit.id === me())) sfx.play('hit');
+          break;
+        }
         case 'destroyed':
+          wrecks.set(msg.id, performance.now());
           banner = { text: msg.id === me() ? 'KAPOT!' : 'RAAK!', sub: `${nameOf(msg.id)} ${msg.id === me() ? 'bent' : 'is'} uitgeschakeld`, color: msg.id === me() ? '#ff5c5c' : '#ffe14d', until: performance.now() + 1800 };
           break;
         case 'turn':
@@ -253,6 +277,10 @@ export function createGame() {
           break;
         case 'timeout':
           banner = { text: 'TE LAAT', sub: `${nameOf(msg.id)} liet de beurt voorbij gaan`, color: '#ffffff', until: performance.now() + 1500 };
+          break;
+        case 'round':
+          wrecks.clear();
+          shownY.clear();
           break;
         case 'roundEnd':
           banner = { text: msg.id === me() ? 'JIJ WINT!' : msg.id ? `${nameOf(msg.id).toUpperCase()} WINT` : 'GELIJKSPEL', sub: '', color: msg.id ? colorOf(msg.id) : '#ffffff', until: performance.now() + 3500 };
@@ -266,6 +294,7 @@ export function createGame() {
     update(dt) {
       time += dt;
       shake = Math.max(0, shake - dt * 14);
+      for (const [id, v] of recoil) recoil.set(id, Math.max(0, v - dt * 4));
       stepParts(dt);
       if (myTurn() && keys.size) {
         const fast = 1;
@@ -303,12 +332,23 @@ export function createGame() {
       }
       const now = performance.now();
       for (const c of snap.cannons) {
-        if (!c.alive) continue;
+        // Drop smoothly onto the new ground after a crater.
+        let y = shownY.get(c.id) ?? c.y;
+        y = y > c.y ? Math.max(c.y, y - 160 * (1 / 60)) : c.y;
+        shownY.set(c.id, y);
+        if (!c.alive) {
+          if (wrecks.has(c.id)) {
+            drawCannon(ctx, { ...c, y }, colorOf(c.id), { wreck: true });
+            if (!reduced && Math.random() < 0.3) parts.push({ x: c.x + (Math.random() - 0.5) * 8, y: y + 8, vx: 0, vy: 14, life: 1.4, max: 1.4, color: '#4a4744', size: 4, smoke: true });
+          }
+          continue;
+        }
         const mine = c.id === me() && myTurn();
-        const shown = mine && aim.editing ? { ...c, angle: aim.angle } : c;
-        drawCannon(ctx, shown, colorOf(c.id), { turn: snap.turn === c.id && snap.phase === 'aim', time });
-        drawHealth(ctx, c.x, c.y, c.hp, colorOf(c.id));
-        drawText(ctx, nameOf(c.id), c.x, sy(c.y) - 36 + (snap.turn === c.id && snap.phase === 'aim' ? -12 : 0), { color: '#ffffff', scale: 1.1, align: 'center', shadow: SHADOW });
+        const shown = mine && aim.editing ? { ...c, angle: aim.angle, y } : { ...c, y };
+        const kick = recoil.get(c.id) ?? 0;
+        drawCannon(ctx, shown, colorOf(c.id), { turn: snap.turn === c.id && snap.phase === 'aim', time, recoil: kick });
+        drawHealth(ctx, c.x, y, c.hp, colorOf(c.id));
+        drawText(ctx, nameOf(c.id), c.x, sy(y) - 36 + (snap.turn === c.id && snap.phase === 'aim' ? -12 : 0), { color: '#ffffff', scale: 1.1, align: 'center', shadow: SHADOW });
       }
       // Aiming line for your own shot (only the first part: the rest is skill).
       const mine = myCannon();
@@ -339,19 +379,64 @@ export function createGame() {
           const x = path[i * 2] + (path[j * 2] - path[i * 2]) * t;
           const y = path[i * 2 + 1] + (path[j * 2 + 1] - path[i * 2 + 1]) * t;
           if (f < n - 1) {
+            // A short streak behind the shell, then the shell itself.
+            const back = Math.max(0, i - 3);
+            ctx.strokeStyle = 'rgba(255, 244, 214, 0.7)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(path[back * 2], sy(path[back * 2 + 1]));
+            ctx.lineTo(x, sy(y));
+            ctx.stroke();
+            const size = a.weapon === 1 ? 5 : a.weapon === 2 ? 2.6 : 3.6;
             ctx.fillStyle = '#23252d';
             ctx.beginPath();
-            ctx.arc(x, sy(y), 3.2, 0, Math.PI * 2);
+            ctx.arc(x, sy(y), size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            ctx.beginPath();
+            ctx.arc(x - size * 0.3, sy(y) - size * 0.3, size * 0.35, 0, Math.PI * 2);
             ctx.fill();
             if (!reduced && Math.random() < 0.5) parts.push({ x, y, vx: 0, vy: 6, life: 0.5, max: 0.5, color: '#d8d4cc', size: 2.5, smoke: true });
+            if (sy(y) < 0) {
+              // Above the screen: an arrow at the top edge that follows the shell.
+              const mx = Math.max(8, Math.min(W - 8, x));
+              ctx.fillStyle = a.color;
+              ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+              ctx.lineWidth = 1.5;
+              ctx.beginPath();
+              ctx.moveTo(mx, 3);
+              ctx.lineTo(mx - 7, 15);
+              ctx.lineTo(mx + 7, 15);
+              ctx.closePath();
+              ctx.fill();
+              ctx.stroke();
+            }
           }
         });
         if (!flying && !a.done) {
           a.done = true;
-          for (const b of a.booms) burst(b.x, b.y, b.r, th.dirt[0]);
+          for (const b of a.booms) {
+            burst(b.x, b.y, b.r, th.dirt[0]);
+            flashes.push({ x: b.x, y: b.y, r: b.r, t0: now });
+          }
           if (a.booms.length) sfx.play('explode');
         }
         if (a.done && elapsed > 0.1 + Math.max(...a.paths.map((p) => p.length / 2)) * PATH_STEP_S) anims.splice(k, 1);
+      }
+      // Explosion rings.
+      for (let i = flashes.length - 1; i >= 0; i--) {
+        const fl = flashes[i];
+        const k = (now - fl.t0) / 350;
+        if (k >= 1) {
+          flashes.splice(i, 1);
+          continue;
+        }
+        ctx.globalAlpha = 1 - k;
+        ctx.fillStyle = k < 0.3 ? '#fff4c2' : '#ff9a3e';
+        ctx.beginPath();
+        ctx.arc(fl.x, sy(fl.y), fl.r * (0.5 + k * 0.9), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
       }
       // Explosion flashes + particles.
       for (const p of parts) {
@@ -365,6 +450,17 @@ export function createGame() {
       ctx.restore();
 
       // --- HUD ---
+      for (let i = floats.length - 1; i >= 0; i--) {
+        const fl = floats[i];
+        const k = (now - fl.t0) / 1300;
+        if (k >= 1) {
+          floats.splice(i, 1);
+          continue;
+        }
+        ctx.globalAlpha = Math.min(1, (1 - k) * 2);
+        drawText(ctx, fl.text, fl.x, sy(fl.y + k * 26), { color: fl.color, scale: 1.8, align: 'center', shadow: SHADOW });
+        ctx.globalAlpha = 1;
+      }
       drawWind(ctx, snap.wind);
       drawText(ctx, 'WIND', W / 2, 32, { color: '#ffffff', scale: 0.9, align: 'center', shadow: SHADOW });
       if (snap.phase === 'aim') {
