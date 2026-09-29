@@ -427,6 +427,7 @@ const entries = [
         options: [{ value: 120, label: '2 minuten' }, { value: 180, label: '3 minuten' }, { value: 300, label: '5 minuten' }],
         default: 180,
       },
+      { key: 'powerups', label: 'Power-ups (turbo, stekels, magneet …)', type: 'toggle', default: true },
     ],
   },
 ];

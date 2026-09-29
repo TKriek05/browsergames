@@ -1,9 +1,9 @@
 // Hapvis: deterministic swimming, dashes, plankton, eating fish, points that
-// never go down, and complete bot matches.
+// never go down, power-ups (and none when they are off), and complete bot matches.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fish from '../server/games/fish.js';
-import { FISH, createFish, stepFish, fishRadius, fishSpeed, planktonSpots, canEat } from '../shared/games/fish.js';
+import { FISH, FISH_POWER, FISH_POWERS, FISH_POWER_RULES, createFish, stepFish, fishRadius, fishSpeed, planktonSpots, canEat } from '../shared/games/fish.js';
 import { ARCADE_PHASE } from '../shared/games/arcade.js';
 import { ByteWriter, ByteReader, quantizeAxis } from '../shared/binary.js';
 import { createRng } from '../shared/rng.js';
@@ -42,7 +42,7 @@ test('swimming is deterministic, float32-exact and stays in the sea', () => {
   };
   const a = once();
   assert.deepEqual(a, once());
-  for (const k of ['x', 'y', 'vx', 'vy', 'mass', 'dash', 'cool']) assert.equal(a[k], Math.fround(a[k]), k);
+  for (const k of ['x', 'y', 'vx', 'vy', 'mass', 'dash', 'cool', 'boost']) assert.equal(a[k], Math.fround(a[k]), k);
 });
 
 test('bigger fish are slower; a dash is faster but costs mass', () => {
@@ -116,13 +116,125 @@ test('bot matches end; the snapshot has the documented layout', () => {
   assert.equal(r.u8(), 4);
   for (let i = 0; i < 4; i++) {
     r.u8(); r.u8(); r.u16();
-    for (let k = 0; k < 9; k++) assert.ok(Number.isFinite(r.f32()));
+    for (let k = 0; k < 10; k++) assert.ok(Number.isFinite(r.f32()));
     r.u8(); r.u16(); r.u8();
+    r.u8(); r.u8(); r.u8();
   }
   for (let k = 0; k < FISH.PLANKTON / 8; k++) r.u8();
+  const m = r.u8();
+  assert.equal(m, game.powers.list.length);
+  for (let k = 0; k < m; k++) {
+    r.u8();
+    assert.ok(r.u8() < FISH_POWERS.length);
+    assert.ok(r.u16() <= FISH.WIDTH && r.u16() <= FISH.HEIGHT);
+    r.u8();
+  }
   assert.equal(r.remaining, 0);
   run(game, room, 40);
   assert.ok(room.results);
   assert.ok(game.ents.some((e) => e.score > 20), 'bots eat');
   assert.deepEqual(room.results.columns, ['Punten', 'Grootst', 'Vissen gehapt']);
+});
+
+// A game in play with two human fish, far apart, nothing else going on.
+function playing(settings = {}) {
+  const room = fakeRoom([human('p1', 0), human('p2', 1)]);
+  const game = fish.create(room, { duration: 60, seed: 11, ...settings });
+  run(game, room, 3.1);
+  game.food.fill(0);
+  game.foodBack.fill(99);
+  const a = game.ent('p1');
+  const b = game.ent('p2');
+  Object.assign(a.s, { x: 200, y: 200 });
+  Object.assign(b.s, { x: 1000, y: 600 });
+  return { room, game, a, b };
+}
+
+test('power-ups: bubbles appear, drift and are picked up by touch', () => {
+  const { room, game, a } = playing();
+  game.powers.list.length = 0;
+  run(game, room, 10);
+  assert.ok(game.powers.list.length > 0, 'bubbles appear');
+  assert.ok(game.powers.list.length <= FISH_POWER_RULES.MAX);
+  game.powers.list.length = 0;
+  const p = game.powers.spawn(FISH_POWER.TURBO);
+  a.s.x = p.x;
+  a.s.y = p.y;
+  run(game, room, 0.05);
+  assert.equal(game.powers.list.length, 0, 'picked up');
+  assert.ok(a.s.boost > 0, 'turbo is in the (predicted) fish state');
+  assert.ok(room.events.some((e) => e.e === 'power' && e.s === 0 && e.type === FISH_POWER.TURBO));
+});
+
+test('turbo is faster; magnet reaches further; double points; grow', () => {
+  const s = createFish(300, 400, 30);
+  const t = createFish(300, 400, 30);
+  t.boost = 5;
+  for (let i = 0; i < 40; i++) {
+    stepFish(s, 1, 0, 0, DT);
+    stepFish(t, 1, 0, 0, DT);
+  }
+  assert.ok(t.vx > s.vx * 1.3, 'turbo');
+  const { room, game, a } = playing();
+  game.powers.enabled = false;
+  game.powers.list.length = 0;
+  // Magnet: plankton just out of normal reach.
+  const reach = fishRadius(a.s.mass) + FISH.PLANKTON_R;
+  a.s.x = game.spots.xs[5] - reach - 20;
+  a.s.y = game.spots.ys[5];
+  a.s.vx = a.s.vy = 0;
+  game.food[5] = 1;
+  run(game, room, 0.05);
+  assert.equal(game.food[5], 1, 'out of reach');
+  game.powers.apply(a, FISH_POWER.MAGNET);
+  a.score = 0;
+  run(game, room, 0.05);
+  assert.equal(game.food[5], 0, 'the magnet pulls it in');
+  assert.equal(a.score, 1);
+  // Double points.
+  game.powers.apply(a, FISH_POWER.DOUBLE);
+  game.food[6] = 1;
+  a.s.x = game.spots.xs[6];
+  a.s.y = game.spots.ys[6];
+  run(game, room, 0.05);
+  assert.equal(a.score, 3);
+  // Grow.
+  const m = a.s.mass;
+  game.powers.apply(a, FISH_POWER.GROW);
+  assert.equal(a.s.mass, Math.fround(m + FISH_POWER_RULES.GROW));
+  // Timers run out.
+  run(game, room, 11);
+  assert.equal(a.magnet, 0);
+  assert.equal(a.double, 0);
+});
+
+test('spikes: a spiky fish can not be eaten; the biter shrinks and bounces off', () => {
+  const { room, game, a, b } = playing();
+  game.powers.enabled = false;
+  game.powers.list.length = 0;
+  a.s.mass = 100;
+  game.powers.apply(b, FISH_POWER.SPIKES);
+  b.s.x = a.s.x + 2;
+  b.s.y = a.s.y;
+  run(game, room, 0.05);
+  assert.equal(b.alive, true, 'not eaten');
+  assert.ok(a.s.mass < 100 * (1 - FISH_POWER_RULES.SPIKE_LOSS) + 1, 'the biter lost mass');
+  assert.ok(room.events.some((e) => e.e === 'spiked' && e.s === 0 && e.v === 1));
+  const stings = room.events.filter((e) => e.e === 'spiked').length;
+  run(game, room, 0.3);
+  assert.equal(room.events.filter((e) => e.e === 'spiked').length, stings, 'one sting per second at most');
+  // After the spikes wear off it is fair game again.
+  run(game, room, FISH_POWERS[FISH_POWER.SPIKES].seconds);
+  b.s.x = a.s.x + 2;
+  b.s.y = a.s.y;
+  a.s.mass = 100;
+  run(game, room, 0.05);
+  assert.equal(b.alive, false);
+});
+
+test('no power-ups when the setting is off', () => {
+  const { room, game } = playing({ powerups: false });
+  run(game, room, 30);
+  assert.equal(game.powers.list.length, 0);
+  assert.ok(!room.events.some((e) => e.e === 'power'));
 });

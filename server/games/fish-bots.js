@@ -1,6 +1,8 @@
 // Hapvis bots: flee from fish that can eat them, chase fish they can eat,
 // otherwise graze on the nearest plankton. Better bots see further, react
-// faster, lead their prey and use the dash at the right moment.
+// faster, lead their prey and use the dash at the right moment. Power-up
+// bubbles nearby beat plankton; a spiky bot fears nobody, and nobody bites a
+// spiky fish on purpose.
 import { FISH, fishRadius, canEat } from '../../shared/games/fish.js';
 
 const LEVELS = {
@@ -34,17 +36,23 @@ export function stepFishBot(e, game, dt, rng) {
       const dy = o.s.y - s.y;
       const d = Math.hypot(dx, dy) || 1;
       if (d > cfg.sight) continue;
-      if (canEat(o.s, s)) {
+      if (canEat(o.s, s) && !(e.spikes > 0)) {
         // Flee: the closer, the stronger.
         const w = (cfg.fear * (cfg.sight - d)) / cfg.sight;
         fx -= (dx / d) * w;
         fy -= (dy / d) * w;
         danger = true;
         if (d < fishRadius(o.s.mass) + 40 && rng() < cfg.dash) b.dash = true;
-      } else if (canEat(s, o.s) && d < preyD) {
+      } else if (canEat(s, o.s) && !(o.spikes > 0) && d < preyD) {
         prey = o;
         preyD = d;
       }
+    }
+    let power = null;
+    let powerD = cfg.sight * 0.8;
+    for (const p of game.powers?.list ?? []) {
+      const d = Math.hypot(p.x - s.x, p.y - s.y);
+      if (d < powerD) { power = p; powerD = d; }
     }
     if (danger) {
       // Stay away from the walls while fleeing.
@@ -52,6 +60,9 @@ export function stepFishBot(e, game, dt, rng) {
       fy += (FISH.HEIGHT / 2 - s.y) / FISH.HEIGHT;
       b.tx = s.x + fx * 100;
       b.ty = s.y + fy * 100;
+    } else if (power && (!prey || powerD < preyD)) {
+      b.tx = power.x;
+      b.ty = power.y;
     } else if (prey) {
       const t = (preyD / 120) * cfg.lead;
       b.tx = prey.s.x + prey.s.vx * t;

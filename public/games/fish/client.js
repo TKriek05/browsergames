@@ -1,12 +1,14 @@
 // Hapvis (client side): the camera follows your fish (it zooms out as you
 // grow). Your fish is predicted; the others are interpolated. Steer with the
 // keys, a gamepad or the mouse (the fish swims towards the pointer).
+// Power-up bubbles (optional) drift in the sea: see powers.js.
 import { BTN } from '../../../shared/messages.js';
-import { FISH, FISH_FLAG, stepFish, fishRadius, planktonSpots, canEat } from '../../../shared/games/fish.js';
+import { FISH, FISH_FLAG, FISH_POWER, FISH_POWERS, stepFish, fishRadius, planktonSpots, canEat } from '../../../shared/games/fish.js';
 import { createArcadeCore, ARCADE_PHASE } from '../common/arcade.js';
 import { Predictor } from '../../js/core/predict.js';
 import { drawText, roundRect } from '../../js/core/hudtext.js';
 import { makeDecor, drawWater, drawBottom, drawPlankton, drawFish } from './draw.js';
+import { drawPowerBubble, drawFishAura, drawPowerHud, powerIcon } from './powers.js';
 
 export const meta = {
   width: 480,
@@ -18,10 +20,17 @@ export const meta = {
 
 const SHADOW = '#082233';
 const MOUSE_IDLE_MS = 2500;
-const KEYS = ['x', 'y', 'vx', 'vy', 'mass', 'dash', 'cool', 'fx', 'fy', 'prevA'];
+const POWER_TIPS = {
+  turbo: 'Je zwemt een tijdje sneller',
+  spikes: 'Niemand kan je nu opeten',
+  magnet: 'Je hapt plankton van veraf',
+  double: 'Dubbele punten',
+  grow: 'Je bent meteen een stuk groter',
+};
+const KEYS = ['x', 'y', 'vx', 'vy', 'mass', 'dash', 'cool', 'fx', 'fy', 'boost', 'prevA'];
 
 function decode(r, time) {
-  const s = { time, phase: r.u8(), endsAt: 0, seed: 0, ents: [], food: null };
+  const s = { time, phase: r.u8(), endsAt: 0, seed: 0, ents: [], food: null, powers: [] };
   s.endsAt = time + r.f32() * 1000;
   s.seed = r.u32();
   const n = r.u8();
@@ -30,8 +39,8 @@ function decode(r, time) {
     const flags = r.u8();
     s.ents.push({
       slot, flags, ack: r.u16(),
-      x: r.f32(), y: r.f32(), vx: r.f32(), vy: r.f32(), mass: r.f32(), dash: r.f32(), cool: r.f32(), fx: r.f32(), fy: r.f32(), prevA: r.u8(),
-      score: r.u16(), respawn: r.u8() / 10,
+      x: r.f32(), y: r.f32(), vx: r.f32(), vy: r.f32(), mass: r.f32(), dash: r.f32(), cool: r.f32(), fx: r.f32(), fy: r.f32(), boost: r.f32(), prevA: r.u8(),
+      score: r.u16(), respawn: r.u8() / 10, spikes: r.u8() / 10, magnet: r.u8() / 10, double: r.u8() / 10,
       alive: (flags & FISH_FLAG.ALIVE) !== 0,
     });
   }
@@ -41,6 +50,8 @@ function decode(r, time) {
     for (let k = 0; k < 8; k++) food[b * 8 + k] = (v >> k) & 1;
   }
   s.food = food;
+  const m = r.u8();
+  for (let i = 0; i < m; i++) s.powers.push({ id: r.u8(), type: r.u8(), x: r.u16(), y: r.u16(), age: r.u8() / 4 });
   return s;
 }
 
@@ -55,8 +66,10 @@ export function createGame() {
   const mouse = { x: 0, y: 0, at: 0, down: false };
   const bubbles = [];
   const cleanups = [];
+  const aura = { boost: 0, spikes: 0, magnet: 0 };
+  const hud = { boost: 0, spikes: 0, magnet: 0, double: 0 };
   const predictor = new Predictor({
-    create: () => ({ x: 0, y: 0, vx: 0, vy: 0, mass: FISH.START_MASS, dash: 0, cool: 0, fx: 1, fy: 0, prevA: 0 }),
+    create: () => ({ x: 0, y: 0, vx: 0, vy: 0, mass: FISH.START_MASS, dash: 0, cool: 0, fx: 1, fy: 0, boost: 0, prevA: 0 }),
     copy: (d, s) => { for (const k of KEYS) d[k] = s[k]; },
     step: (s, inp) => stepFish(s, inp.ax, inp.ay, inp.buttons & BTN.A, FISH.DT),
   });
@@ -122,6 +135,19 @@ export function createGame() {
           banner = { text: 'OPGEGETEN!', sub: `door ${core.name(msg.s)}`, color: '#ff7a7a', until: now() + 2.4 };
           sfx.play('lose');
         }
+      } else if (msg.e === 'power') {
+        bubble(msg.x, msg.y, 10);
+        if (msg.s === me) {
+          const p = FISH_POWERS[msg.type];
+          banner = { text: p.name.toUpperCase() + '!', sub: POWER_TIPS[p.id], color: p.color, until: now() + 1.6 };
+          sfx.play('item');
+        } else sfx.play('plop');
+      } else if (msg.e === 'spiked') {
+        bubble(msg.x, msg.y, 8);
+        if (msg.s === me) {
+          banner = { text: 'AU!', sub: `${core.name(msg.v)} heeft stekels`, color: '#c38bff', until: now() + 1.4 };
+          sfx.play('hit');
+        } else if (msg.v === me) sfx.play('thud');
       } else if (msg.e === 'spawn' && msg.s === me) {
         predictor.reset();
         sfx.play('join');
@@ -216,6 +242,7 @@ export function createGame() {
       drawWater(ctx, decor, time);
       drawBottom(ctx, decor, time);
       drawPlankton(ctx, spots, L.food, time, vis);
+      for (const p of L.powers) drawPowerBubble(ctx, p, time);
       ctx.fillStyle = 'rgba(220, 240, 255, 0.45)';
       for (const b of bubbles) {
         ctx.beginPath();
@@ -235,17 +262,23 @@ export function createGame() {
         if (px < vis.x0 - r || px > vis.x1 + r || py < vis.y0 - r || py > vis.y1 + r) return;
         let ring = null;
         if (!isMe && myMass) ring = canEat({ mass: myMass }, s) ? 'rgba(157, 240, 176, 0.9)' : canEat(s, { mass: myMass }) ? 'rgba(255, 110, 110, 0.9)' : null;
+        aura.boost = s.boost;
+        aura.spikes = eb.spikes;
+        aura.magnet = eb.magnet;
+        drawFishAura(ctx, px, py, r, s.fx, s.fy, aura, time);
+        if (ring && eb.spikes > 0) ring = null; // nobody can eat a spiky fish
         drawFish(ctx, px, py, r, s.fx, s.fy, core.hex(eb.slot), time, ring);
-        if (s.dash > 0 && Math.random() < 0.6) bubble(px - s.fx * r, py - s.fy * r, 1);
-        labels.push([px, py - r - 4, eb.slot, Math.round(s.mass)]);
+        if ((s.dash > 0 || s.boost > 0) && Math.random() < 0.6) bubble(px - s.fx * r, py - s.fy * r, 1);
+        labels.push([px, py - r - 4, eb.slot, Math.round(s.mass), eb.double > 0]);
       });
       ctx.restore();
 
       // --- HUD ---
-      for (const [x, y, slot, mass] of labels) {
+      for (const [x, y, slot, mass, double] of labels) {
         const sx = (x - cam.x) * cam.zoom + W / 2;
         const syy = (y - cam.y) * cam.zoom + H / 2;
-        drawText(ctx, `${core.name(slot)} ${mass}`, sx, syy - 9, { color: '#ffffff', scale: 0.85, align: 'center', shadow: SHADOW });
+        const w = drawText(ctx, `${core.name(slot)} ${mass}`, sx, syy - 9, { color: '#ffffff', scale: 0.85, align: 'center', shadow: SHADOW });
+        if (double) powerIcon(ctx, FISH_POWER.DOUBLE, sx + w / 2 + 8, syy - 5, 4);
       }
       const left = core.secondsLeft();
       if (L.phase === ARCADE_PHASE.PLAY) drawText(ctx, `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`, W / 2, 5, { color: '#ffffff', scale: 1.5, align: 'center', shadow: SHADOW });
@@ -275,6 +308,11 @@ export function createGame() {
       }
       if (alive) {
         drawText(ctx, `Gewicht ${Math.round(predictor.state.mass)}`, 6, H - 22, { color: '#ffffff', scale: 1.1, shadow: SHADOW });
+        hud.boost = predictor.state.boost;
+        hud.spikes = mine.spikes;
+        hud.magnet = mine.magnet;
+        hud.double = mine.double;
+        drawPowerHud(ctx, hud, 6, H - 42, SHADOW);
         const cool = predictor.state.cool / FISH.DASH_COOLDOWN_S;
         ctx.fillStyle = 'rgba(8, 34, 51, 0.6)';
         roundRect(ctx, 6, H - 10, 60, 5, 2.5);

@@ -23,9 +23,31 @@ export const FISH = {
   RESPAWN_S: 2.5,
   DECAY: 0.002, // mass lost per second above DECAY_FROM (keeps giants moving)
   DECAY_FROM: 120,
+  BOOST_FACTOR: 1.45, // top speed multiplier with the turbo power-up
 };
 
 export const FISH_FLAG = { BOT: 1, CONNECTED: 2, ALIVE: 4, DASH: 8 };
+
+// Power-ups (the setting 'powerups'): bubbles that drift in the sea. The id is
+// the index and the wire value. Timed effects last `seconds`.
+export const FISH_POWER = { TURBO: 0, SPIKES: 1, MAGNET: 2, DOUBLE: 3, GROW: 4 };
+export const FISH_POWERS = [
+  { id: 'turbo', name: 'Turbo', color: '#ffe14d', seconds: 6, weight: 1 },
+  { id: 'spikes', name: 'Stekels', color: '#c38bff', seconds: 8, weight: 0.8 },
+  { id: 'magnet', name: 'Magneet', color: '#ff6b6b', seconds: 10, weight: 1 },
+  { id: 'double', name: 'Dubbel', color: '#7df0a0', seconds: 10, weight: 0.9 },
+  { id: 'grow', name: 'Groeien', color: '#ffa94d', seconds: 0, weight: 0.8 },
+];
+export const FISH_POWER_RULES = {
+  MAX: 3, // bubbles in the sea at once
+  EVERY_S: [5, 8], // time between two new bubbles
+  LIFE_S: 16,
+  RADIUS: 9,
+  MAGNET_RANGE: 60, // extra reach for plankton
+  SPIKE_LOSS: 0.15, // part of the mass a fish loses when it bites a spiky one
+  SPIKE_PUSH: 220, // speed it gets pushed back with
+  GROW: 8, // mass (and points) from the grow bubble
+};
 
 const f = Math.fround;
 
@@ -33,10 +55,11 @@ export const fishRadius = (mass) => 5 + Math.sqrt(mass) * 1.4;
 export const fishSpeed = (mass) => 40 + (70 * 20) / (20 + mass * 0.12);
 
 export function createFish(x = 0, y = 0, mass = FISH.START_MASS) {
-  return { x, y, vx: 0, vy: 0, mass, dash: 0, cool: 0, prevA: 0, fx: 1, fy: 0 };
+  return { x, y, vx: 0, vy: 0, mass, dash: 0, cool: 0, prevA: 0, fx: 1, fy: 0, boost: 0 };
 }
 
-// One tick: steer towards the stick, dash on a fresh press of A.
+// One tick: steer towards the stick, dash on a fresh press of A. The turbo
+// power-up (boost timer) is part of the predicted state.
 export function stepFish(s, ax, ay, a, dt) {
   const P = FISH;
   const mag = Math.sqrt(ax * ax + ay * ay);
@@ -51,6 +74,7 @@ export function stepFish(s, ax, ay, a, dt) {
   }
   if (s.cool > 0) s.cool = f(s.cool - dt > 0 ? s.cool - dt : 0);
   if (s.dash > 0) s.dash = f(s.dash - dt > 0 ? s.dash - dt : 0);
+  if (s.boost > 0) s.boost = f(s.boost - dt > 0 ? s.boost - dt : 0);
   if (a && !s.prevA && s.cool <= 0 && s.mass > P.START_MASS + 1) {
     s.dash = f(P.DASH_S);
     s.cool = f(P.DASH_COOLDOWN_S);
@@ -58,7 +82,7 @@ export function stepFish(s, ax, ay, a, dt) {
     s.mass = f(s.mass - (cost > 1 ? cost : 1));
   }
   s.prevA = a ? 1 : 0;
-  const top = fishSpeed(s.mass) * (s.dash > 0 ? P.DASH_FACTOR : 1);
+  const top = fishSpeed(s.mass) * (s.dash > 0 ? P.DASH_FACTOR : 1) * (s.boost > 0 ? P.BOOST_FACTOR : 1);
   const wantX = tx * top;
   const wantY = ty * top;
   let dvx = wantX - s.vx;

@@ -114,7 +114,7 @@ In het spel zet 🎵 de muziek aan/uit (onthouden in de browser); 🔊 dempt all
 | Quizkoorts | 1-6 | Kennisquiz in een tv-studio: 186 eigen vragen in 9 onderwerpen, snel én goed = meeste punten |
 | Pinguïnbotsen | 2-6 | **3D.** Glibberen en duwen op een smeltende ijsschots; laatste pinguïn op het ijs wint de ronde |
 | Knalkanon | 2-6 | Artillerie om de beurt: hoek, kracht, wind, drie wapens en kraters in het landschap |
-| Hapvis | 1-6 | Onder water: eet plankton en kleinere vissen, vlucht voor grotere; punten gaan nooit omlaag |
+| Hapvis | 1-6 | Onder water: eet plankton en kleinere vissen, vlucht voor grotere; punten gaan nooit omlaag; power-ups (turbo, stekels, magneet, ×2, groeien) instelbaar |
 
 Bij alle bordspellen: beurtindicator, zet-animaties, **zet terugnemen alleen als de ander akkoord gaat**
 (tegen een bot mag het meteen), **nog een potje** (wie begint wisselt), score over alle potjes in de lobby,

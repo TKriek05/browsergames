@@ -1,13 +1,16 @@
 // Hapvis (server side): fish grow by eating plankton and smaller fish, and
 // flee from bigger ones. Points = everything you ate (they never go down, even
 // when you are eaten and start small again). Most points after the time wins.
+// Optional power-ups (setting 'powerups'): see fish-powers.js.
 import { ArcadeGame } from './arcade.js';
 import { ARCADE_PHASE } from '../../shared/games/arcade.js';
-import { FISH, FISH_FLAG, createFish, stepFish, fishRadius, planktonSpots, canEat } from '../../shared/games/fish.js';
+import { FISH, FISH_FLAG, FISH_POWER_RULES, createFish, stepFish, fishRadius, planktonSpots, canEat } from '../../shared/games/fish.js';
 import { BTN } from '../../shared/messages.js';
 import { createFishBot, stepFishBot } from './fish-bots.js';
+import { FishPowers } from './fish-powers.js';
 
 const MASK_BYTES = FISH.PLANKTON / 8;
+const ds = (t) => Math.min(255, Math.ceil(Math.max(0, t) * 10));
 
 class FishGame extends ArcadeGame {
   constructor(room, settings) {
@@ -18,11 +21,12 @@ class FishGame extends ArcadeGame {
     this.foodBack = new Float32Array(FISH.PLANKTON); // respawn timers
     this.duration = settings.duration ?? 180;
     this.endsAt = this.phaseEnd + this.duration;
+    this.powers = new FishPowers(this, settings.powerups !== false);
     this.addPlayers(); // onJoin spawns every fish
   }
 
   createEntity() {
-    return { s: createFish(), alive: false, respawn: 0, score: 0, best: FISH.START_MASS, eaten: 0, bot: createFishBot() };
+    return { s: createFish(), alive: false, respawn: 0, score: 0, best: FISH.START_MASS, eaten: 0, spikes: 0, magnet: 0, double: 0, stung: 0, bot: createFishBot() };
   }
 
   onJoin(player) {
@@ -44,8 +48,14 @@ class FishGame extends ArcadeGame {
       if (d > bestD) { bestD = d; best = { x, y }; }
     }
     Object.assign(e.s, createFish(Math.fround(best.x), Math.fround(best.y)));
+    FishPowers.reset(e);
     e.alive = true;
     e.respawn = 0;
+  }
+
+  // Points, doubled while the double power-up runs.
+  award(e, n) {
+    e.score += e.double > 0 ? n * 2 : n;
   }
 
   step(dt) {
@@ -72,6 +82,7 @@ class FishGame extends ArcadeGame {
       // Giants slowly shrink.
       if (e.s.mass > FISH.DECAY_FROM) e.s.mass = Math.fround(e.s.mass - (e.s.mass - FISH.DECAY_FROM) * FISH.DECAY * dt * 10);
     }
+    this.powers.tick(dt);
     this._eatPlankton(dt);
     this._eatFish();
   }
@@ -87,7 +98,7 @@ class FishGame extends ArcadeGame {
       const py = this.spots.ys[i];
       for (const e of this.ents) {
         if (!e.alive) continue;
-        const r = fishRadius(e.s.mass) + FISH.PLANKTON_R;
+        const r = fishRadius(e.s.mass) + FISH.PLANKTON_R + (e.magnet > 0 ? FISH_POWER_RULES.MAGNET_RANGE : 0);
         const dx = e.s.x - px;
         const dy = e.s.y - py;
         if (dx * dx + dy * dy > r * r) continue;
@@ -95,7 +106,7 @@ class FishGame extends ArcadeGame {
         const [lo, hi] = FISH.PLANKTON_RESPAWN_S;
         this.foodBack[i] = lo + this.rng() * (hi - lo);
         e.s.mass = Math.fround(e.s.mass + FISH.PLANKTON_MASS);
-        e.score += FISH.PLANKTON_MASS;
+        this.award(e, FISH.PLANKTON_MASS);
         e.best = Math.max(e.best, e.s.mass);
         break;
       }
@@ -109,10 +120,14 @@ class FishGame extends ArcadeGame {
         if (a === b || !b.alive || !canEat(a.s, b.s)) continue;
         const d = Math.hypot(a.s.x - b.s.x, a.s.y - b.s.y);
         if (d > fishRadius(a.s.mass) - fishRadius(b.s.mass) * 0.4) continue;
+        if (b.spikes > 0) {
+          this.powers.sting(a, b);
+          continue;
+        }
         b.alive = false;
         b.respawn = FISH.RESPAWN_S;
         a.s.mass = Math.fround(a.s.mass + b.s.mass * FISH.EAT_GAIN);
-        a.score += Math.round(b.s.mass);
+        this.award(a, Math.round(b.s.mass));
         a.eaten++;
         a.best = Math.max(a.best, a.s.mass);
         this.room.emit('gulp', { s: a.player.slot, v: b.player.slot, x: Math.round(b.s.x), y: Math.round(b.s.y), m: Math.round(b.s.mass) });
@@ -121,9 +136,10 @@ class FishGame extends ArcadeGame {
   }
 
   // Body: u8 phase, f32 left, u32 seed,
-  //   u8 n × [u8 slot, u8 flags, u16 ack, f32 x, y, vx, vy, mass, dash, cool, fx, fy, u8 prevA,
-  //           u16 score, u8 respawn (ds)]
+  //   u8 n × [u8 slot, u8 flags, u16 ack, f32 x, y, vx, vy, mass, dash, cool, fx, fy, boost, u8 prevA,
+  //           u16 score, u8 respawn (ds), u8 spikes, magnet, double (ds left)]
   //   32 bytes: plankton alive bits
+  //   power-up bubbles (FishPowers.write)
   snapshot(w) {
     const left = this.phase === ARCADE_PHASE.PLAY ? this.endsAt - this.time : this.phaseEnd - this.time;
     this.writePhase(w, left);
@@ -133,14 +149,16 @@ class FishGame extends ArcadeGame {
       const s = e.s;
       const flags = ArcadeGame.flags(e.player) | (e.alive ? FISH_FLAG.ALIVE : 0) | (s.dash > 0 ? FISH_FLAG.DASH : 0);
       w.u8(e.player.slot).u8(flags).u16(e.queue.ackSeq);
-      w.f32(s.x).f32(s.y).f32(s.vx).f32(s.vy).f32(s.mass).f32(s.dash).f32(s.cool).f32(s.fx).f32(s.fy).u8(s.prevA);
+      w.f32(s.x).f32(s.y).f32(s.vx).f32(s.vy).f32(s.mass).f32(s.dash).f32(s.cool).f32(s.fx).f32(s.fy).f32(s.boost).u8(s.prevA);
       w.u16(Math.min(65535, e.score)).u8(Math.ceil(Math.max(0, e.respawn) * 10));
+      w.u8(ds(e.spikes)).u8(ds(e.magnet)).u8(ds(e.double));
     }
     for (let b = 0; b < MASK_BYTES; b++) {
       let v = 0;
       for (let k = 0; k < 8; k++) if (this.food[b * 8 + k]) v |= 1 << k;
       w.u8(v);
     }
+    this.powers.write(w);
   }
 
   results() {
