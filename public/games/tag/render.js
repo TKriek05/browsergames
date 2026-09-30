@@ -101,8 +101,11 @@ export function createRenderer(view, { walls, reducedMotion }) {
     }
   }
 
+  const labels = []; // this frame's name labels, placed after all runners (no overlaps)
+
   return {
     begin() {
+      labels.length = 0;
       ctx.save();
       if (shake > 0 && !reducedMotion) {
         ctx.translate(Math.round((Math.random() - 0.5) * shake), Math.round((Math.random() - 0.5) * shake));
@@ -246,12 +249,27 @@ export function createRenderer(view, { walls, reducedMotion }) {
         ctx.fillRect(Math.round(px + Math.cos(a + Math.PI) * 6), Math.round(py - 8 + Math.sin(a + Math.PI) * 2), 1, 1);
       }
 
-      // Name label below the runner, kept inside the field (above it near the bottom edge).
-      const label = me ? 'JIJ' : name;
-      const tag = textSprite(label, { color: me ? '#ffffff' : color, shadow: '#0b0b1e' });
-      const lx = Math.min(width - tag.width - 1, Math.max(1, Math.round(px - tag.width / 2)));
-      const ly = py + 8 + tag.height > height - 1 ? py - (it ? 21 : 16) : py + 8;
-      ctx.drawImage(tag, lx, ly);
+      labels.push({ tag: textSprite(me ? 'JIJ' : name, { color: me ? '#ffffff' : color, shadow: '#0b0b1e' }), px, py, it, me });
+    },
+
+    // Name labels below the runners (above them near the bottom edge or when
+    // that spot is taken), kept inside the field; a label that fits nowhere
+    // waits until the runners are apart again. Yours goes first.
+    drawLabels() {
+      labels.sort((a, b) => b.me - a.me);
+      const placed = [];
+      const free = (x, y, w, h) => y >= 12 && y + h <= height - 1
+        && !placed.some((p) => x < p.x + p.w + 2 && x + w + 2 > p.x && y < p.y + p.h && y + h > p.y);
+      for (const l of labels) {
+        const { tag, px, py } = l;
+        const x = Math.min(width - tag.width - 1, Math.max(1, Math.round(px - tag.width / 2)));
+        const below = py + 8;
+        const above = py - (l.it ? 21 : 16);
+        const y = free(x, below, tag.width, tag.height) ? below : free(x, above, tag.width, tag.height) ? above : -1;
+        if (y < 0) continue;
+        placed.push({ x, y, w: tag.width, h: tag.height });
+        ctx.drawImage(tag, x, y);
+      }
     },
 
     drawHud({ timeText, itName, itColor, phase, countdown, spectator, banner }) {

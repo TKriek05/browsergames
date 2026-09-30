@@ -211,8 +211,9 @@ export function createGame() {
 
     hud(s) {
       drawText(ctx, s.wavesMax ? `GOLF ${s.wave}/${s.wavesMax}` : `GOLF ${s.wave}`, 4, 2, { color: '#ffffff', shadow: SHADOW });
-      const ship = shipSprite('#ff4d6d');
-      for (let i = 0; i < Math.min(s.lives, 8); i++) ctx.drawImage(ship, 70 + i * 13, 2);
+      // Shared lives: one ship and a count (a row of ships ran into the scores).
+      ctx.drawImage(shipSprite('#ff4d6d'), 70, 2);
+      drawText(ctx, `×${s.lives}`, 84, 2, { color: '#ffffff', shadow: SHADOW });
       let x = 316;
       for (const e of [...s.ents].sort((p, q) => p.score - q.score)) {
         const w = drawText(ctx, String(e.score), x, 2, { color: '#ffffff', align: 'right', shadow: SHADOW });

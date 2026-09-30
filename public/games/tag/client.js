@@ -219,6 +219,7 @@ export function createGame() {
           });
         }
       }
+      renderer.drawLabels();
       renderer.drawParticles();
 
       if (latest) {

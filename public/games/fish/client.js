@@ -6,7 +6,7 @@ import { BTN } from '../../../shared/messages.js';
 import { FISH, FISH_FLAG, FISH_POWER, FISH_POWERS, stepFish, fishRadius, planktonSpots, canEat } from '../../../shared/games/fish.js';
 import { createArcadeCore, ARCADE_PHASE } from '../common/arcade.js';
 import { Predictor } from '../../js/core/predict.js';
-import { drawText, roundRect } from '../../js/core/hudtext.js';
+import { drawText, roundRect, measureText } from '../../js/core/hudtext.js';
 import { makeDecor, drawWater, drawBottom, drawPlankton, drawFish } from './draw.js';
 import { drawPowerBubble, drawFishAura, drawPowerHud, powerIcon } from './powers.js';
 
@@ -275,9 +275,12 @@ export function createGame() {
 
       // --- HUD ---
       for (const [x, y, slot, mass, double] of labels) {
-        const sx = (x - cam.x) * cam.zoom + W / 2;
-        const syy = (y - cam.y) * cam.zoom + H / 2;
-        const w = drawText(ctx, `${core.name(slot)} ${mass}`, sx, syy - 9, { color: '#ffffff', scale: 0.85, align: 'center', shadow: SHADOW });
+        const text = `${core.name(slot)} ${mass}`;
+        const half = measureText(text, 0.85) / 2 + (double ? 14 : 2);
+        // Kept on screen (a fish at the edge of the view still shows its name).
+        const sx = Math.max(half, Math.min(W - half, (x - cam.x) * cam.zoom + W / 2));
+        const syy = Math.max(12, (y - cam.y) * cam.zoom + H / 2);
+        const w = drawText(ctx, text, sx, syy - 9, { color: '#ffffff', scale: 0.85, align: 'center', shadow: SHADOW });
         if (double) powerIcon(ctx, FISH_POWER.DOUBLE, sx + w / 2 + 8, syy - 5, 4);
       }
       const left = core.secondsLeft();

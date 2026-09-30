@@ -252,7 +252,8 @@ export function createGame() {
         labels.push([sx, sy, eb.slot]);
       });
       fx.drawParticles(ctx);
-      for (const [sx, sy, slot] of labels) drawText(ctx, core.name(slot).slice(0, 10), sx, sy - 13, { color: '#ffffff', scale: 0.75, align: 'center', shadow: SHADOW });
+      // Names above the painters (below them along the top edge, where the bar is).
+      for (const [sx, sy, slot] of labels) drawText(ctx, core.name(slot).slice(0, 10), sx, sy - 13 < T.y + 4 ? sy + 7 : sy - 13, { color: '#ffffff', scale: 0.75, align: 'center', shadow: SHADOW });
       ctx.restore();
 
       // --- HUD: share bar, timer, scores ---

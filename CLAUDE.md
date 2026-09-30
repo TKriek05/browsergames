@@ -228,3 +228,5 @@ clientmodule, tests.
    Pinguïnbotsen (3D), Knalkanon, Hapvis ✅
 7. Uitbreidingen: cache buster, Boemstad-maps, power-ups (Hapvis, Pinguïnbotsen, Spetterveld), nieuwe stijl
    Spetterveld, Kladderkoning (verfbattle), Raak de Roos (3D-boogschieten), Dammen voor 4 ✅
+8. Grote update: kart-botsingen, banen v2 met schansen/bruggen/afgronden en 4 grote banen, Spetterveld in echt 3D
+   (springen, trappen, gebouwen, 3 grote velden, pitch), reviewronde langs alle games ✅

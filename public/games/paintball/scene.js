@@ -137,7 +137,7 @@ export function createPaintScene(canvas, { arena, reducedMotion }) {
     paintHit(x, y, z, floor, color, big) {
       particles.burst(x, z + 11, y, rgb(color), reducedMotion ? 6 : big ? 30 : 14, { speed: big ? 34 : 24, life: 0.6, size: 1.3, gravity: -70, up: 0.6 });
       const a = Math.random() * Math.PI * 2;
-      const d = big ? 0 : 1 + Math.random() * 2;
+      const d = big ? 0 : Math.random(); // under the feet: never beside an edge they stood on
       splat({ x: x + Math.cos(a) * d, y: floor, z: y + Math.sin(a) * d, nx: 0, nz: 0, r: big ? 4.5 + Math.random() * 2 : 1.4 + Math.random(), color, floor: true });
     },
 

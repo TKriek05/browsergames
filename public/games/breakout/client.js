@@ -239,6 +239,8 @@ export function createGame() {
       } else if (banner && s.phase !== ARCADE_PHASE.PLAY) {
         drawText(ctx, banner.text, 160, 96, { color: '#ffe14d', scale: 3, align: 'center', shadow: '#5a3f28' });
         if (banner.sub) drawText(ctx, banner.sub, 160, 124, { color: '#ffffff', align: 'center', shadow: SHADOW });
+      } else if (s.phase === ARCADE_PHASE.PLAY && s.balls.some((b) => b.attached && b.owner === core.mySlot())) {
+        drawText(ctx, 'SPATIE OF TIK: BAL WEGSCHIETEN', 160, 150, { color: '#ffffff', align: 'center', shadow: SHADOW });
       }
     },
 

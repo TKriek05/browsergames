@@ -108,3 +108,24 @@ test('snapshots have the documented layout', () => {
   const caps = r.u8();
   assert.equal(r.remaining, caps * 5);
 });
+
+test('stenenbreker: a player away from the keys stops draining the lives quickly', () => {
+  const room = fakeRoom([human('p1', 0), bot('p2', 1)]);
+  const game = breakout.create(room, { seed: 5 });
+  const e = game.ents.find((x) => !x.player.isBot);
+  run(game, room, 4); // launched by itself
+  const lose = (who) => {
+    game.balls = game.balls.filter((b) => b.owner !== who);
+    game._lost(who);
+  };
+  lose(e);
+  assert.ok(e.launchIn <= 3, 'the first lost ball comes back quickly');
+  game._launch(e); // … and launches by itself again (no key pressed)
+  lose(e);
+  assert.ok(game.balls.some((b) => b.owner === e && b.attached), 'a new ball waits on the paddle');
+  assert.ok(e.launchIn > 10, `… for a long while after two misses in a row (${e.launchIn.toFixed(1)} s)`);
+  const bot2 = game.ents.find((x) => x.player.isBot);
+  bot2.misses = 5;
+  lose(bot2);
+  assert.ok(bot2.launchIn <= 3, 'bots launch as usual');
+});

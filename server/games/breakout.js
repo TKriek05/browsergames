@@ -8,6 +8,8 @@ import { BF, BRICK, CAPS, LEVELS, parseLevel, brickX, brickY, stepBreakoutPaddle
 const BALL_SPEED = 128;
 const BALL_MAX = 205;
 const AUTO_LAUNCH_S = 3;
+const MAX_IDLE_MISSES = 2;
+const IDLE_LAUNCH_S = 12;
 const CAP_CHANCE = 0.12;
 const CAP_SPEED = 42;
 const WIDE_S = 12;
@@ -36,7 +38,7 @@ class BreakoutGame extends ArcadeGame {
   }
 
   createEntity() {
-    return { s: { p: BF.width / 2, wide: 0 }, score: 0, bricks: 0, target: BF.width / 2, planIn: 0, launchIn: AUTO_LAUNCH_S };
+    return { s: { p: BF.width / 2, wide: 0 }, score: 0, bricks: 0, target: BF.width / 2, planIn: 0, launchIn: AUTO_LAUNCH_S, misses: 0 };
   }
 
   onJoin(player) {
@@ -71,7 +73,9 @@ class BreakoutGame extends ArcadeGame {
     if (this.balls.length >= MAX_BALLS) return;
     this.balls.push({ id: this.nextBall, owner: e, attached: true, x: e.s.p, y: BF.paddleY - BF.ballR - 1, vx: 0, vy: 0, speed: BALL_SPEED });
     this.nextBall = (this.nextBall % 65535) + 1;
-    e.launchIn = AUTO_LAUNCH_S;
+    // The ball launches by itself, but much later for a player who lost it
+    // twice in a row without touching it (away from the keys: the team keeps its lives).
+    e.launchIn = !e.player.isBot && e.misses >= MAX_IDLE_MISSES ? IDLE_LAUNCH_S : AUTO_LAUNCH_S;
   }
 
   _launch(e) {
@@ -92,7 +96,10 @@ class BreakoutGame extends ArcadeGame {
       else {
         this.eachInput(e, (inp) => {
           stepBreakoutPaddle(e.s, inp.ax, dt);
-          if (inp.buttons & BTN.A) this._launch(e);
+          if (inp.buttons & BTN.A) {
+            e.misses = 0;
+            this._launch(e);
+          }
         });
       }
       e.launchIn -= dt;
@@ -166,6 +173,7 @@ class BreakoutGame extends ArcadeGame {
         b.vx = Math.sin(a) * b.speed;
         b.vy = -Math.cos(a) * b.speed;
         b.y = BF.paddleY - r;
+        best.misses = 0;
         this.room.emit('paddle', { s: best.player.slot });
       }
     }
@@ -234,6 +242,7 @@ class BreakoutGame extends ArcadeGame {
   _lost(owner) {
     this.room.emit('lost', { s: owner.player.slot });
     if (this.balls.some((b) => b.owner === owner)) return; // still has a ball in play
+    owner.misses++;
     this.lives--;
     if (this.lives <= 0) {
       this.finish({ win: false });
