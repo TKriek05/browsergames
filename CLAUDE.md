@@ -123,9 +123,15 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 
 ## Nieuwe games (fase 6)
 
-- **Spetterveld** (`paintball`): first person. Camera = `r.camera()` op ooghoogte; de eigen marker wordt na
-  `gl.clear(DEPTH_BUFFER_BIT)` getekend. Beweging gedeeld (`shared/physics/paintball.js`), schoten als JSON-actie
-  `{ a, t, x, y }` met lag compensation; de server vertrouwt de meegestuurde loop-positie tot `MAX_SHOT_OFFSET`.
+- **Spetterveld** (`paintball`): first person in 3D. Een veld is een level `{ width, height, spawns, pads, solids }`
+  met blokken/cilinders `{ z0, z1 }` (`shared/maps/paintball-arenas.js` klassiek, `paintball-levels.js` groot, bouwstenen
+  in `paintball-build.js`: `stairs`, `building` met deuren/ramen/verdiepingen/trapgat, `merlons`, `mirrorPoint`).
+  Beweging gedeeld (`shared/physics/paintball.js`): zwaartekracht, springen (BTN.X), traptreden tot `STEP`, plafonds;
+  3D-stralen (`raycast`, `rayPlayer`, `lineOfSight`). Camera = `r.camera()` op ooghoogte met pitch; de eigen marker
+  wordt na `r.clearDepth()` getekend. Schoten als JSON-actie `{ a, p, t, x, y, z }` met lag compensation in 3D (`LagHistory`
+  heeft z); de server vertrouwt het meegestuurde oog tot `MAX_SHOT_OFFSET` en nooit door een muur heen. `{ p }` = kijkhoek
+  voor de anderen. Bots: navigatiegraaf over alle hoogtes (`server/games/paintball-nav.js`, cellen van 4, lopen/springen/
+  afspringen, afstandsvelden gecachet per doel). Test: elke vloer, spawn en pad bereikbaar; bots halen elke pad.
   Game-specifieke toetsen via `meta.keys` (→ `new Input(meta.keys)`, extra acties met `input.pressed('turnLeft')`).
   Stijl: verf als geometrie (`public/games/paintball/splat.js`, in brokken van 24 per mesh, alleen de nieuwste wordt
   herbouwd), verfvlekken op spelers per treffer, velden `haven`/`avond` in `world-extra.js`. Power-ups op de `pads`

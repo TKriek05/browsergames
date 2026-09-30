@@ -2,8 +2,8 @@
 // health, the hopper, timer, scoreboard, kill feed, paint splashes when you
 // get hit, name tags. Plus a top-down view when WebGL is missing.
 import { drawText, measureText, roundRect } from '../../js/core/hudtext.js';
-import { PB_FIELD } from '../../../shared/maps/paintball-arenas.js';
 import { PB_RULES } from '../../../shared/games/paintball.js';
+import { PB_PHYS } from '../../../shared/physics/paintball.js';
 
 const SHADOW = '#101418';
 const SPLASH_S = 2.2;
@@ -214,17 +214,18 @@ export function createPaintHud(view) {
 // Top-down fallback when WebGL is not available.
 export function createFallback2D(view, arena) {
   const { ctx, width: W, height: H } = view;
-  const s = Math.min(W / PB_FIELD.width, H / PB_FIELD.height);
-  const ox = (W - PB_FIELD.width * s) / 2;
-  const oy = (H - PB_FIELD.height * s) / 2;
+  const s = Math.min(W / arena.width, H / arena.height);
+  const ox = (W - arena.width * s) / 2;
+  const oy = (H - arena.height * s) / 2;
   return {
     begin() {
       ctx.fillStyle = '#4f8a3a';
       ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = '#5fae45';
-      ctx.fillRect(ox, oy, PB_FIELD.width * s, PB_FIELD.height * s);
+      ctx.fillRect(ox, oy, arena.width * s, arena.height * s);
       ctx.fillStyle = '#d98a2b';
-      for (const o of arena.obstacles) {
+      for (const o of arena.solids) {
+        if (o.z0 > PB_PHYS.EYE) continue; // floors and roofs: seen from above they would hide everything
         ctx.beginPath();
         if (o.t === 'can') ctx.arc(ox + o.x * s, oy + o.y * s, o.r * s, 0, Math.PI * 2);
         else ctx.rect(ox + (o.x - o.w / 2) * s, oy + (o.y - o.h / 2) * s, o.w * s, o.h * s);

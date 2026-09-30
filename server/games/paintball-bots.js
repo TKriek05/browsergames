@@ -1,15 +1,18 @@
-// Spetterveld bots: walk over a coarse grid (breadth-first distance field
-// towards the target), strafe while they have a clear shot, turn their view
-// at a limited speed and only fire when the target is close to the crosshair.
-// Easy bots aim sloppily and react slowly; hard bots are quick and precise.
-// Without a target in sight they fetch a power-up from a pad nearby, and a
-// camouflaged player is only noticed up close.
-import { PB_FIELD } from '../../shared/maps/paintball-arenas.js';
+// Spetterveld bots: walk over the navigation graph (paintball-nav.js: floors,
+// stairs, crates to jump onto), strafe while they have a clear shot, turn
+// their view (and look up or down) at a limited speed and only fire when the
+// target is close to the crosshair. Easy bots aim sloppily and react slowly;
+// hard bots are quick and precise. Without a target in sight they fetch a
+// power-up from a pad nearby, and a camouflaged player is only noticed up close.
 import { PB_PHYS, lineOfSight } from '../../shared/physics/paintball.js';
 import { PB_RULES as R, PB_POWER_RULES as PR, wrapAngle } from '../../shared/games/paintball.js';
 import { PAD_EMPTY } from './paintball-powers.js';
+import { navFor, nodeAt, nodeX, nodeY, distancesTo, nextNode } from './paintball-nav.js';
 
-const PAD_REACH = 150; // bots walk this far for a power-up
+const PAD_REACH = 170; // bots walk this far for a power-up
+const CHEST = 10; // bots aim this high above the feet
+const FIELD_CACHE = 48; // distance fields kept per level (the level never changes, so they stay valid)
+const STUCK_S = 1.2;
 
 // lagMs: bots see where you were this long ago (like a human's reaction),
 // so strafing makes you harder to hit.
@@ -19,101 +22,35 @@ const LEVELS = {
   hard: { think: 0.22, jitter: 0.045, turn: 6.5, reaction: 0.26, cone: 0.08, keep: 130, speed: 1, strafe: 1, pause: 0.04, lagMs: 120 },
 };
 
-const CELL = 10;
-const COLS = Math.ceil(PB_FIELD.width / CELL);
-const ROWS = Math.ceil(PB_FIELD.height / CELL);
-const N = COLS * ROWS;
-const queue = new Int16Array(N);
-const blockedCache = new Map(); // arena key → Uint8Array
-
-function blockedFor(arena) {
-  let grid = blockedCache.get(arena.key);
-  if (grid) return grid;
-  grid = new Uint8Array(N);
-  const m = PB_PHYS.RADIUS + 1.5;
-  for (let i = 0; i < N; i++) {
-    const x = (i % COLS + 0.5) * CELL;
-    const y = (Math.floor(i / COLS) + 0.5) * CELL;
-    for (const o of arena.obstacles) {
-      const inside = o.t === 'can'
-        ? Math.hypot(x - o.x, y - o.y) < o.r + m
-        : Math.abs(x - o.x) < o.w / 2 + m && Math.abs(y - o.y) < o.h / 2 + m;
-      if (inside) { grid[i] = 1; break; }
-    }
+const fields = new Map(); // level key → Map(goal node → Int16Array distances)
+function fieldTo(level, nav, goal) {
+  let m = fields.get(level.key);
+  if (!m) fields.set(level.key, (m = new Map()));
+  let d = m.get(goal);
+  if (d) {
+    m.delete(goal); // most recently used last
+    m.set(goal, d);
+    return d;
   }
-  blockedCache.set(arena.key, grid);
-  return grid;
+  d = distancesTo(nav, goal, new Int16Array(nav.count));
+  m.set(goal, d);
+  if (m.size > FIELD_CACHE) m.delete(m.keys().next().value);
+  return d;
 }
-
-const cellOf = (x, y) => Math.min(ROWS - 1, Math.max(0, Math.floor(y / CELL))) * COLS + Math.min(COLS - 1, Math.max(0, Math.floor(x / CELL)));
 
 export function createPaintBot() {
   return {
     think: 0, target: null, visible: false, seen: 0, jitter: 0, pause: 0,
-    strafe: 1, strafeT: 0, field: new Int16Array(N), goal: -1, goalX: 0, goalY: 0,
-    out: { ax: 0, ay: 0, yaw: 0, fire: false, reload: false },
+    strafe: 1, strafeT: 0, goal: -1, goalX: 0, goalY: 0, dist: null,
+    lastX: 0, lastY: 0, lastZ: 0, still: 0, unstick: 0,
+    out: { ax: 0, ay: 0, jump: false, yaw: 0, pitch: 0, fire: false, reload: false },
   };
 }
 
-// Distance (in cells) from every free cell to `goal`.
-function buildField(b, blocked, goal) {
-  const f = b.field;
-  f.fill(-1);
-  b.goal = goal;
-  let head = 0;
-  let tail = 0;
-  queue[tail++] = goal;
-  f[goal] = 0;
-  while (head < tail) {
-    const cur = queue[head++];
-    const cx = cur % COLS;
-    const cy = (cur - cx) / COLS;
-    for (let k = 0; k < 4; k++) {
-      const nx = cx + (k === 0 ? 1 : k === 1 ? -1 : 0);
-      const ny = cy + (k === 2 ? 1 : k === 3 ? -1 : 0);
-      if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
-      const ni = ny * COLS + nx;
-      if (f[ni] !== -1 || blocked[ni]) continue;
-      f[ni] = f[cur] + 1;
-      queue[tail++] = ni;
-    }
-  }
-}
+const eye = (e) => e.s.z + PB_PHYS.EYE;
 
-// Unit direction towards the best neighbouring cell, or null at the goal.
-function followField(b, s, out) {
-  const f = b.field;
-  const c = cellOf(s.x, s.y);
-  const cx = c % COLS;
-  const cy = (c - cx) / COLS;
-  let best = f[c] >= 0 ? f[c] : 32767;
-  let bx = -1;
-  let by = -1;
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      if (!dx && !dy) continue;
-      const nx = cx + dx;
-      const ny = cy + dy;
-      if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
-      const v = f[ny * COLS + nx];
-      // Diagonals only when both sides are open (no corner cutting).
-      if (dx && dy && (f[cy * COLS + nx] < 0 || f[ny * COLS + cx] < 0)) continue;
-      if (v >= 0 && v < best) { best = v; bx = nx; by = ny; }
-    }
-  }
-  if (bx < 0) {
-    if (f[c] === 0) return null;
-    // Off the field (pushed into a margin cell): head for the goal directly.
-    out.x = b.goalX - s.x;
-    out.y = b.goalY - s.y;
-  } else {
-    out.x = (bx + 0.5) * CELL - s.x;
-    out.y = (by + 0.5) * CELL - s.y;
-  }
-  const l = Math.hypot(out.x, out.y) || 1;
-  out.x /= l;
-  out.y /= l;
-  return out;
+function sees(game, e, o) {
+  return lineOfSight(game.level, e.s.x, e.s.y, eye(e), o.s.x, o.s.y, o.s.z + CHEST);
 }
 
 function pickTarget(e, game) {
@@ -121,11 +58,13 @@ function pickTarget(e, game) {
   let bestScore = Infinity;
   for (const o of game.ents) {
     if (o === e || !o.alive) continue;
-    const d = Math.hypot(o.s.x - e.s.x, o.s.y - e.s.y);
+    const d = Math.hypot(o.s.x - e.s.x, o.s.y - e.s.y, o.s.z - e.s.z);
     if (o.camo > 0 && d > PR.CAMO_SIGHT) continue;
-    const seen = lineOfSight(game.obstacles, e.s.x, e.s.y, o.s.x, o.s.y);
-    const score = d * (seen ? 1 : 1.8) * (o.shield > 0 ? 2 : 1);
-    if (score < bestScore) { bestScore = score; best = o; }
+    const score = d * (sees(game, e, o) ? 1 : 1.8) * (o.shield > 0 ? 2 : 1);
+    if (score < bestScore) {
+      bestScore = score;
+      best = o;
+    }
   }
   return best;
 }
@@ -135,54 +74,86 @@ function nearestPad(e, game) {
   let bestD = PAD_REACH;
   for (const pad of game.powers?.pads ?? []) {
     if (pad.type === PAD_EMPTY) continue;
-    const d = Math.hypot(pad.x - e.s.x, pad.y - e.s.y);
-    if (d < bestD) { bestD = d; best = pad; }
+    const d = Math.hypot(pad.x - e.s.x, pad.y - e.s.y, (pad.z - e.s.z) * 2);
+    if (d < bestD) {
+      bestD = d;
+      best = pad;
+    }
   }
   return best;
 }
 
 export const pickTargetForTest = pickTarget;
 
-const dir = { x: 0, y: 0 };
-const seen = { x: 0, y: 0 };
+const seen = { x: 0, y: 0, z: 0 };
+
+// Where to walk: the node two links ahead on the way to the goal (or the
+// goal itself when we are there). Sets move.x/y (unit), move.up (the next
+// node is higher than a step: jump).
+const move = { x: 0, y: 0, up: false, ok: false };
+function followNav(b, s, nav) {
+  move.ok = false;
+  move.up = false;
+  if (!b.dist) return move;
+  const cur = nodeAt(nav, s.x, s.y, s.z);
+  if (cur < 0) return move;
+  const n1 = nextNode(nav, cur, b.dist);
+  let tx;
+  let ty;
+  if (n1 < 0) {
+    if (b.dist[cur] !== 0) return move; // cut off from the goal
+    tx = b.goalX;
+    ty = b.goalY;
+  } else {
+    const n2 = nextNode(nav, n1, b.dist);
+    const h1 = nav.height[n1];
+    move.up = h1 > s.z + PB_PHYS.STEP - 0.1;
+    // Look two links ahead on flat ground; aim at the very next node before a jump or a drop.
+    const far = n2 >= 0 && !move.up && Math.abs(nav.height[n2] - h1) <= PB_PHYS.STEP && Math.abs(h1 - s.z) <= PB_PHYS.STEP;
+    const k = far ? n2 : n1;
+    tx = nodeX(nav, k);
+    ty = nodeY(nav, k);
+    if (move.up && Math.hypot(nodeX(nav, n1) - s.x, nodeY(nav, n1) - s.y) > 9) move.up = false; // not at the edge yet
+  }
+  const dx = tx - s.x;
+  const dy = ty - s.y;
+  const l = Math.hypot(dx, dy);
+  if (l < 0.5) return move;
+  move.x = dx / l;
+  move.y = dy / l;
+  move.ok = true;
+  return move;
+}
 
 export function stepPaintBot(e, game, dt, rng) {
   const cfg = LEVELS[e.player.botLevel] ?? LEVELS.normal;
   const b = e.bot;
   const out = b.out;
   const s = e.s;
-  const blocked = blockedFor(game.arena);
+  const level = game.level;
+  const nav = navFor(level);
   out.fire = false;
   out.reload = false;
+  out.jump = false;
   b.think -= dt;
   b.strafeT -= dt;
   b.pause -= dt;
+  b.unstick -= dt;
 
   if (b.think <= 0) {
     b.think = cfg.think * (0.8 + rng() * 0.4);
     b.jitter = (rng() - 0.5) * 2 * cfg.jitter;
     b.target = pickTarget(e, game);
-    let gx;
-    let gy;
-    const pad = b.target && lineOfSight(game.obstacles, s.x, s.y, b.target.s.x, b.target.s.y) ? null : nearestPad(e, game);
-    if (pad) {
-      gx = pad.x;
-      gy = pad.y;
-    } else if (b.target) {
-      gx = b.target.s.x;
-      gy = b.target.s.y;
-    } else {
-      // Nobody around: roam to a random open spot.
-      gx = 20 + rng() * (PB_FIELD.width - 40);
-      gy = 20 + rng() * (PB_FIELD.height - 40);
-    }
-    let goal = cellOf(gx, gy);
-    if (blocked[goal]) {
-      for (let k = 1; k < 4 && blocked[goal]; k++) goal = cellOf(gx + (rng() - 0.5) * CELL * 4 * k, gy + (rng() - 0.5) * CELL * 4 * k);
-    }
-    b.goalX = gx;
-    b.goalY = gy;
-    if (goal !== b.goal || rng() < 0.3) buildField(b, blocked, goal);
+    const pad = b.target && sees(game, e, b.target) ? null : nearestPad(e, game);
+    let goal;
+    if (pad) goal = nodeAt(nav, pad.x, pad.y, pad.z);
+    else if (b.target) goal = nodeAt(nav, b.target.s.x, b.target.s.y, b.target.s.z);
+    else goal = b.goal >= 0 && rng() < 0.7 ? b.goal : Math.floor(rng() * nav.count); // roam
+    if (goal < 0) goal = Math.floor(rng() * nav.count);
+    b.goal = goal;
+    b.goalX = pad ? pad.x : b.target ? b.target.s.x : nodeX(nav, goal);
+    b.goalY = pad ? pad.y : b.target ? b.target.s.y : nodeY(nav, goal);
+    b.dist = fieldTo(level, nav, goal);
   }
   if (b.strafeT <= 0) {
     b.strafe = rng() < 0.5 ? -1 : 1;
@@ -190,7 +161,7 @@ export function stepPaintBot(e, game, dt, rng) {
   }
 
   const t = b.target && b.target.alive ? b.target : null;
-  b.visible = !!t && lineOfSight(game.obstacles, s.x, s.y, t.s.x, t.s.y);
+  b.visible = !!t && sees(game, e, t);
   let mx = 0;
   let my = 0;
   if (t && b.visible) {
@@ -200,15 +171,37 @@ export function stepPaintBot(e, game, dt, rng) {
     const fx = dx / d;
     const fy = dy / d;
     const approach = d > cfg.keep + 25 ? 1 : d < cfg.keep - 35 ? -0.7 : 0;
-    mx = fx * approach - fy * b.strafe * cfg.strafe;
-    my = fy * approach + fx * b.strafe * cfg.strafe;
+    const strafe = cfg.strafe * (s.z > 1 ? 0.5 : 1); // careful up high
+    mx = fx * approach - fy * b.strafe * strafe;
+    my = fy * approach + fx * b.strafe * strafe;
     b.seen += dt;
   } else {
     b.seen = 0;
-    if (followField(b, s, dir)) {
-      mx = dir.x;
-      my = dir.y;
+    const m = followNav(b, s, nav);
+    if (m.ok) {
+      mx = m.x;
+      my = m.y;
+      if (m.up && s.ground) out.jump = true;
     }
+  }
+  // Stuck against something? Jump and slide sideways for a moment.
+  const moved = Math.hypot(s.x - b.lastX, s.y - b.lastY, s.z - b.lastZ);
+  if (moved > 3 || (mx === 0 && my === 0)) {
+    b.still = 0;
+    b.lastX = s.x;
+    b.lastY = s.y;
+    b.lastZ = s.z;
+  } else if ((b.still += dt) > STUCK_S) {
+    b.still = 0;
+    b.unstick = 0.5;
+    b.strafe = -b.strafe;
+  }
+  if (b.unstick > 0) {
+    const ux = mx - my * b.strafe;
+    const uy = my + mx * b.strafe;
+    mx = ux;
+    my = uy;
+    if (s.ground) out.jump = true;
   }
   const ml = Math.hypot(mx, my);
   out.ax = ml > 0 ? (mx / ml) * cfg.speed : 0;
@@ -217,19 +210,35 @@ export function stepPaintBot(e, game, dt, rng) {
   // Turn the view at a limited speed (towards where the target was a moment
   // ago); fire when the crosshair is close enough.
   let want = ml > 0 ? Math.atan2(my, mx) : e.yaw;
+  let wantPitch = 0;
   if (t && b.visible) {
     const p = game.history.positionAt(t.player.slot, game.room.now() - cfg.lagMs, seen) ? seen : t.s;
     want = Math.atan2(p.y - s.y, p.x - s.x) + b.jitter;
+    wantPitch = Math.atan2(p.z + CHEST - eye(e), Math.hypot(p.x - s.x, p.y - s.y)) + b.jitter * 0.5;
   }
-  const diff = wrapAngle(want - e.yaw);
   const maxTurn = cfg.turn * dt;
+  const diff = wrapAngle(want - e.yaw);
   out.yaw = wrapAngle(e.yaw + (diff > maxTurn ? maxTurn : diff < -maxTurn ? -maxTurn : diff));
+  const dp = wantPitch - e.pitch;
+  out.pitch = Math.max(-R.MAX_PITCH, Math.min(R.MAX_PITCH, e.pitch + (dp > maxTurn ? maxTurn : dp < -maxTurn ? -maxTurn : dp)));
   if (t && b.visible && b.seen >= cfg.reaction && b.pause <= 0 && e.ammo > 0 && e.reload <= 0
-    && Math.abs(wrapAngle(want - out.yaw)) < cfg.cone) {
+    && Math.abs(wrapAngle(want - out.yaw)) < cfg.cone && Math.abs(wantPitch - out.pitch) < cfg.cone) {
     out.fire = true;
     b.pause = cfg.pause * (0.5 + rng());
     b.jitter = Math.max(-cfg.jitter, Math.min(cfg.jitter, b.jitter + (rng() - 0.5) * cfg.jitter));
   }
   if (!b.visible && e.reload <= 0 && e.ammo < R.HOPPER / 2) out.reload = true;
   return out;
+}
+
+// Tests: walk to (x, y, z) from now on (no target, no new plans).
+export function goToForTest(e, game, x, y, z) {
+  const b = e.bot;
+  const nav = navFor(game.level);
+  b.think = 1e9;
+  b.target = null;
+  b.goal = nodeAt(nav, x, y, z);
+  b.goalX = x;
+  b.goalY = y;
+  b.dist = fieldTo(game.level, nav, b.goal);
 }

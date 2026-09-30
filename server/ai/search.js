@@ -8,18 +8,22 @@
 export const WIN = 1_000_000;
 const TIMEOUT = Symbol('timeout');
 
-// opts: { maxDepth, timeMs, evaluate(state, rootSeat), order?(moves, state, seat) }
+// opts: { maxDepth, timeMs, evaluate(state, rootSeat), order?(moves, state, seat), minDepth? }
+// The first minDepth plies are always searched to the end, however long it
+// takes (tiny, and on a busy server a bot still sees a win or a threat).
+const MIN_DEPTH = 2;
 export function searchBestMove(rules, state, rootSeat, opts) {
-  const { maxDepth, timeMs, evaluate, order } = opts;
+  const { maxDepth, timeMs, evaluate, order, minDepth = MIN_DEPTH } = opts;
   const deadline = performance.now() + timeMs;
   let nodes = 0;
+  let iteration = 0;
   let rootMoves = rules.legalMoves(state, rootSeat);
   if (!rootMoves.length) return null;
   if (rootMoves.length === 1) return { move: rootMoves[0], score: 0, depth: 0 };
   if (order) rootMoves = order(rootMoves, state, rootSeat);
 
   function minimax(s, depth, ply, alpha, beta) {
-    if ((++nodes & 511) === 0 && performance.now() > deadline) throw TIMEOUT;
+    if ((++nodes & 511) === 0 && iteration > minDepth && performance.now() > deadline) throw TIMEOUT;
     const res = rules.result(s);
     if (res) {
       if (res.draw || !res.winners.length) return 0;
@@ -47,6 +51,8 @@ export function searchBestMove(rules, state, rootSeat, opts) {
 
   let result = { move: rootMoves[0], score: 0, depth: 0, scores: null };
   for (let depth = 1; depth <= maxDepth; depth++) {
+    iteration = depth;
+    if (depth > minDepth && performance.now() > deadline) break;
     try {
       let bestScore = -Infinity;
       let bestMove = rootMoves[0];

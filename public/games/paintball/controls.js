@@ -1,7 +1,7 @@
 // Spetterveld controls: mouse look via pointer lock (click the field; if the
 // browser refuses, drag with the left button), touch look by dragging on the
-// right half, and the mouse button to fire. Turning is collected here and
-// taken by the game with take().
+// right half, and the mouse button to fire. Turning (left/right) and looking
+// up/down are collected here and taken by the game with take() / takePitch().
 const MOUSE_SENS = 0.0026; // rad per pixel
 const TOUCH_SENS = 0.007;
 
@@ -11,16 +11,24 @@ export function createControls(canvas, touch) {
     lockFailed: false,
     mouseFire: false,
     turn: 0,
+    tilt: 0,
     // Turning since the last call (radians).
     take() {
       const t = c.turn;
       c.turn = 0;
       return t;
     },
+    // Looking up (> 0) or down since the last call (radians).
+    takePitch() {
+      const t = c.tilt;
+      c.tilt = 0;
+      return t;
+    },
     destroy: null,
   };
   let lookId = null;
   let lookX = 0;
+  let lookY = 0;
   const onClick = () => {
     if (touch || c.locked || c.lockFailed) return;
     try {
@@ -36,14 +44,17 @@ export function createControls(canvas, touch) {
   };
   const onLockError = () => { c.lockFailed = true; };
   const onMove = (e) => {
-    if (c.locked) c.turn += e.movementX * MOUSE_SENS;
-    else if (c.lockFailed && e.buttons & 1 && e.pointerType === 'mouse') c.turn += e.movementX * MOUSE_SENS;
+    if (c.locked || (c.lockFailed && e.buttons & 1 && e.pointerType === 'mouse')) {
+      c.turn += e.movementX * MOUSE_SENS;
+      c.tilt -= e.movementY * MOUSE_SENS;
+    }
   };
   const onDown = (e) => {
     if (e.pointerType === 'touch') {
       if (lookId === null) {
         lookId = e.pointerId;
         lookX = e.clientX;
+        lookY = e.clientY;
       }
       return;
     }
@@ -52,7 +63,9 @@ export function createControls(canvas, touch) {
   const onTouchMove = (e) => {
     if (e.pointerId !== lookId) return;
     c.turn += (e.clientX - lookX) * TOUCH_SENS;
+    c.tilt -= (e.clientY - lookY) * TOUCH_SENS;
     lookX = e.clientX;
+    lookY = e.clientY;
   };
   const onUp = (e) => {
     if (e.pointerId === lookId) lookId = null;

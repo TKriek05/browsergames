@@ -1,9 +1,13 @@
-// Spetterveld: the paintball fields. Everything that blocks a shot is taller
-// than the players' eyes, so the 2D world (x, y) is enough for the game.
-// Obstacles: { t: 'box', x, y, w, h, hgt, kind } (centre + size) or
-//            { t: 'can', x, y, r, hgt, kind }. `kind` only changes the looks.
-// Pads: the four spots where power-ups appear (symmetric, on open ground).
-export const PB_FIELD = { width: 420, height: 280 };
+// Spetterveld: the paintball fields. The classic fields are flat speedball
+// fields (every bunker taller than the eyes): obstacles { t: 'box', x, y, w,
+// h, hgt, kind } (centre + size) or { t: 'can', x, y, r, hgt, kind }; they
+// become level solids standing on the ground. The big fields with floors,
+// stairs and crates to climb are in paintball-levels.js. `kind` only
+// changes the looks. Pads: the four spots where power-ups appear.
+// A level: { key, name, width, height, spawns: [{ x, y, z }], pads: [{ x, y, z }], solids }.
+import { PB_LEVELS } from './paintball-levels.js';
+
+const PB_FIELD = { width: 420, height: 280 };
 
 const box = (x, y, w, h, hgt, kind) => ({ t: 'box', x, y, w, h, hgt, kind });
 const can = (x, y, r, hgt, kind) => ({ t: 'can', x, y, r, hgt, kind });
@@ -34,7 +38,7 @@ const SPAWNS = [
   { x: 396, y: 22 }, { x: 24, y: 258 },
 ];
 
-export const PB_ARENAS = {
+const CLASSIC = {
   // Speedball with bright inflatable bunkers.
   opblaas: {
     key: 'opblaas',
@@ -149,4 +153,18 @@ export const PB_ARENAS = {
   },
 };
 
+// A classic field as a level: obstacles stand on the ground, spots at height 0.
+function classic(a) {
+  const spot = (p) => ({ x: p.x, y: p.y, z: 0 });
+  return {
+    key: a.key, name: a.name, width: PB_FIELD.width, height: PB_FIELD.height,
+    spawns: a.spawns.map(spot), pads: a.pads.map(spot),
+    solids: a.obstacles.map(({ hgt, ...o }) => ({ ...o, z0: 0, z1: hgt })),
+  };
+}
+
+export const PB_ARENAS = {
+  ...PB_LEVELS,
+  ...Object.fromEntries(Object.entries(CLASSIC).map(([k, a]) => [k, classic(a)])),
+};
 export const PB_ARENA_KEYS = Object.keys(PB_ARENAS);

@@ -1,13 +1,14 @@
-// Spetterveld (client side): first-person paintball. You are predicted with
-// the shared physics; the others are interpolated. Mouse look via pointer
-// lock (click the field), WASD to walk, click/space to shoot. Touch: stick on
-// the left, drag on the right to look. Your shots show at once; the server
+// Spetterveld (client side): first-person paintball in 3D. You are predicted
+// with the shared physics (walking, jumping, stairs); the others are
+// interpolated. Mouse look via pointer lock (click the field: left/right and
+// up/down), WASD to walk, space to jump, click to shoot. Touch: stick on the
+// left, drag on the right to look. Your shots show at once; the server
 // decides what they hit (lag compensated) and tells everyone. Power-ups lie
 // on four pads; paint stays where it lands, also on the players.
 import { INTERP_DELAY_MS } from '../../../shared/constants.js';
 import { BTN, C2S } from '../../../shared/messages.js';
 import { PB_ARENAS } from '../../../shared/maps/paintball-arenas.js';
-import { PB_PHYS, stepRunner, raycast, rayCircle, lineOfSight } from '../../../shared/physics/paintball.js';
+import { PB_PHYS, stepRunner, raycast, rayPlayer, aimDir, lineOfSight, groundHeight } from '../../../shared/physics/paintball.js';
 import { PB_RULES as R, PB_FLAG, PB_POWERS, PB_POWER, PB_POWER_RULES as PR, i16ToYaw, wrapAngle } from '../../../shared/games/paintball.js';
 import { createArcadeCore, ARCADE_PHASE } from '../common/arcade.js';
 import { Predictor } from '../../js/core/predict.js';
@@ -24,22 +25,29 @@ export const meta = {
   pixelated: false,
   gl: true,
   step: PB_PHYS.DT,
-  touchButtons: [{ label: 'LAAD', bit: BTN.B }, { label: 'VUUR', bit: BTN.A }],
+  touchButtons: [{ label: 'LAAD', bit: BTN.B }, { label: 'SPRING', bit: BTN.X }, { label: 'VUUR', bit: BTN.A }],
   keys: {
     up: ['KeyW', 'ArrowUp'],
     down: ['KeyS', 'ArrowDown'],
     left: ['KeyA'],
     right: ['KeyD'],
-    A: ['Space', 'KeyJ', 'Enter'],
+    A: ['KeyJ', 'Enter', 'KeyF'],
     B: ['KeyR'],
+    X: ['Space'],
     turnLeft: ['ArrowLeft', 'KeyQ'],
     turnRight: ['ArrowRight', 'KeyE'],
+    lookUp: ['PageUp', 'KeyT'],
+    lookDown: ['PageDown', 'KeyG'],
   },
 };
 
 const KEY_TURN = 2.6; // rad/s
+const KEY_TILT = 1.4;
 const PAD_TURN = 3.4;
+const PAD_TILT = 2;
 const ASSIST_RAD = 0.085; // touch/gamepad: shots snap to a player this close to the crosshair
+const CHEST = 10; // aim assist and labels: this high above a player's feet
+const LOOK_EVERY_MS = 150; // tell the server where you look (up/down) at most this often
 const FEED_S = 6;
 const MAX_MARKS = 4; // paint spots on a player
 const CAMO_ALPHA = 0.14;
@@ -53,7 +61,8 @@ function decode(r, time) {
     const flags = r.u8();
     s.ents.push({
       slot, flags, ack: r.u16(),
-      x: r.f32(), y: r.f32(), vx: r.f32(), vy: r.f32(), boost: r.f32(), yaw: i16ToYaw(r.i16()),
+      x: r.f32(), y: r.f32(), z: r.f32(), vx: r.f32(), vy: r.f32(), vz: r.f32(), boost: r.f32(), ground: r.u8(),
+      yaw: i16ToYaw(r.i16()), pitch: i16ToYaw(r.i16()),
       hp: r.u8(), ammo: r.u8(), kills: r.i16(), deaths: r.u8(), respawn: r.u8() / 10, reload: r.u8() / 10,
       armor: r.u8(), rapid: r.u8() / 10, spread: r.u8() / 10, camo: r.u8() / 10,
       alive: (flags & PB_FLAG.ALIVE) !== 0,
@@ -65,12 +74,16 @@ function decode(r, time) {
 }
 
 const lerpAngle = (a, b, t) => a + wrapAngle(b - a) * t;
-// Radius of the round obstacle a ray hit (0 = flat): splats bend around it.
-const bendOf = (arena, i) => (i >= 0 && arena.obstacles[i].t === 'can' ? arena.obstacles[i].r : 0);
+// Radius of the round solid a ray hit (0 = flat): splats bend around it.
+const bendOf = (arena, i, nz) => (i >= 0 && arena.solids[i].t === 'can' && Math.abs(nz) < 0.5 ? arena.solids[i].r : 0);
+const clampPitch = (p) => Math.max(-R.MAX_PITCH, Math.min(R.MAX_PITCH, p));
 
 export function createGame() {
   let net, input, sfx, view, scene, hud, flat, arena, reduced, controls;
   let yaw = 0;
+  let pitch = 0;
+  let sentPitch = 0;
+  let lookAt = 0;
   let syncYaw = true;
   let touch = false;
   let ammo = R.HOPPER;
@@ -87,24 +100,31 @@ export function createGame() {
   const feed = []; // { by, byColor, victim, victimColor, at }
   const walk = new Map(); // slot → walk phase
   const shownYaw = new Map(); // slot → smoothed body angle
-  const drawn = new Map(); // slot → { x, y } where others were drawn (for local hit tests)
+  const drawn = new Map(); // slot → { x, y, z } where others were drawn (for local hit tests)
   const marks = new Map(); // slot → paint colours on that player
   const scratch = { x: 0, y: 0, depth: 0 };
-  const ray = { nx: 0, ny: 0, obstacle: -1 };
+  const ray = { nx: 0, ny: 0, nz: 0, solid: -1 };
+  const dir = { x: 0, y: 0, z: 0 };
   const timers = [[PB_POWER.RAPID, 0], [PB_POWER.SPREAD, 0], [PB_POWER.SPRINT, 0], [PB_POWER.CAMO, 0], [PB_POWER.ARMOR, 0]];
 
+  const KEYS = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'boost', 'ground'];
   const predictor = new Predictor({
-    create: () => ({ x: 0, y: 0, vx: 0, vy: 0, boost: 0 }),
-    copy: (d, s) => { d.x = s.x; d.y = s.y; d.vx = s.vx; d.vy = s.vy; d.boost = s.boost; },
-    step: (s, inp) => stepRunner(s, inp.ax, inp.ay, PB_PHYS.DT, arena.obstacles),
+    create: () => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, boost: 0, ground: 1 }),
+    copy: (d, s) => { for (const k of KEYS) d[k] = s[k]; },
+    step: (s, inp) => stepRunner(s, inp.ax, inp.ay, (inp.buttons & BTN.X) !== 0, PB_PHYS.DT, arena),
+    smoothKeys: ['x', 'y', 'z'],
   });
   const core = createArcadeCore({
     decode,
     predictor,
-    toServer: (m, o) => { o.x = m.x; o.y = m.y; o.vx = m.vx; o.vy = m.vy; o.boost = m.boost; },
+    toServer: (m, o) => { for (const k of KEYS) o[k] = m[k]; },
   });
+  // The floor under a player (paint drops there, also when they were jumping).
+  const floorUnder = (x, y, z) => groundHeight(arena, x, y, PB_PHYS.RADIUS - 0.5, z + PB_PHYS.STEP);
   const turnFromControls = () => {
-    if (controls) yaw = wrapAngle(yaw + controls.take());
+    if (!controls) return;
+    yaw = wrapAngle(yaw + controls.take());
+    pitch = clampPitch(pitch + controls.takePitch());
   };
   const nowS = () => performance.now() / 1000;
 
@@ -114,19 +134,25 @@ export function createGame() {
     sfx.play('reload');
   }
 
-  // Touch and gamepad players get a little help: aim at a visible player right next to the crosshair.
-  function assisted(a, px, py) {
-    if (input.lastSource === 'keyboard' || controls.locked) return a;
-    let best = a;
+  // Touch and gamepad players get a little help: aim at a visible player right
+  // next to the crosshair. Writes the view angle and pitch into aim.
+  const aim = { a: 0, p: 0 };
+  function assisted(a, p, px, py, pz) {
+    aim.a = a;
+    aim.p = p;
+    if (input.lastSource === 'keyboard' || controls.locked) return aim;
     let bestD = ASSIST_RAD;
-    for (const [, p] of drawn) {
-      const d = Math.abs(wrapAngle(Math.atan2(p.y - py, p.x - px) - a));
-      if (d < bestD && Math.hypot(p.x - px, p.y - py) < 260 && lineOfSight(arena.obstacles, px, py, p.x, p.y)) {
+    for (const [, q] of drawn) {
+      const ta = Math.atan2(q.y - py, q.x - px);
+      const tp = Math.atan2(q.z + CHEST - pz, Math.hypot(q.x - px, q.y - py));
+      const d = Math.hypot(wrapAngle(ta - a), tp - p);
+      if (d < bestD && Math.hypot(q.x - px, q.y - py) < 300 && lineOfSight(arena, px, py, pz, q.x, q.y, q.z + CHEST)) {
         bestD = d;
-        best = Math.atan2(p.y - py, p.x - px);
+        aim.a = ta;
+        aim.p = tp;
       }
     }
-    return best;
+    return aim;
   }
 
   function fire(mine) {
@@ -138,20 +164,25 @@ export function createGame() {
     lastShotAt = nowS();
     const px = predictor.state.x;
     const py = predictor.state.y;
-    const a = assisted(yaw, px, py);
-    net.send(C2S.INPUT, { data: { a, t: net.serverNow() - INTERP_DELAY_MS, x: Math.round(px * 100) / 100, y: Math.round(py * 100) / 100 } });
-    // Show the ball(s) right away: each stops at the first wall or player we see.
+    const pz = predictor.state.z + PB_PHYS.EYE;
+    const { a, p } = assisted(yaw, pitch, px, py, pz);
+    const round2 = (v) => Math.round(v * 100) / 100;
+    net.send(C2S.INPUT, { data: { a, p, t: net.serverNow() - INTERP_DELAY_MS, x: round2(px), y: round2(py), z: round2(pz) } });
+    sentPitch = p;
+    // Show the ball(s) right away: each stops at the first surface or player we see.
     const offsets = mine.flags & PB_FLAG.SPREAD ? [0, -PR.SPREAD_RAD, PR.SPREAD_RAD] : [0];
     for (const off of offsets) {
-      const dx = Math.cos(a + off);
-      const dy = Math.sin(a + off);
-      let end = raycast(arena.obstacles, px, py, dx, dy, R.RANGE, ray);
-      let wall = ray.obstacle >= 0;
-      for (const [, p] of drawn) {
-        const d = rayCircle(px, py, dx, dy, p.x, p.y, PB_PHYS.HIT_RADIUS);
-        if (d < end) { end = d; wall = false; }
+      const d = aimDir(a + off, p, dir);
+      let end = raycast(arena, px, py, pz, d.x, d.y, d.z, R.RANGE, ray);
+      let paint = ray.solid >= 0 || ray.solid === -2;
+      for (const [, q] of drawn) {
+        const t = rayPlayer(px, py, pz, d.x, d.y, d.z, q.x, q.y, q.z);
+        if (t < end) {
+          end = t;
+          paint = false;
+        }
       }
-      scene?.ball(px + dx * 4, py + dy * 4, px + dx * end, py + dy * end, core.hex(core.mySlot()), wall, ray.nx, ray.ny, bendOf(arena, ray.obstacle));
+      scene?.ball(px, py, pz, a + off, p, px + d.x * end, py + d.y * end, pz + d.z * end, core.hex(core.mySlot()), paint, ray, bendOf(arena, ray.solid, ray.nz));
     }
     scene?.kick();
     sfx.play('marker');
@@ -210,20 +241,23 @@ export function createGame() {
           if (msg.s === me) break; // already shown when we fired
           const dx = msg.x1 - msg.x0;
           const dy = msg.y1 - msg.y0;
-          const len = Math.hypot(dx, dy) || 1;
-          let wall = false;
+          const dz = msg.z1 - msg.z0;
+          const len = Math.hypot(dx, dy, dz) || 1;
+          let paint = false;
           if (msg.h < 0) {
-            raycast(arena.obstacles, msg.x0, msg.y0, dx / len, dy / len, len + 1, ray);
-            wall = ray.obstacle >= 0;
+            raycast(arena, msg.x0, msg.y0, msg.z0, dx / len, dy / len, dz / len, len + 1, ray);
+            paint = ray.solid >= 0 || ray.solid === -2;
           }
-          scene?.ball(msg.x0 + (dx / len) * 4, msg.y0 + (dy / len) * 4, msg.x1, msg.y1, core.hex(msg.s), wall, ray.nx, ray.ny, wall ? bendOf(arena, ray.obstacle) : 0);
-          scene?.muzzle(msg.x0, msg.y0, Math.atan2(dy, dx), core.hex(msg.s));
+          const a = Math.atan2(dy, dx);
+          const p = Math.atan2(dz, Math.hypot(dx, dy));
+          scene?.ball(msg.x0, msg.y0, msg.z0, a, p, msg.x1, msg.y1, msg.z1, core.hex(msg.s), paint, ray, paint ? bendOf(arena, ray.solid, ray.nz) : 0);
+          scene?.muzzle(msg.x0, msg.y0, msg.z0, a, core.hex(msg.s));
           sfx.play('markerFar');
           break;
         }
         case 'hit': {
           const p = drawn.get(msg.s);
-          if (p) scene?.paintHit(p.x, p.y, core.hex(msg.by), false);
+          if (p) scene?.paintHit(p.x, p.y, p.z, floorUnder(p.x, p.y, p.z), core.hex(msg.by), false);
           addMark(msg.s, core.hex(msg.by));
           if (msg.s === me) {
             hud.splash(core.hex(msg.by));
@@ -235,7 +269,7 @@ export function createGame() {
           break;
         }
         case 'splat': {
-          scene?.paintHit(msg.x, msg.y, core.hex(msg.by), true);
+          scene?.paintHit(msg.x, msg.y, msg.z, floorUnder(msg.x, msg.y, msg.z), core.hex(msg.by), true);
           feed.unshift({ by: core.name(msg.by), byColor: core.hex(msg.by), victim: core.name(msg.s), victimColor: core.hex(msg.s), at: nowS() });
           feed.length = Math.min(feed.length, 4);
           if (msg.s === me) {
@@ -253,7 +287,7 @@ export function createGame() {
         case 'block': sfx.play('react'); break;
         case 'armor': {
           const p = drawn.get(msg.s);
-          if (p) scene?.deflect(p.x, p.y);
+          if (p) scene?.deflect(p.x, p.y, p.z);
           sfx.play(msg.s === me ? 'thud' : 'react');
           if (msg.by === me) hitAt = nowS();
           break;
@@ -261,7 +295,7 @@ export function createGame() {
         case 'power': {
           const pw = PB_POWERS[msg.type];
           const pad = arena.pads[msg.pad];
-          if (pad) scene?.pickup(pad.x, pad.y, pw.color);
+          if (pad) scene?.pickup(pad.x, pad.y, pad.z, pw.color);
           if (msg.s === me) {
             banner = { text: pw.name.toUpperCase() + '!', sub: pw.tip, color: pw.color, until: nowS() + 1.6 };
             sfx.play('item');
@@ -314,6 +348,7 @@ export function createGame() {
       turnFromControls();
       if (syncYaw && alive) {
         yaw = mine.yaw;
+        pitch = 0;
         syncYaw = false;
       }
       if (!L || !mine || !alive) {
@@ -322,7 +357,16 @@ export function createGame() {
       }
       const inp = input.sample();
       const turn = (input.pressed('turnRight') ? 1 : 0) - (input.pressed('turnLeft') ? 1 : 0);
+      const tilt = (input.pressed('lookUp') ? 1 : 0) - (input.pressed('lookDown') ? 1 : 0);
       yaw = wrapAngle(yaw + turn * KEY_TURN * dt + inp.rx * PAD_TURN * dt);
+      pitch = clampPitch(pitch + tilt * KEY_TILT * dt - inp.ry * PAD_TILT * dt);
+      // Let the others see where you look (up or down).
+      const nowMs = performance.now();
+      if (Math.abs(pitch - sentPitch) > 0.04 && nowMs - lookAt > LOOK_EVERY_MS) {
+        net.send(C2S.INPUT, { data: { p: Math.round(pitch * 1000) / 1000 } });
+        sentPitch = pitch;
+        lookAt = nowMs;
+      }
       if (L.phase !== ARCADE_PHASE.PLAY || !predictor.ready) {
         core.idle();
         return;
@@ -350,14 +394,16 @@ export function createGame() {
       const me = core.mySlot();
       const mine = core.mine();
       const alive = !!mine && mine.alive && predictor.ready;
-      const px = alive ? predictor.get('x', alpha) : mine?.x ?? 210;
-      const py = alive ? predictor.get('y', alpha) : mine?.y ?? 140;
-      const speed = alive ? Math.hypot(predictor.state.vx, predictor.state.vy) : 0;
+      const px = alive ? predictor.get('x', alpha) : mine?.x ?? arena.width / 2;
+      const py = alive ? predictor.get('y', alpha) : mine?.y ?? arena.height / 2;
+      const pz = alive ? predictor.get('z', alpha) : mine?.z ?? 0;
+      const onGround = alive && predictor.state.ground;
+      const speed = onGround ? Math.hypot(predictor.state.vx, predictor.state.vy) : 0;
       walkMe += speed * frameDt * 0.2;
       const bob = alive && !reduced ? Math.sin(walkMe * 2) * 0.28 * Math.min(1, speed / PB_PHYS.SPEED) : 0;
       const dead = mine && !mine.alive ? Math.max(0.01, nowS() - deathAt) : 0;
       if (scene) {
-        if (!scene.begin({ x: px, y: py, yaw, bob, dead, overview: me < 0 || !L })) return;
+        if (!scene.begin({ x: px, y: py, z: pz, yaw, pitch, bob, dead, overview: me < 0 || !L })) return;
       } else flat.begin();
       if (!L) {
         scene?.endWorld();
@@ -369,7 +415,7 @@ export function createGame() {
       const shields = [];
       drawn.clear();
       if (scene) scene.pads(arena.pads, L.pads);
-      core.each(sample, 'ents', 'slot', (eb, x, y) => {
+      core.each(sample, 'ents', 'slot', (eb, x, y, z) => {
         if (!eb.alive) return;
         const hex = core.hex(eb.slot);
         const camo = (eb.flags & PB_FLAG.CAMO) !== 0;
@@ -379,26 +425,26 @@ export function createGame() {
         }
         const sy = lerpAngle(shownYaw.get(eb.slot) ?? eb.yaw, eb.yaw, Math.min(1, frameDt * 14));
         shownYaw.set(eb.slot, sy);
-        const sp = Math.hypot(eb.vx, eb.vy);
+        const sp = eb.ground ? Math.hypot(eb.vx, eb.vy) : 0;
         const w = (walk.get(eb.slot) ?? 0) + sp * frameDt * 0.2;
         walk.set(eb.slot, w);
-        drawn.set(eb.slot, { x, y });
-        const near = Math.hypot(x - px, y - py) < PR.CAMO_SIGHT;
-        if (scene) scene.player(x, y, sy, w, sp, rgb(hex), marks.get(eb.slot), camo ? CAMO_ALPHA : 1);
+        drawn.set(eb.slot, { x, y, z });
+        const near = Math.hypot(x - px, y - py, z - pz) < PR.CAMO_SIGHT;
+        if (scene) scene.player(x, y, z, sy, eb.pitch, w, sp, rgb(hex), marks.get(eb.slot), camo ? CAMO_ALPHA : 1, !eb.ground);
         else if (!camo || near) flat.player(x, y, sy, hex, false);
-        if (eb.flags & PB_FLAG.SHIELD && (!camo || near)) shields.push([x, y, hex]);
-        if ((!camo || near || me < 0) && (me < 0 || !alive || lineOfSight(arena.obstacles, px, py, x, y))) labels.push([x, y, eb.slot, hex]);
+        if (eb.flags & PB_FLAG.SHIELD && (!camo || near)) shields.push([x, y, z, hex]);
+        if ((!camo || near || me < 0) && (me < 0 || !alive || lineOfSight(arena, px, py, pz + PB_PHYS.EYE, x, y, z + CHEST))) labels.push([x, y, z, eb.slot, hex]);
       });
       if (scene) {
         scene.balls();
-        for (const [x, y, hex] of shields) scene.shield(x, y, rgb(hex));
+        for (const [x, y, z, hex] of shields) scene.shield(x, y, z, rgb(hex));
         scene.endWorld();
-        if (alive) scene.viewGun(px, py, yaw, rgb(core.hex(me)), bob, reload > 0, mine.camo > 0);
+        if (alive) scene.viewGun(rgb(core.hex(me)), reload > 0, mine.camo > 0);
       }
 
       // --- HUD ---
-      for (const [x, y, slot, hex] of labels) {
-        const p = scene ? scene.project(x, y, 20, scratch) : null;
+      for (const [x, y, z, slot, hex] of labels) {
+        const p = scene ? scene.project(x, y, z + 20, scratch) : null;
         if (p && p.depth < 320) hud.label(p.x, p.y, core.name(slot), hex);
       }
       if (alive) hud.splashes();

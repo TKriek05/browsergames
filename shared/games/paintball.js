@@ -6,7 +6,8 @@ export const PB_RULES = {
   COOLDOWN_S: 0.2, // 5 balls a second
   HOPPER: 10,
   RELOAD_S: 1.4,
-  RANGE: 420,
+  RANGE: 560,
+  MAX_PITCH: 1.35, // how far you can look up or down (radians)
   RESPAWN_S: 3,
   SHIELD_S: 1.5, // after (re)spawning; firing ends it early
   REGEN_S: 6, // one hit point back after this long without being hit
@@ -30,13 +31,14 @@ export const PB_POWER_RULES = {
   FIRST_S: 5, // the pads fill up this long after the start
   RESPAWN_S: [12, 18], // a taken pad gets a new power-up after this long
   PAD_R: 6, // pick-up reach (plus the body radius)
+  PAD_UP: 6, // … and this far above or below the pad
   RAPID_COOLDOWN_S: 0.1,
   SPREAD_RAD: 0.075, // angle between the balls of a spread shot
   ARMOR: 2,
   CAMO_SIGHT: 45, // bots only spot a camouflaged player this close
 };
 
-// View angle travels as i16.
+// View angle (and pitch) travel as i16.
 export const yawToI16 = (a) => Math.round(Math.max(-Math.PI, Math.min(Math.PI, a)) / Math.PI * 32767);
 export const i16ToYaw = (v) => (v / 32767) * Math.PI;
 

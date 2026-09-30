@@ -11,7 +11,7 @@ export class PaintPowers {
   constructor(game, enabled) {
     this.game = game;
     this.enabled = enabled;
-    this.pads = game.arena.pads.map((p) => ({ x: p.x, y: p.y, type: PAD_EMPTY, timer: PR.FIRST_S }));
+    this.pads = game.arena.pads.map((p) => ({ x: p.x, y: p.y, z: p.z ?? 0, type: PAD_EMPTY, timer: PR.FIRST_S }));
   }
 
   static clear(e) {
@@ -37,7 +37,7 @@ export class PaintPowers {
         continue;
       }
       for (const e of this.game.ents) {
-        if (!e.alive || (e.s.x - pad.x) ** 2 + (e.s.y - pad.y) ** 2 > reach * reach) continue;
+        if (!e.alive || (e.s.x - pad.x) ** 2 + (e.s.y - pad.y) ** 2 > reach * reach || Math.abs(e.s.z - pad.z) > PR.PAD_UP) continue;
         this.apply(e, pad.type);
         this.game.room.emit('power', { s: e.player.slot, type: pad.type, pad: this.pads.indexOf(pad) });
         pad.type = PAD_EMPTY;

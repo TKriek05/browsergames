@@ -1,52 +1,139 @@
-// Spetterveld movement and line tests. Runs on the server (authoritative)
+// Spetterveld movement and 3D line tests. Runs on the server (authoritative)
 // and on the client (prediction), so it is deterministic: only + - * / and
 // Math.sqrt, every stored value through Math.fround (float32 like the snapshot).
+//
+// The world is a level { width, height, solids }: solids are boxes
+// { t: 'box', x, y, w, h, z0, z1 } (centre, size, bottom and top) or upright
+// cylinders { t: 'can', x, y, r, z0, z1 }. Game (x, y) is the ground plane,
+// z is up. A runner walks up anything up to STEP high (stairs, kerbs), falls
+// off edges, jumps (onto crates) and bumps its head on ceilings.
 // The wish direction (ax, ay) is already in world space: the client turns
 // "forward/strafe + view angle" into it before quantizing and sending.
-import { PB_FIELD } from '../maps/paintball-arenas.js';
 
 export const PB_PHYS = {
   DT: 1 / 30,
   RADIUS: 4, // body (collision)
   HIT_RADIUS: 5.2, // a little generous for shots
+  HEIGHT: 17, // top of the head above the feet
   SPEED: 50,
   SPRINT: 1.4, // speed factor with the sprint power-up (s.boost > 0)
-  ACCEL: 420, // per second, towards the wish velocity
-  EYE: 15, // eye height (3D only)
-  GUN: 13, // shots fly at this height (3D only)
+  ACCEL: 420, // per second, towards the wish velocity (on the ground)
+  AIR_ACCEL: 150, // … and in the air
+  GRAVITY: 260,
+  JUMP: 72, // take-off speed: about 10 high
+  STEP: 3.4, // walk up anything this high without jumping
+  SNAP: 4.5, // walking down: stay on the ground over drops this small
+  EYE: 15, // eye height
+  GUN: 13, // the marker, where the paint leaves (for the looks)
 };
+// A jump reaches its top at JUMP² / 2G; with the step on top of that this is the highest edge you can climb.
+export const JUMP_REACH = (PB_PHYS.JUMP * PB_PHYS.JUMP) / (2 * PB_PHYS.GRAVITY) + PB_PHYS.STEP - 0.5;
 
 const f = Math.fround;
+const EPS = 1e-4;
+const rayNormal = { x: 0, y: 0, z: 0 };
 
-export function createRunner(x = 0, y = 0) {
-  return { x, y, vx: 0, vy: 0, boost: 0 };
+export function createRunner(x = 0, y = 0, z = 0) {
+  return { x, y, z, vx: 0, vy: 0, vz: 0, boost: 0, ground: 1 };
 }
 
-export function stepRunner(s, ax, ay, dt, obstacles) {
+// One tick. jump: the jump button is held (you jump again as soon as you land).
+export function stepRunner(s, ax, ay, jump, dt, level) {
   const P = PB_PHYS;
   const speed = s.boost > 0 ? P.SPEED * P.SPRINT : P.SPEED;
   if (s.boost > 0) s.boost = f(s.boost - dt > 0 ? s.boost - dt : 0);
   let dvx = ax * speed - s.vx;
   let dvy = ay * speed - s.vy;
   const len = Math.sqrt(dvx * dvx + dvy * dvy);
-  const max = P.ACCEL * dt;
+  const max = (s.ground ? P.ACCEL : P.AIR_ACCEL) * dt;
   if (len > max) {
     dvx = (dvx / len) * max;
     dvy = (dvy / len) * max;
   }
   s.vx = f(s.vx + dvx);
   s.vy = f(s.vy + dvy);
+  if (jump && s.ground) {
+    s.vz = P.JUMP;
+    s.ground = 0;
+  }
   s.x += s.vx * dt;
   s.y += s.vy * dt;
-  collide(s, obstacles, P.RADIUS);
+  collide(s, level, P.RADIUS);
+
+  // Up and down: gravity, ceilings, landing, walking down steps.
+  const z0 = s.z;
+  const floor = groundHeight(level, s.x, s.y, P.RADIUS - 0.5, z0 + P.STEP);
+  let vz = s.vz - P.GRAVITY * dt;
+  let z = z0 + vz * dt;
+  if (vz > 0) {
+    const ceil = ceilingHeight(level, s.x, s.y, P.RADIUS - 0.5, z0 + P.HEIGHT);
+    if (z + P.HEIGHT > ceil) {
+      z = ceil - P.HEIGHT;
+      vz = 0;
+    }
+  }
+  if (z <= floor || (s.ground && vz <= 0 && z - floor <= P.SNAP)) {
+    z = floor;
+    vz = 0;
+    s.ground = 1;
+  } else s.ground = 0;
+  s.z = f(z);
+  s.vz = f(vz);
   s.x = f(s.x);
   s.y = f(s.y);
 }
 
-// Push a circle out of every obstacle and keep it inside the field.
-export function collide(s, obstacles, r) {
-  for (let i = 0; i < obstacles.length; i++) {
-    const o = obstacles[i];
+// Does the solid overlap the circle (x, y, r) seen from above?
+export function overlaps(o, x, y, r) {
+  if (o.t === 'can') {
+    const dx = x - o.x;
+    const dy = y - o.y;
+    const m = o.r + r;
+    return dx * dx + dy * dy < m * m;
+  }
+  const hw = o.w / 2;
+  const hh = o.h / 2;
+  const cx = x < o.x - hw ? o.x - hw : x > o.x + hw ? o.x + hw : x;
+  const cy = y < o.y - hh ? o.y - hh : y > o.y + hh ? o.y + hh : y;
+  const dx = x - cx;
+  const dy = y - cy;
+  return dx * dx + dy * dy < r * r;
+}
+
+// The highest top at or below zMax under the circle (0 = the field itself).
+export function groundHeight(level, x, y, r, zMax) {
+  let best = 0;
+  const list = level.solids;
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i];
+    if (o.z1 > zMax + EPS || o.z1 <= best || !overlaps(o, x, y, r)) continue;
+    best = o.z1;
+  }
+  return best;
+}
+
+// The lowest bottom at or above zMin over the circle (Infinity = open sky).
+export function ceilingHeight(level, x, y, r, zMin) {
+  let best = Infinity;
+  const list = level.solids;
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i];
+    if (o.z0 < zMin - EPS || o.z0 >= best || !overlaps(o, x, y, r)) continue;
+    best = o.z0;
+  }
+  return best;
+}
+
+// Push a body standing at s.z out of every solid it bumps into (sideways)
+// and keep it inside the field. Solids up to STEP above the feet are steps
+// (the vertical pass puts us on top), solids above the head are ceilings.
+export function collide(s, level, r) {
+  const list = level.solids;
+  const lo = (s.z ?? 0) + PB_PHYS.STEP;
+  const hi = (s.z ?? 0) + PB_PHYS.HEIGHT;
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i];
+    if (o.z1 <= lo || o.z0 >= hi) continue;
     if (o.t === 'can') {
       const dx = s.x - o.x;
       const dy = s.y - o.y;
@@ -85,101 +172,200 @@ export function collide(s, obstacles, r) {
     }
   }
   if (s.x < r) s.x = r;
-  if (s.x > PB_FIELD.width - r) s.x = PB_FIELD.width - r;
+  if (s.x > level.width - r) s.x = level.width - r;
   if (s.y < r) s.y = r;
-  if (s.y > PB_FIELD.height - r) s.y = PB_FIELD.height - r;
+  if (s.y > level.height - r) s.y = level.height - r;
 }
 
-// --- Rays (shots, line of sight) ---------------------------------------------------------
-// Distance along the unit ray (dx, dy) to a circle, or Infinity.
-export function rayCircle(x0, y0, dx, dy, cx, cy, r) {
-  const ox = x0 - cx;
-  const oy = y0 - cy;
-  const b = ox * dx + oy * dy;
-  const c = ox * ox + oy * oy - r * r;
-  if (c <= 0) return 0; // starts inside
-  const disc = b * b - c;
-  if (disc < 0) return Infinity;
-  const t = -b - Math.sqrt(disc);
-  return t >= 0 ? t : Infinity;
-}
-
-// Distance to an axis-aligned box (slab test), or Infinity. Writes the face normal into n.
-export function rayBox(x0, y0, dx, dy, o, n = null) {
-  const hw = o.w / 2;
-  const hh = o.h / 2;
-  let tmin = -Infinity;
-  let tmax = Infinity;
-  let nx = 0;
-  let ny = 0;
-  if (Math.abs(dx) < 1e-9) {
-    if (x0 < o.x - hw || x0 > o.x + hw) return Infinity;
-  } else {
-    let t1 = (o.x - hw - x0) / dx;
-    let t2 = (o.x + hw - x0) / dx;
-    let side = -1;
-    if (t1 > t2) { const t = t1; t1 = t2; t2 = t; side = 1; }
-    if (t1 > tmin) { tmin = t1; nx = side; ny = 0; }
-    if (t2 < tmax) tmax = t2;
+// Is there room to stand at (x, y, z) (nothing in the way of the body)?
+export function standsFree(level, x, y, z, r = PB_PHYS.RADIUS) {
+  if (x < r || y < r || x > level.width - r || y > level.height - r) return false;
+  for (const o of level.solids) {
+    if (o.z1 > z + 0.01 && o.z0 < z + PB_PHYS.HEIGHT && overlaps(o, x, y, r)) return false;
   }
-  if (Math.abs(dy) < 1e-9) {
-    if (y0 < o.y - hh || y0 > o.y + hh) return Infinity;
-  } else {
-    let t1 = (o.y - hh - y0) / dy;
-    let t2 = (o.y + hh - y0) / dy;
-    let side = -1;
-    if (t1 > t2) { const t = t1; t1 = t2; t2 = t; side = 1; }
-    if (t1 > tmin) { tmin = t1; nx = 0; ny = side; }
-    if (t2 < tmax) tmax = t2;
-  }
-  if (tmax < tmin || tmax < 0) return Infinity;
-  if (n) { n.x = nx; n.y = ny; }
-  return tmin > 0 ? tmin : 0;
+  return true;
 }
 
-// First obstacle (or the field edge) along the ray. Returns the distance;
-// hit.nx/ny = surface normal, hit.obstacle = index (-1 = field edge).
-export function raycast(obstacles, x0, y0, dx, dy, maxDist, hit = {}) {
-  let best = maxDist;
-  let bi = -2;
-  const n = { x: 0, y: 0 };
-  let nx = 0;
-  let ny = 0;
-  for (let i = 0; i < obstacles.length; i++) {
-    const o = obstacles[i];
-    let t;
-    if (o.t === 'can') {
-      t = rayCircle(x0, y0, dx, dy, o.x, o.y, o.r);
-      if (t < best) {
-        const px = x0 + dx * t - o.x;
-        const py = y0 + dy * t - o.y;
-        const l = Math.sqrt(px * px + py * py) || 1;
-        nx = px / l;
-        ny = py / l;
-      }
-    } else {
-      t = rayBox(x0, y0, dx, dy, o, n);
-      if (t < best) { nx = n.x; ny = n.y; }
+// --- Rays (shots, line of sight) --------------------------------------------------------------
+// A unit direction from a view angle (yaw, around z) and pitch (up > 0).
+export function aimDir(yaw, pitch, out) {
+  const c = Math.cos(pitch);
+  out.x = Math.cos(yaw) * c;
+  out.y = Math.sin(yaw) * c;
+  out.z = Math.sin(pitch);
+  return out;
+}
+
+// Slab test state (module level: no allocations per ray).
+let tMin = 0;
+let tMax = 0;
+let sNx = 0;
+let sNy = 0;
+let sNz = 0;
+function slab(org, d, lo, hi, k) {
+  if (Math.abs(d) < 1e-9) return org >= lo && org <= hi;
+  let t1 = (lo - org) / d;
+  let t2 = (hi - org) / d;
+  let side = -1;
+  if (t1 > t2) {
+    const t = t1;
+    t1 = t2;
+    t2 = t;
+    side = 1;
+  }
+  if (t1 > tMin) {
+    tMin = t1;
+    sNx = k === 0 ? side : 0;
+    sNy = k === 1 ? side : 0;
+    sNz = k === 2 ? side : 0;
+  }
+  if (t2 < tMax) tMax = t2;
+  return true;
+}
+
+// Distance along the unit ray to an axis-aligned box {x, y, w, h, z0, z1}
+// (slab test), or Infinity. Writes the face normal into n.
+export function rayBox(ox, oy, oz, dx, dy, dz, o, n = null) {
+  tMin = -Infinity;
+  tMax = Infinity;
+  sNx = sNy = sNz = 0;
+  if (!slab(ox, dx, o.x - o.w / 2, o.x + o.w / 2, 0)) return Infinity;
+  if (!slab(oy, dy, o.y - o.h / 2, o.y + o.h / 2, 1)) return Infinity;
+  if (!slab(oz, dz, o.z0, o.z1, 2)) return Infinity;
+  if (tMax < tMin || tMax < 0) return Infinity;
+  if (n) {
+    n.x = sNx;
+    n.y = sNy;
+    n.z = sNz;
+  }
+  return tMin > 0 ? tMin : 0;
+}
+
+// Distance along the unit ray to an upright cylinder (centre cx, cy, radius r,
+// from z0 to z1), or Infinity. Writes the normal into n.
+export function rayCylinder(ox, oy, oz, dx, dy, dz, cx, cy, r, z0, z1, n = null) {
+  // Where the ray is inside the circle (seen from above)…
+  const px = ox - cx;
+  const py = oy - cy;
+  const a = dx * dx + dy * dy;
+  let tin;
+  let tout;
+  let side = true;
+  if (a < 1e-12) {
+    if (px * px + py * py > r * r) return Infinity;
+    tin = -Infinity;
+    tout = Infinity;
+  } else {
+    const b = px * dx + py * dy;
+    const c = px * px + py * py - r * r;
+    const disc = b * b - a * c;
+    if (disc < 0) return Infinity;
+    const sq = Math.sqrt(disc);
+    tin = (-b - sq) / a;
+    tout = (-b + sq) / a;
+  }
+  // … and between the bottom and the top.
+  if (Math.abs(dz) < 1e-9) {
+    if (oz < z0 || oz > z1) return Infinity;
+  } else {
+    let t1 = (z0 - oz) / dz;
+    let t2 = (z1 - oz) / dz;
+    if (t1 > t2) {
+      const t = t1;
+      t1 = t2;
+      t2 = t;
     }
-    if (t < best) { best = t; bi = i; hit.nx = nx; hit.ny = ny; }
+    if (t1 > tin) {
+      tin = t1;
+      side = false;
+    }
+    if (t2 < tout) tout = t2;
+  }
+  if (tout < tin || tout < 0) return Infinity;
+  const t = tin > 0 ? tin : 0;
+  if (n) {
+    if (side) {
+      const hx = px + dx * t;
+      const hy = py + dy * t;
+      const l = Math.sqrt(hx * hx + hy * hy) || 1;
+      n.x = hx / l;
+      n.y = hy / l;
+      n.z = 0;
+    } else {
+      n.x = 0;
+      n.y = 0;
+      n.z = dz > 0 ? -1 : 1;
+    }
+  }
+  return t;
+}
+
+// A player's hit volume: an upright cylinder from the feet to just over the head.
+export function rayPlayer(ox, oy, oz, dx, dy, dz, px, py, pz) {
+  return rayCylinder(ox, oy, oz, dx, dy, dz, px, py, PB_PHYS.HIT_RADIUS, pz, pz + PB_PHYS.HEIGHT + 1);
+}
+
+// First solid, the ground or the field edge along the ray. Returns the
+// distance; hit.nx/ny/nz = surface normal, hit.solid = index
+// (-1 = field edge, -2 = the ground, -3 = nothing within maxDist).
+export function raycast(level, ox, oy, oz, dx, dy, dz, maxDist, hit = {}) {
+  let best = maxDist;
+  let bi = -3;
+  const n = rayNormal;
+  hit.nx = 0;
+  hit.ny = 0;
+  hit.nz = 0;
+  const list = level.solids;
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i];
+    const t = o.t === 'can'
+      ? rayCylinder(ox, oy, oz, dx, dy, dz, o.x, o.y, o.r, o.z0, o.z1, n)
+      : rayBox(ox, oy, oz, dx, dy, dz, o, n);
+    if (t < best) {
+      best = t;
+      bi = i;
+      hit.nx = n.x;
+      hit.ny = n.y;
+      hit.nz = n.z;
+    }
+  }
+  if (dz < 0) {
+    const t = -oz / dz;
+    if (t < best) {
+      best = t;
+      bi = -2;
+      hit.nx = 0;
+      hit.ny = 0;
+      hit.nz = 1;
+    }
   }
   // Field edge (the net).
-  const W = PB_FIELD.width;
-  const H = PB_FIELD.height;
-  const edges = [
-    dx > 0 ? (W - x0) / dx : dx < 0 ? -x0 / dx : Infinity,
-    dy > 0 ? (H - y0) / dy : dy < 0 ? -y0 / dy : Infinity,
-  ];
-  if (edges[0] < best) { best = edges[0]; bi = -1; hit.nx = dx > 0 ? -1 : 1; hit.ny = 0; }
-  if (edges[1] < best) { best = edges[1]; bi = -1; hit.nx = 0; hit.ny = dy > 0 ? -1 : 1; }
-  hit.obstacle = bi;
+  const ex = dx > 0 ? (level.width - ox) / dx : dx < 0 ? -ox / dx : Infinity;
+  const ey = dy > 0 ? (level.height - oy) / dy : dy < 0 ? -oy / dy : Infinity;
+  if (ex < best) {
+    best = ex;
+    bi = -1;
+    hit.nx = dx > 0 ? -1 : 1;
+    hit.ny = 0;
+    hit.nz = 0;
+  }
+  if (ey < best) {
+    best = ey;
+    bi = -1;
+    hit.nx = 0;
+    hit.ny = dy > 0 ? -1 : 1;
+    hit.nz = 0;
+  }
+  hit.solid = bi;
   return best;
 }
 
-export function lineOfSight(obstacles, x0, y0, x1, y1) {
+// Can a ball get from (x0, y0, z0) to (x1, y1, z1)?
+export function lineOfSight(level, x0, y0, z0, x1, y1, z1) {
   const dx = x1 - x0;
   const dy = y1 - y0;
-  const d = Math.sqrt(dx * dx + dy * dy);
+  const dz = z1 - z0;
+  const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
   if (d < 1e-6) return true;
-  return raycast(obstacles, x0, y0, dx / d, dy / d, d) >= d - 0.01;
+  return raycast(level, x0, y0, z0, dx / d, dy / d, dz / d, d) >= d - 0.01;
 }

@@ -340,9 +340,9 @@ const entries = [
 
   // --- Party update ---------------------------------------------------------------
   {
-    id: 'paintball', title: 'Spetterveld', tagline: 'Paintball in 3D: spetter je vrienden onder de verf. De verf blijft overal zitten.',
+    id: 'paintball', title: 'Spetterveld', tagline: 'Paintball in 3D: klim op kisten, loop gebouwen in en spetter je vrienden onder de verf.',
     kind: 'realtime', phase: 6, available: true, bots: true,
-    controls: 'Klik om te richten met de muis, WASD lopen, klik = schieten, R = herladen. Toetsen: pijltjes draaien, spatie schiet',
+    controls: 'Klik om te richten met de muis (ook omhoog/omlaag), WASD lopen, spatie springen, klik = schieten, R = herladen. Toetsen: pijltjes draaien, T/G omhoog/omlaag kijken, F schiet',
     settings: [
       {
         key: 'duration', label: 'Speelduur', type: 'select',
@@ -352,10 +352,12 @@ const entries = [
       {
         key: 'arena', label: 'Veld', type: 'select',
         options: [
+          { value: 'bouw', label: 'Bouwplaats (groot, met verdieping)' }, { value: 'western', label: 'Westernstad (groot, gebouwen)' },
+          { value: 'kasteel', label: 'Kasteelruïne (groot, torens en muren)' },
           { value: 'haven', label: 'Containerhaven' }, { value: 'avond', label: 'Avondveld' }, { value: 'opblaas', label: 'Opblaasveld' },
           { value: 'bos', label: 'Bosveld' }, { value: 'erf', label: 'Boerenerf' },
         ],
-        default: 'haven',
+        default: 'bouw',
       },
       { key: 'powerups', label: 'Power-ups (snelvuur, hagel, pantser …)', type: 'toggle', default: true },
     ],

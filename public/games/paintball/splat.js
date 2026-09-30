@@ -5,17 +5,19 @@ import { createRng } from '../../../shared/rng.js';
 
 const POINTS = 14;
 
-// s: { x, y, z, nx, nz, r, color, seed, floor, bend }
-//   floor: lies on the ground; otherwise on a wall facing (nx, 0, nz).
+// s: { x, y, z, nx, nz, r, color, seed, floor, ceiling, bend } (y = height)
+//   floor: lies on a floor at height y (ceiling: under a ceiling, facing down);
+//   otherwise on a wall facing (nx, 0, nz).
 //   bend: radius of a round wall (0 = flat), so the edges do not sink in.
 export function addSplat(b, s, emissive = 0) {
   const rnd = createRng(s.seed);
   const off = s.floor ? 0 : 0.12 + (s.bend ? (s.r * s.r * 1.6) / (2 * s.bend) : 0);
   // Map (u, v) on the surface to 3D.
+  const lift = (0.05 + (s.seed % 7) * 0.004) * (s.ceiling ? -1 : 1);
   const P = s.floor
-    ? (u, v) => [s.x + u, 0.05 + (s.seed % 7) * 0.004, s.z + v]
+    ? (u, v) => [s.x + u, s.y + lift, s.z + v]
     : (u, v) => [s.x - s.nz * u + s.nx * off, s.y + v, s.z + s.nx * u + s.nz * off];
-  const n = s.floor ? [0, 1, 0] : [s.nx, 0, s.nz];
+  const n = s.floor ? [0, s.ceiling ? -1 : 1, 0] : [s.nx, 0, s.nz];
   b.color(s.color, { emissive });
   blob(b, P, n, 0, 0, s.r, rnd, true);
   // Droplets around it.
@@ -33,7 +35,7 @@ export function addSplat(b, s, emissive = 0) {
       const len = s.r * (0.8 + rnd() * 1.4);
       const w = s.r * (0.1 + rnd() * 0.07);
       const top = -s.r * 0.4;
-      const bottom = Math.max(-s.y + 0.6, top - len);
+      const bottom = top - len;
       b.face([P(u - w, top), P(u - w * 0.7, bottom), P(u + w * 0.7, bottom), P(u + w, top)], n);
       blob(b, P, n, u, bottom, w * 1.5, rnd, false);
     }

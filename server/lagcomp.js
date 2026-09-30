@@ -17,6 +17,7 @@ export class LagHistory {
       ids: new Int32Array(capacity),
       xs: new Float32Array(capacity),
       ys: new Float32Array(capacity),
+      zs: new Float32Array(capacity),
     }));
     this.capacity = capacity;
     this.head = -1; // index of the newest frame
@@ -34,12 +35,13 @@ export class LagHistory {
     this.current = f;
   }
 
-  add(id, x, y) {
+  add(id, x, y, z = 0) {
     const f = this.current;
     if (!f || f.count >= this.capacity) return;
     f.ids[f.count] = id;
     f.xs[f.count] = x;
     f.ys[f.count] = y;
+    f.zs[f.count] = z;
     f.count++;
   }
 
@@ -58,7 +60,7 @@ export class LagHistory {
     return this.frames[(this.head - back + this.frames.length * 2) % this.frames.length];
   }
 
-  // Interpolated position of entity `id` at `time`. Writes into out {x, y}.
+  // Interpolated position of entity `id` at `time`. Writes into out {x, y, z}.
   // Returns false when the entity did not exist around that time.
   positionAt(id, time, out) {
     if (!this.size) return false;
@@ -68,20 +70,17 @@ export class LagHistory {
       if (f.time <= time) {
         const ia = indexOf(f, id);
         if (ia < 0) return false;
-        if (!newer || newer.time === f.time) {
-          out.x = f.xs[ia];
-          out.y = f.ys[ia];
-          return true;
-        }
-        const ib = indexOf(newer, id);
+        const ib = newer && newer.time !== f.time ? indexOf(newer, id) : -1;
         if (ib < 0) {
           out.x = f.xs[ia];
           out.y = f.ys[ia];
+          out.z = f.zs[ia];
           return true;
         }
         const t = (time - f.time) / (newer.time - f.time);
         out.x = f.xs[ia] + (newer.xs[ib] - f.xs[ia]) * t;
         out.y = f.ys[ia] + (newer.ys[ib] - f.ys[ia]) * t;
+        out.z = f.zs[ia] + (newer.zs[ib] - f.zs[ia]) * t;
         return true;
       }
       newer = f;
@@ -92,6 +91,7 @@ export class LagHistory {
     if (i < 0) return false;
     out.x = oldest.xs[i];
     out.y = oldest.ys[i];
+    out.z = oldest.zs[i];
     return true;
   }
 

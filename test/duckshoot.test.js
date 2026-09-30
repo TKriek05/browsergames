@@ -44,13 +44,13 @@ function setupDuck(game, room) {
 
 test('LagHistory interpolates between frames and clamps the rewind', () => {
   const h = new LagHistory({ frames: 4, capacity: 4 });
-  const out = { x: 0, y: 0 };
+  const out = { x: 0, y: 0, z: 0 };
   h.begin(1000); h.add(7, 0, 0);
-  h.begin(1100); h.add(7, 10, 20);
+  h.begin(1100); h.add(7, 10, 20, 8);
   assert.ok(h.positionAt(7, 1050, out));
-  assert.deepEqual(out, { x: 5, y: 10 });
+  assert.deepEqual(out, { x: 5, y: 10, z: 4 }, 'height too (Spetterveld)');
   assert.ok(h.positionAt(7, 5000, out), 'newer than history: newest frame');
-  assert.deepEqual(out, { x: 10, y: 20 });
+  assert.deepEqual(out, { x: 10, y: 20, z: 8 });
   assert.equal(h.positionAt(8, 1050, { x: 0, y: 0 }), false, 'unknown id');
   for (let t = 1200; t <= 1600; t += 100) { h.begin(t); h.add(7, t, 0); }
   assert.ok(h.positionAt(7, 0, out), 'older than history: oldest frame');

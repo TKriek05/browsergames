@@ -1,10 +1,8 @@
 // Spetterveld: the obstacles and surroundings of the Containerhaven (a grey
 // harbour yard in the late afternoon sun) and the Avondveld (speedball under
 // floodlights). The grey and dark worlds let the players' paint stand out.
-import { PB_FIELD } from '../../../shared/maps/paintball-arenas.js';
-
-const W = PB_FIELD.width;
-const H = PB_FIELD.height;
+const W = 420; // the classic field size
+const H = 280;
 
 // Returns true when it drew the obstacle.
 export function extraObstacle(b, o, i, th, rnd) {

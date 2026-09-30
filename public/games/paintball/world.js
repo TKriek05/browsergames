@@ -1,18 +1,25 @@
 // Spetterveld: the static world of a field in one mesh (ground, lines, fence
-// poles, every obstacle in its own style, scenery outside the net) plus the
-// see-through net. Game (x, y) → 3D (x, height, y). Seeded: same field, same world.
+// poles, every solid in its own style, scenery outside the net) plus the
+// see-through net. Game (x, y, z) → 3D (x, z, y). Seeded: same field, same world.
+// The big fields with height draw their solids in world-levels.js.
 import { MeshBuilder } from '../../js/gl/mesh.js';
 import { createRng } from '../../../shared/rng.js';
-import { PB_FIELD } from '../../../shared/maps/paintball-arenas.js';
+import { PB_LEVELS } from '../../../shared/maps/paintball-levels.js';
 import { extraObstacle, havenSurroundings, avondSurroundings } from './world-extra.js';
+import { levelSolid, levelSurroundings } from './world-levels.js';
 
-const W = PB_FIELD.width;
-const H = PB_FIELD.height;
-const NET_H = 38;
+let W = 420;
+let H = 280;
+// The net is higher than anything you can stand on.
+const netHeight = (arena) => Math.max(38, ...arena.solids.map((o) => o.z1 + 14));
 
 export function buildWorld(arena, th) {
   const b = new MeshBuilder();
   const rnd = createRng(arena.key.length * 977 + 13);
+  W = arena.width;
+  H = arena.height;
+  const NET_H = netHeight(arena);
+  const big = !!PB_LEVELS[arena.key];
 
   // --- Ground --------------------------------------------------------------------------
   b.color(th.outside).face([[-600, -0.05, -500], [-600, -0.05, H + 500], [W + 600, -0.05, H + 500], [W + 600, -0.05, -500]], [0, 1, 0]);
@@ -51,11 +58,15 @@ export function buildWorld(arena, th) {
     b.cylinder(-1, 0, y, 0.7, NET_H, 5).cylinder(W + 1, 0, y, 0.7, NET_H, 5);
   }
 
-  // --- Obstacles ----------------------------------------------------------------------------
-  arena.obstacles.forEach((o, i) => obstacle(b, o, i, th, rnd));
+  // --- Solids -----------------------------------------------------------------------------------
+  arena.solids.forEach((o, i) => {
+    if (big && levelSolid(b, o, i, th, rnd)) return;
+    obstacle(b, { ...o, hgt: o.z1 }, i, th, rnd);
+  });
 
   // --- Scenery outside ------------------------------------------------------------------------
-  if (arena.key === 'opblaas') speedballSurroundings(b, th, rnd);
+  if (big) levelSurroundings(b, arena, th, rnd);
+  else if (arena.key === 'opblaas') speedballSurroundings(b, th, rnd);
   else if (arena.key === 'bos') forestSurroundings(b, th, rnd);
   else if (arena.key === 'haven') havenSurroundings(b, th, rnd);
   else if (arena.key === 'avond') avondSurroundings(b, th, rnd);
@@ -64,10 +75,12 @@ export function buildWorld(arena, th) {
 }
 
 // The net: drawn see-through on top of everything else.
-export function buildNet(th) {
+export function buildNet(arena, th) {
   const b = new MeshBuilder();
+  const w = arena.width;
+  const h = arena.height;
   b.color(th.net);
-  b.wall([[0, -1], [W, -1], [W + 1, 0], [W + 1, H], [W, H + 1], [0, H + 1], [-1, H], [-1, 0]], 0, NET_H, true);
+  b.wall([[0, -1], [w, -1], [w + 1, 0], [w + 1, h], [w, h + 1], [0, h + 1], [-1, h], [-1, 0]], 0, netHeight(arena), true);
   return b.build();
 }
 

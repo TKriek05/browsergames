@@ -100,7 +100,7 @@ export function createArcadeCore({ decode, predictor = null, toServer = null }) 
     },
 
     // Interpolated positions for a list in the snapshots (matched by `key`).
-    // fn(entB, x, y) for every entity in the newer snapshot.
+    // fn(entB, x, y, z) for every entity in the newer snapshot (z: when the entities have one).
     each(sample, list, key, fn) {
       if (!sample) return;
       const a = sample.a.state[list];
@@ -108,8 +108,8 @@ export function createArcadeCore({ decode, predictor = null, toServer = null }) 
       for (const eb of b) {
         let ea = null;
         for (const q of a) if (q[key] === eb[key]) { ea = q; break; }
-        if (!ea) fn(eb, eb.x, eb.y);
-        else fn(eb, lerp(ea.x, eb.x, sample.t), lerp(ea.y, eb.y, sample.t));
+        if (!ea) fn(eb, eb.x, eb.y, eb.z);
+        else fn(eb, lerp(ea.x, eb.x, sample.t), lerp(ea.y, eb.y, sample.t), eb.z === undefined ? undefined : lerp(ea.z, eb.z, sample.t));
       }
     },
   };
