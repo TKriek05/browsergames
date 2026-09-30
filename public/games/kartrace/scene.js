@@ -28,12 +28,15 @@ export function createKartScene(canvas, { reducedMotion }) {
   const bomb = r.mesh(buildBomb());
   const bolt = r.mesh(new MeshBuilder().color('#fff6a0', { emissive: 1 }).box(0, 0, 0, 1.4, 1, 1.4).build());
   const zaps = []; // lightning bolts: { x, y, h, until }
-  const particles = createParticles3D(700, { reducedMotion });
+  const particles = createParticles3D(1200, { reducedMotion });
   let world = null;
   let track = null;
   let time = 0;
   let dust = '#a89a70';
   const cam = { x: 0, y: 30, z: 0, lx: 0, ly: 0, lz: 0, fov: 1.05, ready: false };
+  let far = 4600;
+  let snow = false;
+  let snowAcc = 0;
 
   return {
     r,
@@ -46,20 +49,33 @@ export function createKartScene(canvas, { reducedMotion }) {
       world = r.mesh(buildWorld(t));
       const th = t.theme;
       const [sx, sy, sz] = th.sunDir;
+      far = t.big ? 7000 : 4600;
       r.setColors({
         sky: th.sky,
-        fog: [th.fog, 1500, 4200],
+        fog: [th.fog, t.big ? 2200 : 1500, t.big ? 6400 : 4200],
         light: { dir: [-sx, -1.2, -sz], color: th.light.color, ambient: th.light.ambient },
         sun: { dir: th.sunDir, radius: 0.07, top: th.sun[0], bottom: th.sun[1] },
         clouds: { count: th.clouds, color: '#ffffff', shade: th.fog, seed: t.count },
       });
       dust = th.edge;
+      snow = !!th.snow;
       cam.ready = false;
     },
 
     update(dt) {
       time += dt;
       particles.update(dt);
+      // Snowflakes drifting down around the camera.
+      if (snow && cam.ready) {
+        snowAcc += dt * (reducedMotion ? 20 : 70);
+        while (snowAcc >= 1) {
+          snowAcc--;
+          const a = Math.random() * Math.PI * 2;
+          const d = 20 + Math.random() * 180;
+          particles.spawn(cam.x + Math.cos(a) * d, cam.y + 30 + Math.random() * 40, cam.z + Math.sin(a) * d,
+            (Math.random() - 0.5) * 8, -18 - Math.random() * 8, (Math.random() - 0.5) * 8, 3.5, '#ffffff', 0.9, 0, 1);
+        }
+      }
     },
 
     // Chase camera behind (x, y, heading) at road height h. mode: 'chase' | 'orbit'.
@@ -96,7 +112,7 @@ export function createKartScene(canvas, { reducedMotion }) {
       const fov = 1.02 + speed01 * 0.1 + (boost ? 0.12 : 0);
       cam.fov += (fov - cam.fov) * (1 - Math.exp(-dt * 4));
       cam.ready = true;
-      r.camera(cam.x, cam.y, cam.z, cam.lx, cam.ly, cam.lz, cam.fov, 2, 4600);
+      r.camera(cam.x, cam.y, cam.z, cam.lx, cam.ly, cam.lz, cam.fov, 2, far);
     },
 
     begin() {
@@ -131,11 +147,12 @@ export function createKartScene(canvas, { reducedMotion }) {
 
     // drift: -1/0/1 (the body swings into the slide), steer banks it a little.
     // h: road height, climb: slope along the heading (the nose follows the hill).
-    kart(x, y, hx, hy, color, { drift = 0, steer = 0, spin = 0, flash = 0, h = 0, climb = 0, star = false } = {}) {
+    // roll: 0..1 progress of a trick (a full barrel roll in the air).
+    kart(x, y, hx, hy, color, { drift = 0, steer = 0, spin = 0, flash = 0, h = 0, climb = 0, star = false, roll = 0 } = {}) {
       // A kart right at the camera would fill the screen: leave it out.
-      if ((x - cam.x) ** 2 + (y - cam.z) ** 2 < 14 * 14 && Math.abs(h + 6 - cam.y) < 14) return;
+      if ((x - cam.x) ** 2 + (y - cam.z) ** 2 < 20 * 20 && Math.abs(h + 6 - cam.y) < 16) return;
       const yaw = yawFromDir(hx, hy) - drift * 0.38 + (spin > 0 ? time * 14 : 0);
-      const bank = drift * 0.1 + steer * 0.05;
+      const bank = drift * 0.1 + steer * 0.05 + (roll > 0 && roll < 1 ? roll * Math.PI * 2 : 0);
       compose(m, x, 0.3 + h, y, yaw, bank, Math.atan(climb), 1);
       const tint = star ? starColor(time) : paint(color);
       r.draw(kart, m, tint, 1, star ? 0.25 + 0.2 * Math.sin(time * 20) : flash);

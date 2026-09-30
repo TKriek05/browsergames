@@ -6,7 +6,7 @@ import { BTN } from '../../../shared/messages.js';
 import { ByteWriter, encodeInput, quantizeAxis } from '../../../shared/binary.js';
 import { stepKart, createKartState, KART_PHYS, KART_STATE_KEYS } from '../../../shared/physics/kart.js';
 import { KART_TRACKS, KART_TRACK_IDS, KART_CUPS, trackQuery, createTrackQuery } from '../../../shared/maps/kart-tracks.js';
-import { KART_PHASE, KART_FLAG, ITEM } from '../../../shared/games/kartrace.js';
+import { KART_PHASE, KART_FLAG, ITEM, KART_RULES } from '../../../shared/games/kartrace.js';
 import { SnapshotBuffer, lerp } from '../../js/core/interp.js';
 import { Predictor } from '../../js/core/predict.js';
 import { rgb } from '../../js/gl/mesh.js';
@@ -23,6 +23,9 @@ export const meta = {
 };
 
 const ROULETTE_MS = 900;
+const TRICK_MS = 420; // one full roll in the air
+const MIN_GAP = KART_RULES.BUMP_RADIUS * 2; // karts drawn closer than this are nudged apart (visual only)
+const LEVEL_GAP = 12;
 const KMH = 0.72; // world units/s → a speedometer number that feels right
 
 function decode(snap) {
@@ -39,6 +42,7 @@ function decode(snap) {
     k.x = r.f32(); k.y = r.f32(); k.hx = r.f32(); k.hy = r.f32(); k.v = r.f32(); k.vs = r.f32();
     k.drift = r.i8(); k.charge = r.f32(); k.boost = r.f32(); k.spin = r.f32();
     k.item = r.u8(); k.prev = r.u8(); k.off = r.u8();
+    k.z = r.f32(); k.vz = r.f32(); k.seg = r.u16(); k.fall = r.f32(); k.trick = r.u8();
     k.lap = r.u8(); k.place = r.u8(); k.finishTime = r.f32(); k.points = r.u16();
     k.finished = (k.flags & KART_FLAG.FINISHED) !== 0;
     k.shield = (k.flags & KART_FLAG.SHIELD) !== 0;
@@ -47,7 +51,7 @@ function decode(snap) {
   }
   s.boxMask = r.u16();
   const m = r.u8();
-  for (let i = 0; i < m; i++) s.objects.push({ id: r.u16(), type: r.u8(), x: r.i16() / 4, y: r.i16() / 4, aux: r.u8() });
+  for (let i = 0; i < m; i++) s.objects.push({ id: r.u16(), type: r.u8(), x: r.i16() / 4, y: r.i16() / 4, h: r.i16() / 4, aux: r.u8() });
   return s;
 }
 
@@ -79,18 +83,34 @@ export function createGame() {
   let boxH = [];
   let flashUntil = 0; // lightning: a white flash over the screen
 
-  // Road height under (x, y): 0 on flat tracks.
-  const groundAt = (x, y) => (track.hilly ? trackQuery(track, x, y, q).h : 0);
-  // Height and slope along the heading for a kart.
+  const trickStart = new Map(); // slot → when its trick started (for the roll)
+  let camSeg = -1; // segment the camera's kart is on (hint for the camera's ground)
+  // Road height under (x, y), near segment seg (-1: anywhere): 0 on flat tracks.
+  const groundAt = (x, y, seg = -1) => (track.hilly ? trackQuery(track, x, y, q, seg).h : 0);
+  const camGround = (x, y) => trackQuery(track, x, y, q, camSeg).h;
+  // Height (road + jump), road height and slope along the heading for a kart.
   function ground(k) {
+    const z = k.z;
     if (!track.hilly) {
-      k.h = 0;
+      k.road = 0;
+      k.h = z;
       k.climb = 0;
       return;
     }
-    trackQuery(track, k.x, k.y, q);
-    k.h = q.h;
-    k.climb = q.slope * (k.hx * track.tx[q.seg] + k.hy * track.ty[q.seg]);
+    trackQuery(track, k.x, k.y, q, k.seg);
+    k.road = q.h;
+    k.h = q.h + z;
+    // In the air the nose follows the flight instead of the road.
+    k.climb = z > 0.5 || k.fall > 0 ? Math.max(-0.5, Math.min(0.5, k.vz / Math.max(60, Math.abs(k.v)))) : q.slope * (k.hx * track.tx[q.seg] + k.hy * track.ty[q.seg]);
+  }
+  // Roll progress 0..1 of a trick (0 = none).
+  function trickRoll(slot, trick, now) {
+    if (!trick) {
+      trickStart.delete(slot);
+      return 0;
+    }
+    if (!trickStart.has(slot)) trickStart.set(slot, now);
+    return Math.min(1, (now - trickStart.get(slot)) / TRICK_MS);
   }
   const lerpObj = (sample, o, key) => {
     const prev = sample ? sample.a.state.objects.find((p) => p.id === o.id) : null;
@@ -120,7 +140,7 @@ export function createGame() {
       return;
     }
     track = t;
-    boxH = t.boxes.map((bx) => groundAt(bx.x, bx.y));
+    boxH = t.boxes.map((bx) => t.pz[bx.seg]);
     scene?.setTrack(t);
     hud.setTrack(t);
     predictor.reset();
@@ -200,7 +220,8 @@ export function createGame() {
           sfx.play('explode');
           break;
         case 'spin': {
-          const h = groundAt(msg.x, msg.y);
+          const hit = latest ? find(latest.karts, msg.s) : null;
+          const h = groundAt(msg.x, msg.y, hit ? hit.seg : -1) + (hit ? hit.z : 0);
           if (msg.item === ITEM.LIGHTNING) scene?.zap(msg.x, msg.y, h);
           else scene?.burst(msg.x, msg.y, '#ff5a36', 26, h);
           if (msg.item !== ITEM.LIGHTNING) sfx.play(msg.s === slot ? 'spin' : 'hit');
@@ -210,6 +231,22 @@ export function createGame() {
         }
         case 'block': scene?.burst(msg.x, msg.y, '#7de0ff', 16, groundAt(msg.x, msg.y)); sfx.play('react'); break;
         case 'bump': sfx.play('bump'); break;
+        case 'trick':
+          if (msg.s === slot) {
+            sfx.play('boost');
+            banner = { text: 'TRICK!', sub: 'extra boost', color: '#3ef0ff', until: now + 900 };
+          }
+          break;
+        case 'fall': {
+          const k = latest ? find(latest.karts, msg.s) : null;
+          const h = k ? groundAt(msg.x, msg.y, k.seg) : 0;
+          scene?.burst(msg.x, msg.y, track.theme.floating ? '#ffffff' : '#8fd8f0', 30, h - 20, true);
+          if (msg.s === slot) {
+            sfx.play('fall');
+            banner = { text: 'OEPS!', sub: 'je bent van de baan gevallen', color: '#ff4d6d', until: now + 1300 };
+          } else sfx.play('splash');
+          break;
+        }
         case 'scrape': if (msg.s === slot) sfx.play('scrape'); break;
         default: break;
       }
@@ -229,11 +266,17 @@ export function createGame() {
         sendInput.ax = quantizeAxis(inp.ax);
         sendInput.ay = quantizeAxis(inp.ay);
         sendInput.buttons = inp.buttons;
-        const before = predictor.state.boost;
+        const ps = predictor.state;
+        const before = ps.boost;
+        const wasAir = ps.z > 0 || ps.vz > 0;
+        const hadTrick = ps.trick;
         const seq = predictor.apply(sendInput);
         net.sendBinary(encodeInput(writer, seq, sendInput));
-        // Predicted feedback for a mini turbo from a drift.
-        if (predictor.state.boost > before + 0.3 && predictor.state.drift === 0) sfx.play('boost');
+        // Predicted feedback: a mini turbo from a drift, take-off, a trick, landing.
+        if (ps.boost > before + 0.3 && ps.drift === 0 && !ps.landed) sfx.play('boost');
+        if (!wasAir && ps.vz > 40) sfx.play('jump');
+        if (!hadTrick && ps.trick) sfx.play('trick');
+        if (ps.landed && ps.fall <= 0) sfx.play('thud');
       } else {
         predictor.idle();
       }
@@ -308,6 +351,7 @@ export function createGame() {
             k.x = predictor.get('x', alpha);
             k.y = predictor.get('y', alpha);
             k.hx = s.hx; k.hy = s.hy; k.v = s.v; k.drift = s.drift; k.charge = s.charge; k.boost = s.boost; k.spin = s.spin; k.off = s.off;
+            k.z = predictor.get('z', alpha); k.vz = s.vz; k.seg = s.seg; k.fall = s.fall; k.trick = s.trick;
           } else {
             k.x = lerp(ka.x, kb.x, sample.t);
             k.y = lerp(ka.y, kb.y, sample.t);
@@ -315,9 +359,29 @@ export function createGame() {
             const hy = lerp(ka.hy, kb.hy, sample.t);
             const len = Math.hypot(hx, hy) || 1;
             k.hx = hx / len; k.hy = hy / len; k.v = kb.v; k.drift = kb.drift; k.charge = kb.charge; k.boost = kb.boost; k.spin = kb.spin; k.off = kb.off;
+            // A respawn is a jump in position: no sliding across the map.
+            const warp = (ka.x - kb.x) ** 2 + (ka.y - kb.y) ** 2 > 80 * 80;
+            if (warp) { k.x = kb.x; k.y = kb.y; }
+            k.z = warp ? kb.z : lerp(ka.z, kb.z, sample.t); k.vz = kb.vz; k.seg = kb.seg; k.fall = kb.fall; k.trick = kb.trick;
           }
+          k.roll = trickRoll(k.slot, k.trick, frameNow);
           ground(k);
           drawn.push(k);
+        }
+      }
+
+      // Your own kart is predicted without the others: where it overlaps one
+      // (the server is about to push you apart), nudge it out for the eye.
+      const own = drawn.find((k) => k.me);
+      if (own && own.fall <= 0) {
+        for (const k of drawn) {
+          if (k === own || k.fall > 0 || Math.abs(k.h - own.h) > LEVEL_GAP) continue;
+          const dx = own.x - k.x;
+          const dy = own.y - k.y;
+          const d = Math.hypot(dx, dy);
+          if (d >= MIN_GAP || d < 1e-3) continue;
+          own.x += (dx / d) * (MIN_GAP - d);
+          own.y += (dy / d) * (MIN_GAP - d);
         }
       }
 
@@ -327,8 +391,11 @@ export function createGame() {
       if (scene) {
         if (focus) {
           const finished = mine?.finished || (latest.phase !== KART_PHASE.RACE && latest.phase !== KART_PHASE.COUNTDOWN);
+          camSeg = focus.seg;
+          // Falling: the camera stays up at the edge and watches you drop.
+          const camH = focus.road + Math.max(focus.h - focus.road, -30);
           scene.camera(focus.x, focus.y, focus.hx, focus.hy, Math.min(1, Math.abs(focus.v) / KART_PHYS.MAX_SPEED), focus.boost > 0, frameDt,
-            finished ? 'orbit' : 'chase', focus.h, track.hilly ? groundAt : null);
+            finished ? 'orbit' : 'chase', camH, track.hilly ? camGround : null);
         }
         if (!scene.begin()) return;
         const hue = (frameNow / 600) % 1;
@@ -338,7 +405,7 @@ export function createGame() {
         for (const o of latest.objects) {
           const x = lerpObj(sample, o, 'x');
           const y = lerpObj(sample, o, 'y');
-          const h = groundAt(x, y);
+          const h = lerpObj(sample, o, 'h');
           if (o.type === ITEM.ORB) scene.orb(x, y, h);
           else if (o.type === ITEM.ROCKET) {
             const prev = sample ? sample.a.state.objects.find((p) => p.id === o.id) : null;
@@ -348,11 +415,11 @@ export function createGame() {
         }
         for (const k of drawn) {
           const steer = k.me ? input.state.ax : 0;
-          scene.kart(k.x, k.y, k.hx, k.hy, rgb(hexOf(k.slot)), { drift: k.drift, steer, spin: k.spin, h: k.h, climb: k.climb, star: k.src.star });
-          scene.effects(k.x, k.y, k.hx, k.hy, k);
+          scene.kart(k.x, k.y, k.hx, k.hy, rgb(hexOf(k.slot)), { drift: k.drift, steer, spin: k.spin, h: k.h, climb: k.climb, star: k.src.star, roll: k.roll });
+          if (k.h - k.road < 1) scene.effects(k.x, k.y, k.hx, k.hy, k);
         }
         for (const k of drawn) {
-          scene.shadow(k.x, k.y, k.h);
+          scene.shadow(k.x, k.y, k.road);
           if (k.src.shield) scene.shield(k.x, k.y, k.h);
         }
         scene.endParticles();
@@ -387,8 +454,8 @@ export function createGame() {
         hud.item(predictor.ready ? predictor.state.item : mine.item, frameNow < rollUntil ? 1 : 0);
         hud.speed(Math.abs(predictor.ready ? predictor.state.v : mine.v) * KMH);
         // Wrong way?
-        if (latest.phase === KART_PHASE.RACE && focus?.me && Math.abs(focus.v) > 25 && !mine.finished) {
-          trackQuery(track, focus.x, focus.y, q);
+        if (latest.phase === KART_PHASE.RACE && focus?.me && Math.abs(focus.v) > 25 && !mine.finished && focus.fall <= 0) {
+          trackQuery(track, focus.x, focus.y, q, focus.seg);
           if (focus.hx * track.tx[q.seg] + focus.hy * track.ty[q.seg] < -0.4) hud.banner('VERKEERDE KANT!', 'draai om', '#ff4d6d');
         }
       } else {

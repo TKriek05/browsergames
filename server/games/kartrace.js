@@ -1,18 +1,19 @@
 // Turbo Kart GP (server side): races on spline tracks (some with hills),
 // laps with checkpoints, positions, karts bumping into each other, a Grand
-// Prix over three tracks, and bots that follow a racing line. Items live in
-// kartrace-items.js.
-import { stepKart, createKartState, clampToTrack } from '../../shared/physics/kart.js';
+// Prix over three or four tracks, and bots that follow a racing line. Items
+// live in kartrace-items.js, kart-to-kart collisions in kartrace-collide.js.
+import { stepKart, createKartState } from '../../shared/physics/kart.js';
 import { KART_TRACKS, KART_TRACK_IDS, KART_CUPS, trackQuery, createTrackQuery } from '../../shared/maps/kart-tracks.js';
 import { KART_PHASE, KART_RULES as R, KART_FLAG } from '../../shared/games/kartrace.js';
 import { createRng } from '../../shared/rng.js';
 import { InputQueue } from '../inputqueue.js';
 import { createKartBot, stepKartBot } from './kartrace-bots.js';
 import { KartItems } from './kartrace-items.js';
+import { collideKarts } from './kartrace-collide.js';
 
 const END_HOLD_S = 1;
 const ALL_HUMANS_DONE_S = 3; // everybody who plays for real is through: wrap up quickly
-const BUMP_KEEP = 0.97; // speed kept in a bump
+const BUMP_SOUND = 40; // impact speed for a bump sound
 
 class KartGame {
   constructor(room, settings) {
@@ -91,6 +92,7 @@ class KartGame {
     s.y = g.y;
     s.hx = g.hx;
     s.hy = g.hy;
+    s.seg = g.seg;
     k.s = s;
     Object.assign(k, { lap: 0, cp: 3, prevFrac: 1, raceDist: -1, finished: false, finishTime: 0, lapStart: 0, bestLap: 0, shield: 0, star: 0, place: i + 1, px: s.x, py: s.y });
   }
@@ -123,7 +125,7 @@ class KartGame {
       k.py = k.s.y;
     }
     for (const k of this.karts) this._stepKart(k, dt);
-    this._bumps();
+    this._bumps(dt);
     if (this.itemsOn) this.items.tick(dt);
     for (const k of this.karts) this._progress(k);
     this._rank();
@@ -166,6 +168,8 @@ class KartGame {
   _afterStep(k) {
     const s = k.s;
     if (s.wall && Math.abs(s.v) > 60 && this.rng() < 0.2) this.room.emit('scrape', { s: k.player.slot });
+    if (s.fell) this.room.emit('fall', { s: k.player.slot, x: Math.round(s.x), y: Math.round(s.y) });
+    if (s.landed === 2) this.room.emit('trick', { s: k.player.slot });
     if (!s.fired) return;
     if (!this.itemsOn || k.finished) return;
     this.items.use(k, s.fired);
@@ -174,7 +178,7 @@ class KartGame {
   // Positions, laps and the finish line.
   _progress(k) {
     const L = this.track.length;
-    trackQuery(this.track, k.s.x, k.s.y, this.q);
+    trackQuery(this.track, k.s.x, k.s.y, this.q, k.s.seg);
     const frac = this.q.dist / L;
     if (k.cp === 0 && frac >= 0.25 && frac < 0.5) k.cp = 1;
     else if (k.cp === 1 && frac >= 0.5 && frac < 0.75) k.cp = 2;
@@ -223,39 +227,19 @@ class KartGame {
     this.phaseEnd = this.time + (this.phase === KART_PHASE.RESULTS ? R.RESULTS_S : R.RESULTS_S * 0.6 + END_HOLD_S);
   }
 
-  // Karts bump into each other (server only; prediction corrects). A kart
-  // is never pushed through a barrier, and a superstar spins whoever it hits.
-  _bumps() {
-    const min = R.BUMP_RADIUS * 2;
-    for (let i = 0; i < this.karts.length; i++) {
-      const ka = this.karts[i];
+  // Karts bump into each other (server only; the owner's prediction corrects
+  // smoothly). A superstar spins whoever it hits.
+  _bumps(dt) {
+    collideKarts(this.karts, this.track, dt, (ka, kb, impact) => {
       const a = ka.s;
-      for (let j = i + 1; j < this.karts.length; j++) {
-        const kb = this.karts[j];
-        const b = kb.s;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const d = Math.hypot(dx, dy);
-        if (d >= min || d < 1e-6) continue;
-        const push = (min - d) / 2;
-        const nx = dx / d;
-        const ny = dy / d;
-        a.x = Math.fround(a.x - nx * push);
-        a.y = Math.fround(a.y - ny * push);
-        b.x = Math.fround(b.x + nx * push);
-        b.y = Math.fround(b.y + ny * push);
-        clampToTrack(a, this.track);
-        clampToTrack(b, this.track);
-        a.v = Math.fround(a.v * BUMP_KEEP);
-        b.v = Math.fround(b.v * BUMP_KEEP);
-        if (ka.star > 0 && kb.star <= 0 && !this.items.protectedKart(kb)) this.items.spin(kb, ka, R.SPIN_S, 0, b.x, b.y);
-        else if (kb.star > 0 && ka.star <= 0 && !this.items.protectedKart(ka)) this.items.spin(ka, kb, R.SPIN_S, 0, a.x, a.y);
-        if (this.time > ka.bumpAt && this.time > kb.bumpAt) {
-          ka.bumpAt = kb.bumpAt = this.time + 0.8; // one bump sound per contact, not per tick
-          this.room.emit('bump', { x: Math.round((a.x + b.x) / 2), y: Math.round((a.y + b.y) / 2) });
-        }
+      const b = kb.s;
+      if (ka.star > 0 && kb.star <= 0 && !this.items.protectedKart(kb)) this.items.spin(kb, ka, R.SPIN_S, 0, b.x, b.y);
+      else if (kb.star > 0 && ka.star <= 0 && !this.items.protectedKart(ka)) this.items.spin(ka, kb, R.SPIN_S, 0, a.x, a.y);
+      if (impact > BUMP_SOUND && this.time > ka.bumpAt && this.time > kb.bumpAt) {
+        ka.bumpAt = kb.bumpAt = this.time + 0.5; // one bump sound per contact, not per tick
+        this.room.emit('bump', { x: Math.round((a.x + b.x) / 2), y: Math.round((a.y + b.y) / 2), p: Math.min(255, Math.round(impact)) });
       }
-    }
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -265,6 +249,7 @@ class KartGame {
   // u8 phase, u8 track, u8 raceNo, u8 races, u8 laps, f32 phaseRemaining, f32 raceTime,
   // u8 n × [u8 slot, u8 flags, u16 ack, f32 x, f32 y, f32 hx, f32 hy, f32 v, f32 vs,
   //         i8 drift, f32 charge, f32 boost, f32 spin, u8 item, u8 prev, u8 off,
+  //         f32 z, f32 vz, u16 seg, f32 fall, u8 trick,
   //         u8 lap, u8 place, f32 finishTime, u16 points]
   // then the items: see KartItems.write.
   snapshot(w) {
@@ -280,6 +265,7 @@ class KartGame {
       w.u8(p.slot).u8(flags).u16(k.queue.ackSeq);
       w.f32(s.x).f32(s.y).f32(s.hx).f32(s.hy).f32(s.v).f32(s.vs);
       w.i8(s.drift).f32(s.charge).f32(s.boost).f32(s.spin).u8(s.item).u8(s.prev).u8(s.off);
+      w.f32(s.z).f32(s.vz).u16(Math.max(0, s.seg)).f32(s.fall).u8(s.trick);
       w.u8(Math.min(255, k.lap)).u8(k.place).f32(k.finishTime).u16(Math.min(65535, k.points));
     }
     this.items.write(w, this.itemsOn);

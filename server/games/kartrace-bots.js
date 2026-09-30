@@ -1,7 +1,8 @@
 // Turbo Kart GP bots: aim at a point further along the track (with their
 // own lane offset), lift off before sharp corners, drift through long bends
 // (hard bots) and use items sensibly. They drive with the same stick and
-// button input as humans, through the same physics.
+// button input as humans, through the same physics. Where there is no
+// barrier they keep to the middle, and they do a trick on every jump.
 import { BTN } from '../../shared/messages.js';
 import { pointAt, trackQuery, createTrackQuery } from '../../shared/maps/kart-tracks.js';
 import { KART_PHYS } from '../../shared/physics/kart.js';
@@ -38,11 +39,17 @@ export function stepKartBot(k, game, dt, rng) {
   out.ay = 0;
   out.buttons = 0;
 
-  trackQuery(track, s.x, s.y, b.q);
+  trackQuery(track, s.x, s.y, b.q, s.seg);
   b.laneT -= dt;
   if (b.laneT <= 0) {
     b.laneT = 2 + rng() * 3;
-    b.lane = (rng() - 0.5) * track.half * 0.8;
+    b.lane = (rng() - 0.5) * 0.8; // a fraction of the half width
+  }
+  if (s.fall > 0) return out;
+  // In the air: a trick (tap drift once), steer along the road.
+  if (s.z > 0 || s.vz > 0) {
+    if (!s.trick && !(s.prev & BTN.B)) out.buttons |= BTN.B;
+    out.buttons |= BTN.A;
   }
   b.wobbleT -= dt;
   if (b.wobbleT <= 0) {
@@ -68,8 +75,10 @@ export function stepKartBot(k, game, dt, rng) {
   // Steer towards a point ahead on our lane; tighter lane in sharp corners.
   const look = cfg.look + Math.max(0, s.v) * 0.3;
   const curve = bend(track, b.q.dist, b.q.dist + 140);
-  const lane = b.lane * Math.max(0, 1 - Math.abs(curve));
   const p = pointAt(track, b.q.dist + look);
+  // Keep to the middle where there is no barrier (or a jump is coming).
+  const risky = track.wl[p.seg] < 0 || track.wr[p.seg] < 0 || nearRamp(track, b.q.dist, 260);
+  const lane = b.lane * p.half * Math.max(0, 1 - Math.abs(curve)) * (risky ? 0.15 : 1);
   const tx = p.x - p.ty * lane;
   const ty = p.y + p.tx * lane;
   const dx = tx - s.x;
@@ -81,12 +90,13 @@ export function stepKartBot(k, game, dt, rng) {
 
   // Throttle: slow down before sharp bends.
   const cornerSpeed = KART_PHYS.MAX_SPEED * cfg.speed * cfg.corner * (1 - Math.min(0.55, Math.abs(curve) * 0.45));
-  const target = Math.min(KART_PHYS.MAX_SPEED * cfg.speed, cornerSpeed);
+  // Full speed before a jump (you need it to clear a gap).
+  const target = nearRamp(track, b.q.dist, 400) ? KART_PHYS.MAX_SPEED : Math.min(KART_PHYS.MAX_SPEED * cfg.speed, cornerSpeed);
   if (s.v < target || s.boost > 0) out.buttons |= BTN.A;
   else if (s.v > target + 30) out.ay = 1;
 
   // Hard bots drift through long bends for mini turbos.
-  if (cfg.drift) {
+  if (cfg.drift && !(s.z > 0 || s.vz > 0)) {
     const longBend = Math.abs(curve) > 0.7 && s.v > KART_PHYS.DRIFT_MIN_SPEED;
     if (longBend || (b.drifting && Math.abs(curve) > 0.25 && s.drift !== 0)) {
       out.buttons |= BTN.B;
@@ -104,6 +114,15 @@ export function stepKartBot(k, game, dt, rng) {
     }
   } else b.itemT = 0;
   return out;
+}
+
+// A ramp within `ahead` units in front of distance d.
+function nearRamp(track, d, ahead) {
+  for (const r of track.ramps) {
+    const along = (track.cum[r.seg] - d + track.length) % track.length;
+    if (along < ahead) return true;
+  }
+  return false;
 }
 
 function useItemNow(k, game, curve) {

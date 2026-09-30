@@ -154,12 +154,21 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 
 ## Turbo Kart GP
 
-- Banen in `shared/maps/kart-tracks.js`: spline + optioneel hoogteprofiel `heights: [[fractie, hoogte], …]`. Regels (getest):
-  delen van de baan blijven ver uit elkaar, geen bocht krapper dan de muurafstand, start/finish vlak op hoogte 0,
-  helling ≤ `MAX_SLOPE`. Grand Prix = `KART_CUPS` (`gp`, `gphills`).
-- `trackQuery` geeft de échte afstand tot de middenlijn (`lateral`, richting `ox/oy`), plus hoogte `h` en `slope`.
-  De fysica gebruikt de helling (bergop trager, bergaf sneller) en duwt terug langs `-o`; een schampende botsing kost
-  weinig en draait je langs de muur, frontaal kost veel en stuitert terug. `clampToTrack` na het botsen van karts.
+- Banen: data in `shared/maps/kart-track-defs.js` (klassiek) en `kart-track-defs-big.js` (groot), opgebouwd in
+  `kart-tracks.js`: spline met breedte per punt, hoogteprofiel `heights`, vangrails per kant `walls` (stapprofiel,
+  `-1` = geen vangrail: je kunt eraf vallen), schansen `ramps: [[fractie, lanceersnelheid]]` en gaten `gaps`.
+  Regels (getest): delen die dicht bij elkaar komen zijn gescheiden door vangrails of genoeg hoogte (kruisen via een
+  brug mag), geen bocht krapper dan de vangrails, start/finish vlak op hoogte 0, helling ≤ `MAX_SLOPE` (behalve de
+  val net na een schans, `JUMP_ZONE`), een gat heeft een schans vlak ervoor. Grand Prix = `KART_CUPS` (`gp`, `gphills`, `gpgroot`).
+- `trackQuery(track, x, y, out, hint)` zoekt alleen rond het segment waar de kart was (`s.seg`), zodat een baan zichzelf
+  kan kruisen. Geeft de échte afstand tot de middenlijn (`lateral`, richting `ox/oy`), hoogte `h`, `slope`, `half`,
+  `wall` (die kant) en `gap`. Kart-status heeft `z/vz` (sprong), `seg`, `fall` (vallen → respawn) en `trick`.
+- Botsingen tussen karts: `server/games/kartrace-collide.js` (paden in sub-stappen, impuls langs de contactlijn, superster
+  is zwaar, andere hoogte = geen botsing). Wie niet botst eindigt exact waar zijn voorspelling hem zet; de client duwt
+  de eigen kart alleen visueel los van een andere tot de server corrigeert.
+- 3D: `road.js` (asfalt per breedte, vangrails alleen waar ze zijn, dek + pijlers waar de weg boven de grond ligt,
+  schansen), `world.js` (terrein volgt de láágste weg in de buurt: de bovenste wordt een brug; kloof onder stukken zonder
+  vangrail, water onder gaten; `floating` = wolkenzee), `scenery-themes.js` (haven, tempel, skidorp, wolkenkastelen).
 - Items staan in `server/games/kartrace-items.js`. Raakdetectie langs het hele pad dat een kart die tick reed
   (`k.px/k.py` → nu), zodat snelle karts of meerdere inputs per tick niet over olie heen springen. Olie is pas
   actief voor de eigenaar als die ervan weg is. Turbo ×3 → ×2 → ×1 zit in de gedeelde fysica (voorspeld).

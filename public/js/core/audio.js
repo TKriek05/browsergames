@@ -139,6 +139,9 @@ const SOUNDS = {
   scrape: () => noise({ dur: 0.25, vol: 0.22, filter: 3800, to: 1400 }),
   charge1: () => tone({ type: 'square', freq: 880, to: 1175, dur: 0.07, vol: 0.07 }),
   charge2: () => tone({ type: 'square', freq: 1175, to: 1568, dur: 0.09, vol: 0.08 }),
+  jump: () => { noise({ dur: 0.35, vol: 0.2, filter: 700, to: 2600 }); tone({ type: 'triangle', freq: 330, to: 660, dur: 0.25, vol: 0.12 }); },
+  trick: () => [1047, 1319, 1760].forEach((f, i) => tone({ type: 'triangle', freq: f, dur: 0.08, vol: 0.12, delay: i * 0.05 })),
+  fall: () => tone({ type: 'sine', freq: 900, to: 180, dur: 0.9, vol: 0.18 }),
 };
 
 export function play(name) {

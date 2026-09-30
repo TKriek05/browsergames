@@ -6,6 +6,7 @@
 // the road beside them. All positions come from the seeded generator.
 import { yawFromDir } from '../../js/gl/mat4.js';
 import { pointAt } from '../../../shared/maps/kart-tracks.js';
+import { themeBuildings, themeTree, frame, dir, gable, findSpot } from './scenery-themes.js';
 
 const TREE_STEP = 64; // grid spacing of tree candidates
 const TREE_BAND = 680; // trees up to this far from the centre line
@@ -21,64 +22,10 @@ export function addScenery(b, w) {
   startGantry(b, w);
 }
 
-// --- Helpers --------------------------------------------------------------------------------
-// Local frame at (x, y, z) turned by yaw: P(lx, ly, lz) → world point.
-function frame(x, y, z, yaw) {
-  const c = Math.cos(yaw);
-  const s = Math.sin(yaw);
-  return (lx, ly, lz) => [x + lx * c + lz * s, y + ly, z - lx * s + lz * c];
-}
-
-// Direction of a local vector in world space (for face orientation hints).
-function dir(P, lx, ly, lz) {
-  const o = P(0, 0, 0);
-  const q = P(lx, ly, lz);
-  return [q[0] - o[0], q[1] - o[1], q[2] - o[2]];
-}
-
-// Gabled roof in a local frame: ridge along local x, eaves at height y0.
-function gable(b, P, w, d, y0, h, roof, wall) {
-  const x0 = -w / 2, x1 = w / 2, z0 = -d / 2, z1 = d / 2;
-  const e = 1.5; // overhang
-  b.color(roof);
-  b.face([P(x0 - e, y0 - 0.5, z1 + e), P(x1 + e, y0 - 0.5, z1 + e), P(x1 + e, y0 + h, 0), P(x0 - e, y0 + h, 0)], dir(P, 0, 1, 1));
-  b.face([P(x0 - e, y0 - 0.5, z0 - e), P(x1 + e, y0 - 0.5, z0 - e), P(x1 + e, y0 + h, 0), P(x0 - e, y0 + h, 0)], dir(P, 0, 1, -1));
-  b.color(wall);
-  b.face([P(x1, y0, z0), P(x1, y0 + h - 0.3, 0), P(x1, y0, z1)], dir(P, 1, 0, 0));
-  b.face([P(x0, y0, z0), P(x0, y0 + h - 0.3, 0), P(x0, y0, z1)], dir(P, -1, 0, 0));
-}
-
-// A spot for a building: distance to the track within [minD, maxD], dry, free.
-function findSpot(w, used, minD, maxD, radius, tries = 60) {
-  for (let k = 0; k < tries; k++) {
-    const { minX, maxX, minY, maxY } = w.bounds;
-    const x = minX - maxD + w.rnd() * (maxX - minX + maxD * 2);
-    const y = minY - maxD + w.rnd() * (maxY - minY + maxD * 2);
-    const d = w.distToTrack(x, y);
-    if (d < minD || d > maxD) continue;
-    if (w.lake && Math.hypot(x - w.lake.x, y - w.lake.y) < w.lake.r + radius + 20) continue;
-    if (y > w.seaY - 70 - radius) continue;
-    if (used.some((u) => Math.hypot(u.x - x, u.y - y) < u.r + radius + 10)) continue;
-    used.push({ x, y, r: radius });
-    return { x, y, h: w.heightAt(x, y), yaw: faceTrack(w.t, x, y) };
-  }
-  return null;
-}
-
-// Yaw so that local +x points at the nearest bit of track.
-function faceTrack(t, x, y) {
-  let best = 0;
-  let bd = Infinity;
-  for (let i = 0; i < t.count; i += 3) {
-    const d = (t.px[i] - x) ** 2 + (t.py[i] - y) ** 2;
-    if (d < bd) { bd = d; best = i; }
-  }
-  return yawFromDir(t.px[best] - x, t.py[best] - y);
-}
-
 // --- Buildings per theme ------------------------------------------------------------------
 function buildings(b, w, used) {
   const kind = w.th.buildings;
+  if (themeBuildings(b, w, used)) return;
   if (kind === 'farm') {
     const farm = findSpot(w, used, w.lim + 110, 420, 70);
     if (farm) {
@@ -272,6 +219,7 @@ function umbrella(b, x, h, z, color) {
 
 // --- Trees -----------------------------------------------------------------------------------
 function trees(b, w, used) {
+  if (w.th.trees === 'none') return;
   const { minX, maxX, minY, maxY } = w.bounds;
   for (let gy = minY - TREE_BAND; gy <= maxY + TREE_BAND; gy += TREE_STEP) {
     for (let gx = minX - TREE_BAND; gx <= maxX + TREE_BAND; gx += TREE_STEP) {
@@ -291,6 +239,7 @@ function trees(b, w, used) {
 
 function tree(b, th, x, h, y, s, rnd) {
   const leaf = th.leaves[Math.floor(rnd() * th.leaves.length)];
+  if (themeTree(b, th, x, h, y, s, rnd, leaf)) return;
   if (th.trees === 'cactus') {
     // Saguaro: a tall trunk with one or two arms.
     b.color(leaf).box(x, h, y, 3 * s, 17 * s, 3 * s, { bottom: false });
@@ -343,10 +292,11 @@ function tyreStacks(b, w) {
     const turn = turnAt(t, i);
     if (Math.abs(turn) < 0.35) continue;
     skip = 8;
-    // Outside of the bend.
+    // Outside of the bend, only where there is a barrier to stack them against.
     const side = turn > 0 ? 1 : -1;
+    if ((side < 0 ? t.wl[i] : t.wr[i]) < 0 || w.th.floating || t.gap[i]) continue;
     for (let k = 0; k < 3; k++) {
-      const off = side * (w.lim + 5);
+      const off = side * (w.limAt(i, side) + 5);
       const along = (k - 1) * 7;
       const x = t.px[i] - t.ty[i] * off + t.tx[i] * along;
       const z = t.py[i] + t.tx[i] * off + t.ty[i] * along;
@@ -363,7 +313,8 @@ function billboards(b, w) {
   for (let i = 10; i < t.count; i += 26) {
     if (Math.abs(turnAt(t, i)) > 0.12) continue;
     const side = n % 2 ? 1 : -1;
-    const off = side * (w.lim + 18);
+    if ((side < 0 ? t.wl[i] : t.wr[i]) < 0 || w.th.floating || t.gap[i]) continue;
+    const off = side * (w.limAt(i, side) + 18);
     const x = t.px[i] - t.ty[i] * off;
     const z = t.py[i] + t.tx[i] * off;
     const yaw = yawFromDir(t.tx[i], t.ty[i]);
@@ -386,7 +337,8 @@ function billboards(b, w) {
 
 // Grandstand with a crowd along the start straight (outside the barrier).
 function grandstand(b, w) {
-  const { t, th, lim, rnd } = w;
+  const { t, th, rnd } = w;
+  const lim = w.limAt(0, -1);
   const f0 = pointAt(t, t.length * 0.02);
   const yaw = yawFromDir(f0.tx, f0.ty);
   const at = (lat, along = 0) => [f0.x - f0.ty * lat + f0.tx * along, f0.y + f0.tx * lat + f0.ty * along];
@@ -417,11 +369,12 @@ function grandstand(b, w) {
 function startGantry(b, w) {
   const { t, th, ROAD_Y } = w;
   const f0 = pointAt(t, 0);
+  const half = f0.half;
   const cells = 10;
   for (let row = 0; row < 2; row++) {
     for (let col = 0; col < cells; col++) {
-      const a = -t.half + (col / cells) * t.half * 2;
-      const bb = a + (t.half * 2) / cells;
+      const a = -half + (col / cells) * half * 2;
+      const bb = a + (half * 2) / cells;
       const d0 = row * 5;
       const d1 = d0 + 5;
       const P = (lat, d) => [f0.x + f0.tx * d - f0.ty * lat, ROAD_Y + 0.06, f0.y + f0.ty * d + f0.tx * lat];
@@ -429,13 +382,13 @@ function startGantry(b, w) {
     }
   }
   const post = (lat) => [f0.x - f0.ty * lat, f0.y + f0.tx * lat];
-  for (const lat of [-(t.half + 12), t.half + 12]) {
+  for (const lat of [-(half + 12), half + 12]) {
     const [x, z] = post(lat);
     b.color('#9a9aa4').box(x, 0, z, 3.5, 30, 3.5);
   }
   const [gx, gz] = post(0);
   const yaw = yawFromDir(f0.tx, f0.ty);
-  const span = (t.half + 12) * 2;
+  const span = (half + 12) * 2;
   b.color('#9a9aa4').orientedBox(gx, 30, gz, 3, 5, span, yaw);
   b.color(th.wall[1]).orientedBox(gx - f0.tx * 1.8, 25, gz - f0.ty * 1.8, 0.5, 5, span * 0.7, yaw);
   for (let k = 0; k < 5; k++) {

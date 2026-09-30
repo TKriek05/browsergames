@@ -1,9 +1,10 @@
-// Turbo Kart GP: tracks, deterministic kart physics, laps, items and races.
+// Turbo Kart GP: tracks, deterministic kart physics, laps, items, races,
+// bumps, jumps, gaps, falling off and crossing tracks.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import kartrace from '../server/games/kartrace.js';
 import { stepKart, createKartState, KART_PHYS } from '../shared/physics/kart.js';
-import { KART_TRACKS, KART_TRACK_IDS, KART_CUPS, trackQuery, createTrackQuery, pointAt, WALL_MARGIN, MAX_SLOPE } from '../shared/maps/kart-tracks.js';
+import { KART_TRACKS, KART_TRACK_IDS, KART_CUPS, trackQuery, createTrackQuery, pointAt, WALL_MARGIN, MAX_SLOPE, JUMP_ZONE } from '../shared/maps/kart-tracks.js';
 import { KART_PHASE, KART_RULES, ITEM } from '../shared/games/kartrace.js';
 import { BTN } from '../shared/messages.js';
 import { ByteWriter, ByteReader, quantizeAxis } from '../shared/binary.js';
@@ -33,7 +34,7 @@ function run(game, room, seconds) {
   }
 }
 // Open field: the same track data without grass or barriers in reach.
-const open = { ...ring, pads: [], half: 5000 };
+const open = { ...ring, pads: [], hw: new Float32Array(ring.count).fill(5000) };
 function onStraight(d = 10) {
   const p = pointAt(ring, d); // Groene Vallei starts with a long straight
   return Object.assign(createKartState(), { x: p.x, y: p.y, hx: p.tx, hy: p.ty });
@@ -43,20 +44,22 @@ function onGrid(slot = 0, track = ring) {
   return Object.assign(createKartState(), { x: g.x, y: g.y, hx: g.hx, hy: g.hy });
 }
 
-test('every track is a clean loop: branches never overlap, grid and boxes are on the road', () => {
+test('every track is a clean loop: parts that come close cross on a bridge, grid and boxes are on the road', () => {
   for (const id of KART_TRACK_IDS) {
     const t = KART_TRACKS[id];
-    const need = 2 * (t.half + WALL_MARGIN);
     for (let i = 0; i < t.count; i += 3) {
       for (let j = 0; j < t.count; j += 3) {
+        const margin = (k) => Math.max(0, t.wl[k], t.wr[k]);
+        const need = t.hw[i] + t.hw[j] + margin(i) + margin(j) + 6;
         const along = Math.abs(t.cum[i] - t.cum[j]);
-        if (Math.min(along, t.length - along) < need * 2.2) continue;
-        assert.ok(Math.hypot(t.px[i] - t.px[j], t.py[i] - t.py[j]) > need, `${id}: samples ${i}/${j} too close`);
+        if (Math.min(along, t.length - along) < need * 2.5) continue;
+        const close = Math.hypot(t.px[i] - t.px[j], t.py[i] - t.py[j]) < need;
+        assert.ok(!close || Math.abs(t.pz[i] - t.pz[j]) >= 30, `${id}: samples ${i}/${j} too close without a bridge`);
       }
     }
     for (const p of [...t.grid, ...t.boxes, ...t.pads]) {
       trackQuery(t, p.x, p.y, q);
-      assert.ok(Math.abs(q.lateral) < t.half, `${id}: object off the road`);
+      assert.ok(Math.abs(q.lateral) < q.half, `${id}: object off the road`);
     }
     const p = pointAt(t, t.length * 0.5);
     trackQuery(t, p.x, p.y, q);
@@ -123,7 +126,7 @@ test('laps need all checkpoints; reversing over the line does not count', () => 
   assert.equal(game.phase, KART_PHASE.RACE);
   const k = game.karts[0];
   // Teleport just past the line: first crossing starts lap 1.
-  const put = (d) => { const p = pointAt(ring, d); k.s.x = p.x; k.s.y = p.y; game._progress(k); };
+  const put = (d) => { const p = pointAt(ring, d); k.s.x = p.x; k.s.y = p.y; k.s.seg = p.seg; game._progress(k); };
   put(ring.length - 5);
   put(5);
   assert.equal(k.lap, 1);
@@ -188,7 +191,7 @@ test('snapshot encoding has the documented layout', () => {
   assert.equal(r.u8(), 3);
   r.f32(); r.f32();
   assert.equal(r.u8(), 2);
-  r.pos += 2 * 52;
+  r.pos += 2 * 67; // bytes per kart
   r.u16();
   const objects = r.u8();
   assert.equal(r.remaining, objects * 8);
@@ -198,20 +201,26 @@ test('snapshot encoding has the documented layout', () => {
 test('track rules: flat start, gentle slopes, no corner tighter than the barriers', () => {
   for (const id of KART_TRACK_IDS) {
     const t = KART_TRACKS[id];
-    const lim = t.half + WALL_MARGIN;
+    const afterRamp = (i) => t.ramps.some((r) => {
+      const along = (t.cum[i] - t.cum[r.seg] + t.length) % t.length;
+      return along < JUMP_ZONE;
+    });
     for (let i = 0; i < t.count; i++) {
       const frac = t.cum[i] / t.length;
-      assert.ok(Math.abs(t.slope[i]) <= MAX_SLOPE, `${id}: slope ${t.slope[i]}`);
+      if (!afterRamp(i)) assert.ok(Math.abs(t.slope[i]) <= MAX_SLOPE, `${id}: slope ${t.slope[i]} at ${frac.toFixed(3)}`);
       if (frac < 0.05 || frac > 0.96) assert.equal(t.pz[i], 0, `${id}: the start straight is flat at 0`);
+      if (t.gap[i]) assert.ok(t.ramps.some((r) => (t.cum[i] - t.cum[r.seg] + t.length) % t.length < 160), `${id}: a gap needs a ramp right before it`);
     }
     for (let d = 0; d < t.length; d += 5) {
       const a = pointAt(t, d);
       const b = pointAt(t, d + 30);
       const turn = Math.abs(Math.atan2(a.tx * b.ty - a.ty * b.tx, a.tx * b.tx + a.ty * b.ty));
+      const lim = a.half + Math.max(0, t.wl[a.seg], t.wr[a.seg]);
       assert.ok(30 / Math.max(1e-6, turn) > lim + 3, `${id}: corner at ${(d / t.length).toFixed(2)} tighter than the barriers`);
     }
   }
-  assert.equal(KART_TRACK_IDS.filter((id) => KART_TRACKS[id].hilly).length, 3, 'three tracks with hills');
+  assert.ok(KART_TRACK_IDS.filter((id) => KART_TRACKS[id].hilly).length >= 3, 'tracks with hills');
+  assert.equal(KART_CUPS.gpgroot.length, 4, 'the big cup has four tracks');
   for (const cup of Object.values(KART_CUPS)) for (const id of cup) assert.ok(KART_TRACKS[id]);
 });
 
@@ -266,7 +275,7 @@ function race(track, players, extra = {}) {
 }
 const place = (k, track, d, lat = 0, v = 0) => {
   const p = pointAt(track, d);
-  Object.assign(k.s, { x: p.x - p.ty * lat, y: p.y + p.tx * lat, hx: p.tx, hy: p.ty, v, spin: 0, boost: 0 });
+  Object.assign(k.s, { x: p.x - p.ty * lat, y: p.y + p.tx * lat, hx: p.tx, hy: p.ty, v, spin: 0, boost: 0, seg: p.seg });
   k.px = k.s.x;
   k.py = k.s.y;
 };
@@ -411,4 +420,172 @@ test('bots race a hilly Grand Prix with all the items', () => {
   const finishes = room.events.filter((e) => e.e === 'finish').length;
   assert.ok(finishes >= 3, `bots finish the races (${finishes})`);
   assert.ok(game.karts.every((k) => k.history.length === 3), 'everybody raced all three');
+});
+
+// --- Track v2: crossings, jumps, gaps, falling off, bumps ---------------------------------------
+const harbour = KART_TRACKS.harbour;
+function kartAt(track, frac, lat = 0, v = 0) {
+  const p = pointAt(track, frac * track.length);
+  return Object.assign(createKartState(), { x: p.x - p.ty * lat, y: p.y + p.tx * lat, hx: p.tx, hy: p.ty, v, seg: p.seg });
+}
+// Drive straight on with gas for n steps.
+function drive(s, track, n, buttons = BTN.A) {
+  for (let i = 0; i < n; i++) stepKart(s, 0, 0, buttons, DT, track);
+  return s;
+}
+// Steer towards the centre line a bit ahead (like a careful driver).
+function steerAlong(s, track) {
+  trackQuery(track, s.x, s.y, q, s.seg);
+  const p = pointAt(track, q.dist + 50);
+  const dx = p.x - s.x;
+  const dy = p.y - s.y;
+  return Math.max(-1, Math.min(1, Math.atan2(dx * -s.hy + dy * s.hx, dx * s.hx + dy * s.hy) * 2.5));
+}
+
+test('a crossing: the kart on the bridge stays on the bridge, the one below stays below', () => {
+  // Find where the figure eight crosses itself.
+  let best = null;
+  for (let i = 0; i < harbour.count; i++) {
+    for (let j = 0; j < harbour.count; j++) {
+      const along = Math.abs(harbour.cum[i] - harbour.cum[j]);
+      if (Math.min(along, harbour.length - along) < 1000) continue;
+      const d = Math.hypot(harbour.px[i] - harbour.px[j], harbour.py[i] - harbour.py[j]);
+      if (!best || d < best.d) best = { i, j, d };
+    }
+  }
+  assert.ok(best.d < 20, 'the tracks cross');
+  const [hi, lo] = harbour.pz[best.i] > harbour.pz[best.j] ? [best.i, best.j] : [best.j, best.i];
+  for (const [seg, h] of [[hi, harbour.pz[hi]], [lo, harbour.pz[lo]]]) {
+    const s = Object.assign(createKartState(), { x: harbour.px[seg] - harbour.tx[seg] * 60, y: harbour.py[seg] - harbour.ty[seg] * 60,
+      hx: harbour.tx[seg], hy: harbour.ty[seg], v: 150, seg: (seg - 5 + harbour.count) % harbour.count });
+    drive(s, harbour, 12);
+    trackQuery(harbour, s.x, s.y, q, s.seg);
+    assert.ok(Math.abs(q.h - h) < 8, `stays on its own level (${q.h.toFixed(1)} vs ${h.toFixed(1)})`);
+    assert.equal(s.fall, 0);
+  }
+});
+
+test('ramps: you fly, a trick gives a boost on landing; too slow over a gap and you fall and come back', () => {
+  const clouds = KART_TRACKS.clouds;
+  const ramp = clouds.ramps[0];
+  const fracBefore = (clouds.cum[ramp.seg] - 60) / clouds.length;
+  const fast = kartAt(clouds, fracBefore, 0, KART_PHYS.MAX_SPEED);
+  let flew = false;
+  let trick = false;
+  for (let i = 0; i < 90 && !(flew && fast.z === 0 && fast.vz === 0); i++) {
+    const inAir = fast.z > 0 || fast.vz > 0;
+    stepKart(fast, steerAlong(fast, clouds), 0, BTN.A | (inAir && !trick ? BTN.B : 0), DT, clouds);
+    if (fast.z > 0) flew = true;
+    if (inAir && fast.trick) trick = true;
+    assert.equal(fast.fall, 0, 'a fast kart clears the gap');
+  }
+  assert.ok(flew && trick, 'jumped with a trick');
+  assert.ok(fast.boost > 0.5, `trick boost (${fast.boost})`);
+  // Slow: it does not make it over the gap.
+  const slow = kartAt(clouds, (clouds.cum[ramp.seg] - 30) / clouds.length, 0, 110);
+  let fell = false;
+  for (let i = 0; i < 120 && !fell; i++) {
+    stepKart(slow, steerAlong(slow, clouds), 0, 0, DT, clouds);
+    if (slow.fell) fell = true;
+  }
+  assert.ok(fell, 'fell into the gap');
+  drive(slow, clouds, Math.ceil(KART_PHYS.FALL_S / DT) + 1, 0);
+  assert.equal(slow.fall, 0);
+  trackQuery(clouds, slow.x, slow.y, q, slow.seg);
+  assert.ok(!clouds.gap[q.seg] && Math.abs(q.lateral) < 1, 'back on the road');
+  assert.ok(q.dist > clouds.cum[ramp.seg], 'put back past the gap');
+});
+
+test('no barrier: drive off the edge and you fall; with a barrier you do not', () => {
+  const jungle = KART_TRACKS.jungle;
+  let open = -1;
+  for (let i = 0; i < jungle.count && open < 0; i++) if (jungle.wr[i] < 0 && jungle.wr[(i + 20) % jungle.count] < 0) open = i;
+  assert.ok(open >= 0, 'an open stretch');
+  const s = kartAt(jungle, jungle.cum[open] / jungle.length, 0, 120);
+  let fell = false;
+  for (let i = 0; i < 60 && !fell; i++) {
+    stepKart(s, 1, 0, BTN.A, DT, jungle);
+    fell = s.fell === 1 || s.fall > 0;
+  }
+  assert.ok(fell, 'off the edge');
+  const r = kartAt(ring, 0.1, 0, 120);
+  for (let i = 0; i < 60; i++) {
+    stepKart(r, 1, 0, BTN.A, DT, ring);
+    assert.equal(r.fall, 0);
+  }
+});
+
+test('bumps: from behind pushes you on, from the side shoves you sideways, fast karts never pass through', () => {
+  const { game, room } = race('ring', [human('p1', 0), human('p2', 1)]);
+  const [ka, kb] = game.karts;
+  const tick = () => {
+    for (const k of game.karts) { k.px = k.s.x; k.py = k.s.y; }
+    game._bumps(DT);
+  };
+  // Rear-end: a fast kart runs into a slow one.
+  place(ka, ring, 300, 0, 170);
+  place(kb, ring, 300 + 10, 0, 40);
+  ka.px = ka.s.x - ka.s.hx * 6; ka.py = ka.s.y - ka.s.hy * 6;
+  kb.px = kb.s.x; kb.py = kb.s.y;
+  game._bumps(DT);
+  assert.ok(kb.s.v > 80, `the slow kart is pushed on (${kb.s.v})`);
+  assert.ok(ka.s.v < 170, 'the fast one loses speed');
+  // Side: pushed sideways (the slide fades out through the physics).
+  place(ka, ring, 600, -8, 120);
+  place(kb, ring, 600, 6, 120);
+  ka.s.vs = 60; // steering into the other one
+  ka.px = ka.s.x - ka.s.hx * 4; ka.py = ka.s.y - ka.s.hy * 4;
+  kb.px = kb.s.x - kb.s.hx * 4; kb.py = kb.s.y - kb.s.hy * 4;
+  game._bumps(DT);
+  assert.ok(kb.s.vs > 20, `shoved to the side (${kb.s.vs})`);
+  // Head-on at full speed from 20 units apart: never through each other.
+  place(ka, ring, 900, 0, 236);
+  place(kb, ring, 900 + 20, 0, 236);
+  kb.s.hx = -kb.s.hx; kb.s.hy = -kb.s.hy;
+  ka.px = ka.s.x; ka.py = ka.s.y; kb.px = kb.s.x; kb.py = kb.s.y;
+  ka.s.x += ka.s.hx * 16; ka.s.y += ka.s.hy * 16; // both drove on (two inputs in one tick)
+  kb.s.x += kb.s.hx * 16; kb.s.y += kb.s.hy * 16;
+  game._bumps(DT);
+  const p = pointAt(ring, 900);
+  const alongA = (ka.s.x - p.x) * p.tx + (ka.s.y - p.y) * p.ty;
+  const alongB = (kb.s.x - p.x) * p.tx + (kb.s.y - p.y) * p.ty;
+  assert.ok(alongA < alongB, 'still on their own side');
+  void tick;
+  void room;
+});
+
+test('karts on different levels do not bump', () => {
+  const { game } = race('harbour', [human('p1', 0), human('p2', 1)]);
+  const [ka, kb] = game.karts;
+  place(ka, harbour, 500, 0, 100);
+  place(kb, harbour, 500, 3, 100);
+  ka.s.seg = kb.s.seg = pointAt(harbour, 500).seg;
+  kb.s.z = 30; // flying over
+  const before = [kb.s.x, kb.s.y];
+  ka.px = ka.s.x; ka.py = ka.s.y; kb.px = kb.s.x; kb.py = kb.s.y;
+  game._bumps(DT);
+  assert.deepEqual([kb.s.x, kb.s.y], before, 'no contact');
+});
+
+test('bots race the big Grand Prix with jumps, gaps and bridges', () => {
+  const players = [bot('p1', 0, 'hard'), bot('p2', 1, 'normal'), bot('p3', 2, 'easy'), bot('p4', 3, 'normal')];
+  const room = fakeRoom(players);
+  const game = kartrace.create(room, { track: 'gpgroot', laps: 1, items: true, seed: 7 });
+  let ms = 0;
+  let ticks = 0;
+  for (let i = 0; i < 4 * 150 * SIM_TICK_RATE && !room.results; i++) {
+    room.clock += DT * 1000;
+    const t0 = performance.now();
+    game.tick(DT);
+    ms += performance.now() - t0;
+    ticks++;
+  }
+  assert.ok(room.results, 'the cup finishes');
+  assert.equal(game.raceNo, 4);
+  // Bot-only races end shortly after the winner: at least one finish per race.
+  const finishes = room.events.filter((e) => e.e === 'finish').length;
+  assert.ok(finishes >= 4, `every race has a winner (${finishes})`);
+  const falls = room.events.filter((e) => e.e === 'fall').length;
+  assert.ok(falls <= 6, `bots hardly ever fall off (${falls})`);
+  assert.ok(ms / ticks < 2, `ticks stay cheap (${(ms / ticks).toFixed(2)} ms)`);
 });

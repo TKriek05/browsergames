@@ -169,12 +169,12 @@ const entries = [
   {
     id: 'kartrace',
     title: 'Turbo Kart GP',
-    tagline: 'Kartracen in 3D met drift, items en een Grand Prix.',
+    tagline: 'Kartracen in 3D met drift, sprongen, items en een Grand Prix.',
     kind: 'realtime',
     phase: 4,
     available: true,
     bots: true,
-    controls: 'Pijltjes/WASD (omhoog = gas), Shift = driften, E = item. Touch: stuur + knoppen',
+    controls: 'Pijltjes/WASD (omhoog = gas), Shift = driften (in de lucht: trick), E = item. Touch: stuur + knoppen',
     settings: [
       {
         key: 'track',
@@ -187,8 +187,13 @@ const entries = [
           { value: 'alpine', label: 'Alpenpas (heuvels)' },
           { value: 'canyon', label: 'Rode Canyon (heuvels)' },
           { value: 'volcano', label: 'Vulkaaneiland (heuvels)' },
+          { value: 'harbour', label: 'Havenstad (groot, brug + sprong)' },
+          { value: 'jungle', label: 'Jungletempel (groot, waterval + touwbrug)' },
+          { value: 'summit', label: 'Sneeuwtop (groot, over zichzelf heen)' },
+          { value: 'clouds', label: 'Wolkenpaleis (groot, zonder vangrails!)' },
           { value: 'gp', label: 'Grand Prix: Klassiek (3 races)' },
           { value: 'gphills', label: 'Grand Prix: Heuvels (3 races)' },
+          { value: 'gpgroot', label: 'Grand Prix: Groot (4 races)' },
         ],
         default: 'ring',
       },
