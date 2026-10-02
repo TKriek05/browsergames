@@ -6,7 +6,7 @@
 import { ArcadeGame } from './arcade.js';
 import { ARCADE_PHASE } from '../../shared/games/arcade.js';
 import { PB_ARENAS } from '../../shared/maps/paintball-arenas.js';
-import { PB_PHYS, createRunner, stepRunner, collide, raycast, rayPlayer, aimDir, lineOfSight } from '../../shared/physics/paintball.js';
+import { PB_PHYS, createRunner, stepRunner, collide, raycast, rayPlayer, aimDir, lineOfSight, eyeHeight } from '../../shared/physics/paintball.js';
 import { PB_RULES as R, PB_FLAG, PB_POWER_RULES as PR, yawToI16, wrapAngle } from '../../shared/games/paintball.js';
 import { BTN } from '../../shared/messages.js';
 import { LagHistory } from '../lagcomp.js';
@@ -18,6 +18,8 @@ const END_HOLD_S = 4;
 const LATE_JOIN_S = 1;
 const round1 = (v) => Math.round(v * 10) / 10;
 const clampPitch = (p) => Math.max(-R.MAX_PITCH, Math.min(R.MAX_PITCH, p));
+// u8 body: bit 0 on the ground, bits 1-2 stance, bits 3-6 the held runner buttons X, Y, L, R (for the toggles)
+const packBody = (s) => s.ground | (s.stance << 1) | (s.prev & BTN.X ? 8 : 0) | (s.prev & BTN.Y ? 16 : 0) | (s.prev & BTN.L ? 32 : 0) | (s.prev & BTN.R ? 64 : 0);
 const ds = (t) => Math.min(255, Math.ceil(Math.max(0, t) * 10));
 
 class PaintballGame extends ArcadeGame {
@@ -72,6 +74,8 @@ class PaintballGame extends ArcadeGame {
     s.vy = 0;
     s.vz = 0;
     s.ground = 1;
+    s.stance = 0;
+    s.prev = 0;
     e.yaw = Math.atan2(this.level.height / 2 - spawn.y, this.level.width / 2 - spawn.x);
     e.pitch = 0;
     e.hp = R.HP;
@@ -141,7 +145,7 @@ class PaintballGame extends ArcadeGame {
     }
     if (e.player.isBot) {
       const b = stepPaintBot(e, this, dt, this.rng);
-      stepRunner(e.s, b.ax, b.ay, b.jump, dt, this.level);
+      stepRunner(e.s, b.ax, b.ay, b.buttons, dt, this.level);
       e.yaw = b.yaw;
       e.pitch = b.pitch;
       if (b.reload) this._startReload(e);
@@ -149,7 +153,7 @@ class PaintballGame extends ArcadeGame {
       return;
     }
     this.eachInput(e, (input) => {
-      stepRunner(e.s, input.ax, input.ay, (input.buttons & BTN.X) !== 0, dt, this.level);
+      stepRunner(e.s, input.ax, input.ay, input.buttons, dt, this.level);
       e.yaw = input.aim;
       if (input.buttons & BTN.B) this._startReload(e);
     });
@@ -227,7 +231,7 @@ class PaintballGame extends ArcadeGame {
     // ours), but never through a wall.
     let x0 = e.s.x;
     let y0 = e.s.y;
-    let z0 = e.s.z + PB_PHYS.EYE;
+    let z0 = e.s.z + eyeHeight(e.s.stance);
     if (from && Math.hypot(from.x - x0, from.y - y0, from.z - z0) <= R.MAX_SHOT_OFFSET && lineOfSight(this.level, x0, y0, z0, from.x, from.y, from.z)) {
       x0 = from.x;
       y0 = from.y;
@@ -247,7 +251,7 @@ class PaintballGame extends ArcadeGame {
     for (const o of this.ents) {
       if (o === e || !o.alive) continue;
       const p = this.history.positionAt(o.player.slot, time, this.pos) ? this.pos : o.s;
-      const t = rayPlayer(x0, y0, z0, d.x, d.y, d.z, p.x, p.y, p.z);
+      const t = rayPlayer(x0, y0, z0, d.x, d.y, d.z, p.x, p.y, p.z, o.s.stance);
       if (t < best) {
         best = t;
         victim = o;
@@ -289,8 +293,8 @@ class PaintballGame extends ArcadeGame {
   // Snapshot + results
   // ---------------------------------------------------------------------------
   // Body: u8 phase, f32 seconds left, u8 n × [u8 slot, u8 flags, u16 ack,
-  //   f32 x, f32 y, f32 z, f32 vx, f32 vy, f32 vz, f32 boost, u8 ground, i16 yaw, i16 pitch,
-  //   u8 hp, u8 ammo, i16 kills, u8 deaths,
+  //   f32 x, f32 y, f32 z, f32 vx, f32 vy, f32 vz, f32 boost, u8 body, i16 yaw, i16 pitch,
+  //   u8 hp, u8 ammo, i16 kills, u8 deaths, (body: see packBody)
   //   u8 respawn (ds), u8 reload (ds), u8 armor, u8 rapid, spread, camo (ds)],
   //   power-up pads (PaintPowers.write)
   snapshot(w) {
@@ -303,7 +307,7 @@ class PaintballGame extends ArcadeGame {
         | (e.camo > 0 ? PB_FLAG.CAMO : 0) | (e.rapid > 0 ? PB_FLAG.RAPID : 0) | (e.spread > 0 ? PB_FLAG.SPREAD : 0);
       const s = e.s;
       w.u8(p.slot).u8(flags).u16(e.queue.ackSeq);
-      w.f32(s.x).f32(s.y).f32(s.z).f32(s.vx).f32(s.vy).f32(s.vz).f32(s.boost).u8(s.ground).i16(yawToI16(e.yaw)).i16(yawToI16(e.pitch));
+      w.f32(s.x).f32(s.y).f32(s.z).f32(s.vx).f32(s.vy).f32(s.vz).f32(s.boost).u8(packBody(s)).i16(yawToI16(e.yaw)).i16(yawToI16(e.pitch));
       w.u8(e.hp).u8(e.ammo).i16(Math.max(-32000, Math.min(32000, e.kills))).u8(Math.min(255, e.deaths));
       w.u8(ds(e.respawn)).u8(ds(e.reload));
       w.u8(e.armor).u8(ds(e.rapid)).u8(ds(e.spread)).u8(ds(e.camo));

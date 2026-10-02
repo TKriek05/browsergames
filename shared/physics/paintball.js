@@ -6,9 +6,14 @@
 // { t: 'box', x, y, w, h, z0, z1 } (centre, size, bottom and top) or upright
 // cylinders { t: 'can', x, y, r, z0, z1 }. Game (x, y) is the ground plane,
 // z is up. A runner walks up anything up to STEP high (stairs, kerbs), falls
-// off edges, jumps (onto crates) and bumps its head on ceilings.
+// off edges, jumps (onto crates), bumps its head on ceilings and can crouch
+// or lie down (smaller and slower; standing up needs room above).
+// Buttons (shared/messages.js BTN): X = jump (held); a press of Y cycles
+// stand → crouch → lie down → stand (Shift), R toggles crouching (C) and L
+// lying down (Z); jumping stands you up first.
 // The wish direction (ax, ay) is already in world space: the client turns
 // "forward/strafe + view angle" into it before quantizing and sending.
+import { BTN } from '../messages.js';
 
 export const PB_PHYS = {
   DT: 1 / 30,
@@ -26,6 +31,15 @@ export const PB_PHYS = {
   EYE: 15, // eye height
   GUN: 13, // the marker, where the paint leaves (for the looks)
 };
+// Standing, crouching (bukken) and lying down (liggen).
+export const PB_STANCE = { STAND: 0, CROUCH: 1, PRONE: 2 };
+const STANCES = [
+  { height: 17, eye: 15, speed: 1, hit: 5.2 },
+  { height: 11, eye: 9.5, speed: 0.55, hit: 5.2 },
+  { height: 5.5, eye: 4, speed: 0.3, hit: 6.8 }, // lying: low but long, so a wider hit volume
+];
+export const bodyHeight = (stance) => STANCES[stance | 0].height;
+export const eyeHeight = (stance) => STANCES[stance | 0].eye;
 // A jump reaches its top at JUMP² / 2G; with the step on top of that this is the highest edge you can climb.
 export const JUMP_REACH = (PB_PHYS.JUMP * PB_PHYS.JUMP) / (2 * PB_PHYS.GRAVITY) + PB_PHYS.STEP - 0.5;
 
@@ -34,13 +48,37 @@ const EPS = 1e-4;
 const rayNormal = { x: 0, y: 0, z: 0 };
 
 export function createRunner(x = 0, y = 0, z = 0) {
-  return { x, y, z, vx: 0, vy: 0, vz: 0, boost: 0, ground: 1 };
+  return { x, y, z, vx: 0, vy: 0, vz: 0, boost: 0, ground: 1, stance: 0, prev: 0 };
 }
 
-// One tick. jump: the jump button is held (you jump again as soon as you land).
-export function stepRunner(s, ax, ay, jump, dt, level) {
+// The buttons that matter for the runner (and are remembered in s.prev for the toggles).
+export const RUNNER_BUTTONS = BTN.X | BTN.Y | BTN.L | BTN.R;
+
+// One tick. buttons: BTN.X held = jump (again as soon as you land); a press
+// of BTN.Y cycles the stance, BTN.R / BTN.L toggle crouching / lying down.
+export function stepRunner(s, ax, ay, buttons, dt, level) {
   const P = PB_PHYS;
-  const speed = s.boost > 0 ? P.SPEED * P.SPRINT : P.SPEED;
+  const held = buttons & RUNNER_BUTTONS;
+  const pressed = held & ~s.prev;
+  s.prev = held;
+  // Change stance (on the ground only). Getting up needs room above: from
+  // lying down you may only get as far as crouching under a low ceiling.
+  let jump = (held & BTN.X) !== 0;
+  if (s.ground) {
+    let want = s.stance;
+    if (pressed & BTN.Y) want = s.stance === PB_STANCE.PRONE ? PB_STANCE.STAND : s.stance + 1;
+    if (pressed & BTN.R) want = s.stance === PB_STANCE.CROUCH ? PB_STANCE.STAND : PB_STANCE.CROUCH;
+    if (pressed & BTN.L) want = s.stance === PB_STANCE.PRONE ? PB_STANCE.STAND : PB_STANCE.PRONE;
+    if (pressed & BTN.X && s.stance !== PB_STANCE.STAND) want = PB_STANCE.STAND;
+    if (s.stance !== PB_STANCE.STAND) jump = false; // first get up
+    if (want < s.stance) {
+      const room = ceilingHeight(level, s.x, s.y, P.RADIUS - 0.5, s.z + bodyHeight(s.stance)) - s.z;
+      while (want < s.stance && bodyHeight(want) > room + EPS) want++;
+    }
+    s.stance = want;
+  }
+  const st = STANCES[s.stance];
+  const speed = (s.boost > 0 ? P.SPEED * P.SPRINT : P.SPEED) * st.speed;
   if (s.boost > 0) s.boost = f(s.boost - dt > 0 ? s.boost - dt : 0);
   let dvx = ax * speed - s.vx;
   let dvy = ay * speed - s.vy;
@@ -66,9 +104,9 @@ export function stepRunner(s, ax, ay, jump, dt, level) {
   let vz = s.vz - P.GRAVITY * dt;
   let z = z0 + vz * dt;
   if (vz > 0) {
-    const ceil = ceilingHeight(level, s.x, s.y, P.RADIUS - 0.5, z0 + P.HEIGHT);
-    if (z + P.HEIGHT > ceil) {
-      z = ceil - P.HEIGHT;
+    const ceil = ceilingHeight(level, s.x, s.y, P.RADIUS - 0.5, z0 + st.height);
+    if (z + st.height > ceil) {
+      z = ceil - st.height;
       vz = 0;
     }
   }
@@ -130,7 +168,7 @@ export function ceilingHeight(level, x, y, r, zMin) {
 export function collide(s, level, r) {
   const list = level.solids;
   const lo = (s.z ?? 0) + PB_PHYS.STEP;
-  const hi = (s.z ?? 0) + PB_PHYS.HEIGHT;
+  const hi = (s.z ?? 0) + bodyHeight(s.stance ?? 0);
   for (let i = 0; i < list.length; i++) {
     const o = list[i];
     if (o.z1 <= lo || o.z0 >= hi) continue;
@@ -300,9 +338,11 @@ export function rayCylinder(ox, oy, oz, dx, dy, dz, cx, cy, r, z0, z1, n = null)
   return t;
 }
 
-// A player's hit volume: an upright cylinder from the feet to just over the head.
-export function rayPlayer(ox, oy, oz, dx, dy, dz, px, py, pz) {
-  return rayCylinder(ox, oy, oz, dx, dy, dz, px, py, PB_PHYS.HIT_RADIUS, pz, pz + PB_PHYS.HEIGHT + 1);
+// A player's hit volume: an upright cylinder from the feet to just over the
+// head (lower and a little wider when lying down).
+export function rayPlayer(ox, oy, oz, dx, dy, dz, px, py, pz, stance = 0) {
+  const st = STANCES[stance | 0];
+  return rayCylinder(ox, oy, oz, dx, dy, dz, px, py, st.hit, pz, pz + st.height + 1);
 }
 
 // First solid, the ground or the field edge along the ray. Returns the

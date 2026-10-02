@@ -342,7 +342,7 @@ const entries = [
   {
     id: 'paintball', title: 'Spetterveld', tagline: 'Paintball in 3D: klim op kisten, loop gebouwen in en spetter je vrienden onder de verf.',
     kind: 'realtime', phase: 6, available: true, bots: true,
-    controls: 'Klik om te richten met de muis (ook omhoog/omlaag), WASD lopen, spatie springen, klik = schieten, R = herladen. Toetsen: pijltjes draaien, T/G omhoog/omlaag kijken, F schiet',
+    controls: 'Klik om te richten met de muis (ook omhoog/omlaag), WASD lopen, spatie springen, Shift bukken/liggen (C bukken, Z liggen), klik = schieten, R = herladen. Toetsen: pijltjes draaien, T/G omhoog/omlaag kijken, F schiet',
     settings: [
       {
         key: 'duration', label: 'Speelduur', type: 'select',

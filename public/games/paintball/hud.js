@@ -136,6 +136,12 @@ export function createPaintHud(view) {
     },
 
     // Hopper: one dot per ball, or a reload bar (rapid fire: no hopper needed).
+    // Crouching / lying down: a word next to the health dots.
+    stance(st) {
+      if (!st) return;
+      drawText(ctx, st === 1 ? 'GEBUKT' : 'LIGGEND', 12 + PB_RULES.HP * 14 + 2, H - 19, { color: '#ffffff', shadow: SHADOW });
+    },
+
     ammo(n, reload, color, rapid = false) {
       const x0 = W - 10;
       const y = H - 14;

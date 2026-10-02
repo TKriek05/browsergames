@@ -8,7 +8,9 @@
 import { INTERP_DELAY_MS } from '../../../shared/constants.js';
 import { BTN, C2S } from '../../../shared/messages.js';
 import { PB_ARENAS } from '../../../shared/maps/paintball-arenas.js';
-import { PB_PHYS, stepRunner, raycast, rayPlayer, aimDir, lineOfSight, groundHeight } from '../../../shared/physics/paintball.js';
+import {
+  PB_PHYS, PB_STANCE, RUNNER_BUTTONS, stepRunner, raycast, rayPlayer, aimDir, lineOfSight, groundHeight, eyeHeight, bodyHeight,
+} from '../../../shared/physics/paintball.js';
 import { PB_RULES as R, PB_FLAG, PB_POWERS, PB_POWER, PB_POWER_RULES as PR, i16ToYaw, wrapAngle } from '../../../shared/games/paintball.js';
 import { createArcadeCore, ARCADE_PHASE } from '../common/arcade.js';
 import { Predictor } from '../../js/core/predict.js';
@@ -25,7 +27,9 @@ export const meta = {
   pixelated: false,
   gl: true,
   step: PB_PHYS.DT,
-  touchButtons: [{ label: 'LAAD', bit: BTN.B }, { label: 'SPRING', bit: BTN.X }, { label: 'VUUR', bit: BTN.A }],
+  touchButtons: [
+    { label: 'BUK', bit: BTN.Y }, { label: 'LAAD', bit: BTN.B }, { label: 'SPRING', bit: BTN.X }, { label: 'VUUR', bit: BTN.A },
+  ],
   keys: {
     up: ['KeyW', 'ArrowUp'],
     down: ['KeyS', 'ArrowDown'],
@@ -34,6 +38,9 @@ export const meta = {
     A: ['KeyJ', 'Enter', 'KeyF'],
     B: ['KeyR'],
     X: ['Space'],
+    Y: ['ShiftLeft', 'ShiftRight'], // stand → crouch → lie down → stand
+    R: ['KeyC'], // crouch (toggle); reload is B (the R key)
+    L: ['KeyZ'], // lie down (toggle)
     turnLeft: ['ArrowLeft', 'KeyQ'],
     turnRight: ['ArrowRight', 'KeyE'],
     lookUp: ['PageUp', 'KeyT'],
@@ -46,11 +53,17 @@ const KEY_TILT = 1.4;
 const PAD_TURN = 3.4;
 const PAD_TILT = 2;
 const ASSIST_RAD = 0.085; // touch/gamepad: shots snap to a player this close to the crosshair
-const CHEST = 10; // aim assist and labels: this high above a player's feet
+const CHEST = 0.6; // aim assist and labels: this part of a player's height (the chest)
+const EYE_SMOOTH = 14; // the camera glides to a new eye height (crouching, getting up) at this rate
 const LOOK_EVERY_MS = 150; // tell the server where you look (up/down) at most this often
 const FEED_S = 6;
 const MAX_MARKS = 4; // paint spots on a player
 const CAMO_ALPHA = 0.14;
+
+// u8 body (see the server's packBody): on the ground, stance, held jump/crouch/lie buttons.
+function unpackBody(b) {
+  return { ground: b & 1, stance: (b >> 1) & 3, prev: (b & 8 ? BTN.X : 0) | (b & 16 ? BTN.Y : 0) | (b & 32 ? BTN.L : 0) | (b & 64 ? BTN.R : 0) };
+}
 
 function decode(r, time) {
   const s = { time, phase: r.u8(), endsAt: 0, ents: [], pads: [] };
@@ -61,7 +74,7 @@ function decode(r, time) {
     const flags = r.u8();
     s.ents.push({
       slot, flags, ack: r.u16(),
-      x: r.f32(), y: r.f32(), z: r.f32(), vx: r.f32(), vy: r.f32(), vz: r.f32(), boost: r.f32(), ground: r.u8(),
+      x: r.f32(), y: r.f32(), z: r.f32(), vx: r.f32(), vy: r.f32(), vz: r.f32(), boost: r.f32(), ...unpackBody(r.u8()),
       yaw: i16ToYaw(r.i16()), pitch: i16ToYaw(r.i16()),
       hp: r.u8(), ammo: r.u8(), kills: r.i16(), deaths: r.u8(), respawn: r.u8() / 10, reload: r.u8() / 10,
       armor: r.u8(), rapid: r.u8() / 10, spread: r.u8() / 10, camo: r.u8() / 10,
@@ -107,11 +120,12 @@ export function createGame() {
   const dir = { x: 0, y: 0, z: 0 };
   const timers = [[PB_POWER.RAPID, 0], [PB_POWER.SPREAD, 0], [PB_POWER.SPRINT, 0], [PB_POWER.CAMO, 0], [PB_POWER.ARMOR, 0]];
 
-  const KEYS = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'boost', 'ground'];
+  const KEYS = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'boost', 'ground', 'stance', 'prev'];
+  let eyeShown = PB_PHYS.EYE; // the camera's eye height, gliding after the stance
   const predictor = new Predictor({
-    create: () => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, boost: 0, ground: 1 }),
+    create: () => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, boost: 0, ground: 1, stance: 0, prev: 0 }),
     copy: (d, s) => { for (const k of KEYS) d[k] = s[k]; },
-    step: (s, inp) => stepRunner(s, inp.ax, inp.ay, (inp.buttons & BTN.X) !== 0, PB_PHYS.DT, arena),
+    step: (s, inp) => stepRunner(s, inp.ax, inp.ay, inp.buttons, PB_PHYS.DT, arena),
     smoothKeys: ['x', 'y', 'z'],
   });
   const core = createArcadeCore({
@@ -144,9 +158,10 @@ export function createGame() {
     let bestD = ASSIST_RAD;
     for (const [, q] of drawn) {
       const ta = Math.atan2(q.y - py, q.x - px);
-      const tp = Math.atan2(q.z + CHEST - pz, Math.hypot(q.x - px, q.y - py));
+      const qc = q.z + bodyHeight(q.stance) * CHEST;
+      const tp = Math.atan2(qc - pz, Math.hypot(q.x - px, q.y - py));
       const d = Math.hypot(wrapAngle(ta - a), tp - p);
-      if (d < bestD && Math.hypot(q.x - px, q.y - py) < 300 && lineOfSight(arena, px, py, pz, q.x, q.y, q.z + CHEST)) {
+      if (d < bestD && Math.hypot(q.x - px, q.y - py) < 300 && lineOfSight(arena, px, py, pz, q.x, q.y, qc)) {
         bestD = d;
         aim.a = ta;
         aim.p = tp;
@@ -164,7 +179,7 @@ export function createGame() {
     lastShotAt = nowS();
     const px = predictor.state.x;
     const py = predictor.state.y;
-    const pz = predictor.state.z + PB_PHYS.EYE;
+    const pz = predictor.state.z + eyeHeight(predictor.state.stance);
     const { a, p } = assisted(yaw, pitch, px, py, pz);
     const round2 = (v) => Math.round(v * 100) / 100;
     net.send(C2S.INPUT, { data: { a, p, t: net.serverNow() - INTERP_DELAY_MS, x: round2(px), y: round2(py), z: round2(pz) } });
@@ -176,7 +191,7 @@ export function createGame() {
       let end = raycast(arena, px, py, pz, d.x, d.y, d.z, R.RANGE, ray);
       let paint = ray.solid >= 0 || ray.solid === -2;
       for (const [, q] of drawn) {
-        const t = rayPlayer(px, py, pz, d.x, d.y, d.z, q.x, q.y, q.z);
+        const t = rayPlayer(px, py, pz, d.x, d.y, d.z, q.x, q.y, q.z, q.stance);
         if (t < end) {
           end = t;
           paint = false;
@@ -379,7 +394,7 @@ export function createGame() {
       let wy = s * fwd + c * side;
       const len = Math.hypot(wx, wy);
       if (len > 1) { wx /= len; wy /= len; }
-      core.send(wx, wy, inp.buttons & BTN.B, yaw);
+      core.send(wx, wy, inp.buttons & (BTN.B | RUNNER_BUTTONS), yaw); // reload, jump, crouch, lie down (shots go as their own message)
       if (inp.buttons & BTN.B) startReload();
       if (inp.buttons & BTN.A || controls.mouseFire) fire(mine);
     },
@@ -402,8 +417,10 @@ export function createGame() {
       walkMe += speed * frameDt * 0.2;
       const bob = alive && !reduced ? Math.sin(walkMe * 2) * 0.28 * Math.min(1, speed / PB_PHYS.SPEED) : 0;
       const dead = mine && !mine.alive ? Math.max(0.01, nowS() - deathAt) : 0;
+      const stance = alive ? predictor.state.stance : PB_STANCE.STAND;
+      eyeShown += (eyeHeight(stance) - eyeShown) * (1 - Math.exp(-frameDt * EYE_SMOOTH));
       if (scene) {
-        if (!scene.begin({ x: px, y: py, z: pz, yaw, pitch, bob, dead, overview: me < 0 || !L })) return;
+        if (!scene.begin({ x: px, y: py, z: pz, eye: eyeShown, yaw, pitch, bob: bob * (stance === PB_STANCE.PRONE ? 0.3 : 1), dead, overview: me < 0 || !L })) return;
       } else flat.begin();
       if (!L) {
         scene?.endWorld();
@@ -428,12 +445,13 @@ export function createGame() {
         const sp = eb.ground ? Math.hypot(eb.vx, eb.vy) : 0;
         const w = (walk.get(eb.slot) ?? 0) + sp * frameDt * 0.2;
         walk.set(eb.slot, w);
-        drawn.set(eb.slot, { x, y, z });
+        drawn.set(eb.slot, { x, y, z, stance: eb.stance });
         const near = Math.hypot(x - px, y - py, z - pz) < PR.CAMO_SIGHT;
-        if (scene) scene.player(x, y, z, sy, eb.pitch, w, sp, rgb(hex), marks.get(eb.slot), camo ? CAMO_ALPHA : 1, !eb.ground);
+        if (scene) scene.player(x, y, z, sy, eb.pitch, w, sp, rgb(hex), marks.get(eb.slot), camo ? CAMO_ALPHA : 1, !eb.ground, eb.stance);
         else if (!camo || near) flat.player(x, y, sy, hex, false);
         if (eb.flags & PB_FLAG.SHIELD && (!camo || near)) shields.push([x, y, z, hex]);
-        if ((!camo || near || me < 0) && (me < 0 || !alive || lineOfSight(arena, px, py, pz + PB_PHYS.EYE, x, y, z + CHEST))) labels.push([x, y, z, eb.slot, hex]);
+        const top = z + bodyHeight(eb.stance);
+        if ((!camo || near || me < 0) && (me < 0 || !alive || lineOfSight(arena, px, py, pz + eyeShown, x, y, z + bodyHeight(eb.stance) * CHEST))) labels.push([x, y, top, eb.slot, hex]);
       });
       if (scene) {
         scene.balls();
@@ -443,8 +461,8 @@ export function createGame() {
       }
 
       // --- HUD ---
-      for (const [x, y, z, slot, hex] of labels) {
-        const p = scene ? scene.project(x, y, z + 20, scratch) : null;
+      for (const [x, y, top, slot, hex] of labels) {
+        const p = scene ? scene.project(x, y, top + 3, scratch) : null;
         if (p && p.depth < 320) hud.label(p.x, p.y, core.name(slot), hex);
       }
       if (alive) hud.splashes();
@@ -458,6 +476,7 @@ export function createGame() {
       if (alive) {
         hud.crosshair(t - hitAt, core.hex(me));
         hud.health(mine.hp);
+        hud.stance(stance);
         hud.ammo(ammo, reload, core.hex(me), (mine.flags & PB_FLAG.RAPID) !== 0);
         timers[0][1] = mine.rapid;
         timers[1][1] = mine.spread;

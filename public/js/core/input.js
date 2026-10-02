@@ -80,6 +80,8 @@ export class Input {
     if (this._pressed('B')) buttons |= BTN.B;
     if (this._pressed('X')) buttons |= BTN.X;
     if (this._pressed('Y')) buttons |= BTN.Y;
+    if (this._pressed('L')) buttons |= BTN.L; // only games that map keys to L/R (meta.keys)
+    if (this._pressed('R')) buttons |= BTN.R;
 
     // Gamepad (first connected pad, standard mapping).
     // The Gamepad API needs a secure context (https or localhost).

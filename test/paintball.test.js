@@ -7,8 +7,9 @@ import { PB_ARENAS } from '../shared/maps/paintball-arenas.js';
 import { PB_LEVELS } from '../shared/maps/paintball-levels.js';
 import { STOREY } from '../shared/maps/paintball-build.js';
 import {
-  PB_PHYS, JUMP_REACH, createRunner, stepRunner, collide, raycast, rayBox, rayCylinder, lineOfSight, groundHeight, standsFree,
+  PB_PHYS, PB_STANCE, JUMP_REACH, createRunner, stepRunner, collide, raycast, rayBox, rayCylinder, lineOfSight, groundHeight, standsFree,
 } from '../shared/physics/paintball.js';
+import { BTN } from '../shared/messages.js';
 import { PB_RULES, PB_FLAG, PB_POWER, PB_POWERS, PB_POWER_RULES, i16ToYaw, yawToI16 } from '../shared/games/paintball.js';
 import { PAD_EMPTY } from '../server/games/paintball-powers.js';
 import { pickTargetForTest, goToForTest, stepPaintBot } from '../server/games/paintball-bots.js';
@@ -39,9 +40,10 @@ function run(game, room, seconds) {
     game.tick(DT);
   }
 }
-// Walk (ax, ay) for a number of ticks, jumping while `jump`.
+// Walk (ax, ay) for a number of ticks, jumping while `jump` (or with these buttons held).
 function walk(s, level, ax, ay, ticks, jump = false) {
-  for (let i = 0; i < ticks; i++) stepRunner(s, ax, ay, jump, DT, level);
+  const buttons = typeof jump === 'number' ? jump : jump ? BTN.X : 0;
+  for (let i = 0; i < ticks; i++) stepRunner(s, ax, ay, buttons, DT, level);
   return s;
 }
 
@@ -83,13 +85,17 @@ test('the big fields: every floor you can stand on is reachable', () => {
 
 test('movement is deterministic, float32-exact and never enters a solid', () => {
   const rng = createRng(3);
-  const inputs = Array.from({ length: 900 }, () => [quantizeAxis(rng() * 2 - 1), quantizeAxis(rng() * 2 - 1), rng() < 0.1]);
+  const pick = () => {
+    const r = rng();
+    return r < 0.1 ? BTN.X : r < 0.13 ? BTN.Y : r < 0.16 ? BTN.R : r < 0.18 ? BTN.L : 0;
+  };
+  const inputs = Array.from({ length: 900 }, () => [quantizeAxis(rng() * 2 - 1), quantizeAxis(rng() * 2 - 1), pick()]);
   for (const a of Object.values(PB_ARENAS)) {
     const once = () => {
       const s = createRunner(a.spawns[0].x, a.spawns[0].y, a.spawns[0].z);
-      for (const [ax, ay, jump] of inputs) {
-        stepRunner(s, ax, ay, jump, PB_PHYS.DT, a);
-        const probe = { x: s.x, y: s.y, z: s.z };
+      for (const [ax, ay, buttons] of inputs) {
+        stepRunner(s, ax, ay, buttons, PB_PHYS.DT, a);
+        const probe = { x: s.x, y: s.y, z: s.z, stance: s.stance };
         collide(probe, a, PB_PHYS.RADIUS - 0.01);
         assert.ok(Math.hypot(probe.x - s.x, probe.y - s.y) < 0.02, `${a.key}: inside a solid at ${s.x},${s.y},${s.z}`);
         assert.ok(s.z >= 0);
@@ -130,7 +136,7 @@ test('jumping: onto a crate, not onto a double crate, and a ceiling stops you', 
   assert.ok(JUMP_REACH > 8 && JUMP_REACH < 16);
   const s = walk(createRunner(30, 100, 0), a, 1, 0, 12); // run up …
   walk(s, a, 1, 0, 3, true); // … jump …
-  for (let i = 0; i < 30 && !(s.ground && s.z > 0); i++) stepRunner(s, 1, 0, false, DT, a); // … until we land
+  for (let i = 0; i < 30 && !(s.ground && s.z > 0); i++) stepRunner(s, 1, 0, 0, DT, a); // … until we land
   walk(s, a, 0, 0, 10); // stop
   assert.equal(s.z, 8, 'on the crate');
   const t = walk(createRunner(120, 100, 0), a, 1, 0, 40, true);
@@ -139,7 +145,7 @@ test('jumping: onto a crate, not onto a double crate, and a ceiling stops you', 
   const u = createRunner(100, 40, 0);
   let top = 0;
   for (let i = 0; i < 30; i++) {
-    stepRunner(u, 0, 0, i === 0, DT, a);
+    stepRunner(u, 0, 0, i === 0 ? BTN.X : 0, DT, a);
     top = Math.max(top, u.z);
   }
   assert.ok(top <= 22 - PB_PHYS.HEIGHT + 1e-4, `head against the ceiling (${top})`);
@@ -208,7 +214,7 @@ test('bots find their way to every pad, also up the stairs and onto the walls', 
       let ok = false;
       for (let i = 0; i < 90 * SIM_TICK_RATE && !ok; i++) {
         const b = stepPaintBot(e, game, DT, game.rng);
-        stepRunner(e.s, b.ax, b.ay, b.jump, DT, a);
+        stepRunner(e.s, b.ax, b.ay, b.buttons, DT, a);
         e.yaw = b.yaw;
         ok = Math.hypot(e.s.x - pad.x, e.s.y - pad.y) < 8 && Math.abs(e.s.z - pad.z) < 1;
       }
@@ -348,7 +354,8 @@ test('snapshot has the documented layout', () => {
   for (let i = 0; i < 2; i++) {
     r.u8(); r.u8(); r.u16();
     for (let k = 0; k < 7; k++) assert.ok(Number.isFinite(r.f32()));
-    assert.ok(r.u8() <= 1, 'ground flag');
+    const body = r.u8();
+    assert.ok((body & 1) <= 1 && ((body >> 1) & 3) <= 2 && body < 128, 'ground, stance and held buttons');
     r.i16(); r.i16(); assert.ok(r.u8() <= PB_RULES.HP); assert.ok(r.u8() <= PB_RULES.HOPPER);
     r.i16(); r.u8(); r.u8(); r.u8();
     r.u8(); r.u8(); r.u8(); r.u8();
@@ -466,4 +473,112 @@ test('no power-ups when the setting is off', () => {
   run(game, room, 30);
   assert.ok(game.powers.pads.every((p) => p.type === PAD_EMPTY));
   assert.ok(!room.events.some((e) => e.e === 'power'));
+});
+
+// --- Crouching and lying down ------------------------------------------------------------------
+
+const open = { key: 'open', width: 300, height: 300, solids: [] };
+// One tick with these buttons held, then one tick with nothing (a tap).
+function tap(s, level, buttons) {
+  stepRunner(s, 0, 0, buttons, DT, level);
+  stepRunner(s, 0, 0, 0, DT, level);
+}
+
+test('Shift (Y) cycles stand, crouch, lie down; C (R) and Z (L) toggle; jumping stands you up', () => {
+  const s = createRunner(150, 150, 0);
+  tap(s, open, BTN.Y);
+  assert.equal(s.stance, PB_STANCE.CROUCH);
+  for (let i = 0; i < 5; i++) stepRunner(s, 0, 0, BTN.Y, DT, open);
+  assert.equal(s.stance, PB_STANCE.PRONE, 'one step per press: holding the key does not keep cycling');
+  stepRunner(s, 0, 0, 0, DT, open);
+  tap(s, open, BTN.Y);
+  assert.equal(s.stance, PB_STANCE.STAND);
+  tap(s, open, BTN.R);
+  assert.equal(s.stance, PB_STANCE.CROUCH);
+  tap(s, open, BTN.R);
+  assert.equal(s.stance, PB_STANCE.STAND);
+  tap(s, open, BTN.L);
+  assert.equal(s.stance, PB_STANCE.PRONE);
+  stepRunner(s, 0, 0, BTN.X, DT, open);
+  assert.equal(s.stance, PB_STANCE.STAND, 'jump gets you up …');
+  assert.equal(s.z, 0, '… without jumping yet');
+  stepRunner(s, 0, 0, BTN.X, DT, open);
+  assert.ok(s.z > 0, 'still holding it: now you jump');
+});
+
+test('crouching and lying down make you slower and lower; you only get up where there is room', () => {
+  const dist = (buttons) => {
+    const s = createRunner(20, 150, 0);
+    tap(s, open, buttons);
+    walk(s, open, 1, 0, 45);
+    return s.x - 20;
+  };
+  const stand = dist(0);
+  const crouch = dist(BTN.R);
+  const prone = dist(BTN.L);
+  assert.ok(crouch < stand * 0.65 && crouch > stand * 0.45, `crouching ${crouch.toFixed(1)} vs ${stand.toFixed(1)}`);
+  assert.ok(prone < stand * 0.4, `lying ${prone.toFixed(1)}`);
+  // A table 13 high (crawl under it crouching) and a bench 7 high (only lying down).
+  const level = { key: 'crawl', width: 300, height: 300, solids: [
+    { t: 'box', x: 100, y: 100, w: 30, h: 30, z0: 13, z1: 14.5 },
+    { t: 'box', x: 200, y: 100, w: 30, h: 30, z0: 7, z1: 8 },
+  ] };
+  const a = walk(createRunner(60, 100, 0), level, 1, 0, 60);
+  assert.ok(a.x < 85 - PB_PHYS.RADIUS + 0.01, 'standing you bump into the table');
+  const b = createRunner(60, 100, 0);
+  tap(b, level, BTN.R);
+  walk(b, level, 1, 0, 50);
+  assert.ok(Math.abs(b.x - 100) < 12, `crouching you get under it (${b.x.toFixed(1)})`);
+  walk(b, level, 0, 0, 3);
+  tap(b, level, BTN.R);
+  assert.equal(b.stance, PB_STANCE.CROUCH, 'no room to stand up under the table');
+  const c = createRunner(160, 100, 0);
+  tap(c, level, BTN.R);
+  walk(c, level, 1, 0, 50);
+  assert.ok(c.x < 185 - PB_PHYS.RADIUS + 0.01, 'crouching you bump into the bench');
+  const d = createRunner(160, 100, 0);
+  tap(d, level, BTN.L);
+  for (let i = 0; i < 200 && d.x < 200; i++) stepRunner(d, 1, 0, 0, DT, level);
+  assert.ok(d.x >= 200, `lying down you crawl under it (${d.x.toFixed(1)})`);
+  walk(d, level, 0, 0, 10);
+  tap(d, level, BTN.Y);
+  assert.equal(d.stance, PB_STANCE.PRONE, 'no room to get up under the bench');
+  walk(d, level, 1, 0, 120);
+  tap(d, level, BTN.L);
+  assert.equal(d.stance, PB_STANCE.STAND, 'out in the open you stand up again');
+});
+
+test('a crouching player is smaller: a level shot over their head misses, one aimed lower hits', () => {
+  const room = fakeRoom([human('p1', 0), human('p2', 1)]);
+  const game = paintball.create(room, { arena: 'opblaas', duration: 60 });
+  run(game, room, 3.2);
+  const ea = game.ent('p1');
+  const eb = game.ent('p2');
+  ea.s.x = 20; ea.s.y = 12; eb.s.x = 100; eb.s.y = 12;
+  ea.shield = eb.shield = 0;
+  eb.s.stance = PB_STANCE.CROUCH;
+  run(game, room, 0.1);
+  eb.shield = 0;
+  ea.cooldown = 0;
+  assert.equal(game.shoot(ea, 0, 0, room.now(), null), null, 'over the head of a crouching player');
+  ea.cooldown = 0;
+  assert.equal(game.shoot(ea, 0, Math.atan2(7 - PB_PHYS.EYE, 80), room.now(), null), eb, 'aimed at the body: a hit');
+  ea.s.stance = PB_STANCE.PRONE;
+  ea.cooldown = 0;
+  game.shoot(ea, 0, 0, room.now(), null);
+  const shot = room.events.filter((e) => e.e === 'shot').at(-1);
+  assert.ok(shot.z0 < 6, `lying down you shoot from low (${shot.z0})`);
+});
+
+test('bots duck while they reload and stand up again', () => {
+  const room = fakeRoom([bot('p1', 0, 'normal')]);
+  const game = paintball.create(room, { arena: 'bouw', duration: 60, powerups: false });
+  run(game, room, 3.5);
+  const e = game.ents[0];
+  e.ammo = 0;
+  e.reload = PB_RULES.RELOAD_S;
+  run(game, room, 0.3);
+  assert.equal(e.s.stance, PB_STANCE.CROUCH, 'ducked');
+  run(game, room, PB_RULES.RELOAD_S + 0.5);
+  assert.equal(e.s.stance, PB_STANCE.STAND, 'up again');
 });

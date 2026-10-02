@@ -15,6 +15,9 @@ import { addSplat } from './splat.js';
 import { buildPad, buildPowerModels } from './powers.js';
 
 const HIP = 7.5;
+const CROUCH_DROP = 5.5; // a crouching body sits this much lower …
+const CROUCH_HIP = 3.2; // … kneeling, the legs folded back from here
+const PRONE_MARKS = [[0.6, 3.05, -1.3], [2.4, 3.05, 1.2], [-1.2, 3.05, 0.4], [3.2, 3.05, -0.2]]; // paint on the back when lying
 const CHUNK = 24; // splats per mesh
 const MAX_CHUNKS = 10; // → at most 240 splats
 const PAD_EMPTY = 255;
@@ -46,6 +49,8 @@ export function createPaintScene(canvas, { arena, reducedMotion }) {
   const body = r.mesh(buildBody());
   const legL = r.mesh(buildLeg(-1.3));
   const legR = r.mesh(buildLeg(1.3));
+  const prone = r.mesh(buildProne());
+  const proneMarks = PRONE_MARKS.map(([mx, my, mz]) => r.mesh(new MeshBuilder().color('#ffffff', { tint: 1, emissive: glow }).sphere(mx, my, mz, 1.15, 6, 4).build()));
   const gun = r.mesh(buildViewGun());
   const ball = r.mesh(new MeshBuilder().color('#ffffff', { tint: 1, emissive: glow }).sphere(0, 0, 0, 0.75, 6, 4).build());
   const markMeshes = MARK_SPOTS.map(([mx, my, mz]) => r.mesh(new MeshBuilder().color('#ffffff', { tint: 1, emissive: glow }).sphere(mx, my, mz, 1.25, 6, 4).build()));
@@ -177,7 +182,8 @@ export function createPaintScene(canvas, { arena, reducedMotion }) {
     // First-person camera: feet at (x, y, z), looking along yaw and pitch;
     // bob = walking bounce. dead: slowly rises above the spot where you were
     // splatted. overview: circling high over the field (spectators).
-    begin({ x, y, z = 0, yaw, pitch = 0, bob = 0, dead = 0, overview = false }) {
+    // eye: the eye height above the feet (lower when crouching or lying down).
+    begin({ x, y, z = 0, eye: eyeHeight = PB_PHYS.EYE, yaw, pitch = 0, bob = 0, dead = 0, overview = false }) {
       if (splatsDirty) rebuildSplats();
       if (overview) {
         const a = time * 0.08;
@@ -189,7 +195,7 @@ export function createPaintScene(canvas, { arena, reducedMotion }) {
         const back = Math.min(1, dead) * (room < 20 ? 6 : 30);
         r.camera(x - Math.cos(yaw) * back, z + PB_PHYS.EYE + 45 * rise, y - Math.sin(yaw) * back, x, z + 2, y, FOV, 0.5, far);
       } else {
-        const eye = z + PB_PHYS.EYE + bob;
+        const eye = z + eyeHeight + bob;
         const cp = Math.cos(pitch);
         r.camera(x, eye, y, x + Math.cos(yaw) * cp * 10, eye + Math.sin(pitch) * 10, y + Math.sin(yaw) * cp * 10, FOV, 0.5, far);
         cam.x = x;
@@ -208,14 +214,32 @@ export function createPaintScene(canvas, { arena, reducedMotion }) {
 
     // A player: feet at (x, y, z), view angle and pitch, walk phase, colour
     // [r,g,b], paint marks (hex colours of the hits), alpha (camouflage), air
-    // (jumping or falling: legs tucked up).
-    player(x, y, z, yaw, pitch, walk, speed, color, marks = null, alpha = 1, air = false) {
+    // (jumping or falling: legs tucked up), stance (0 stand, 1 crouch, 2 lie down).
+    player(x, y, z, yaw, pitch, walk, speed, color, marks = null, alpha = 1, air = false, stance = 0) {
       const ry = yawFromDir(Math.cos(yaw), Math.sin(yaw));
+      const move = Math.min(1, speed / PB_PHYS.SPEED);
+      if (stance === 2) {
+        // Flat on the belly, crawling a little when moving.
+        compose(m, x, z + Math.abs(Math.sin(walk)) * 0.25 * move, y, ry, Math.sin(walk) * 0.06 * move, Math.max(-0.12, Math.min(0.12, (pitch ?? 0) * 0.15)));
+        r.draw(prone, m, color, alpha);
+        if (marks && alpha === 1) marks.forEach((hex, i) => r.draw(proneMarks[i % proneMarks.length], m, rgb(hex)));
+        return;
+      }
       const lean = Math.max(-0.35, Math.min(0.35, (pitch ?? 0) * 0.3));
-      compose(m, x, z, y, ry, 0, lean);
+      const crouch = stance === 1;
+      compose(m, x, z - (crouch ? CROUCH_DROP : 0), y, ry, 0, lean);
       r.draw(body, m, color, alpha);
       if (marks && alpha === 1) marks.forEach((hex, i) => r.draw(markMeshes[i % markMeshes.length], m, rgb(hex)));
-      const swing = air ? 0.5 : Math.min(1, speed / PB_PHYS.SPEED) * Math.sin(walk) * 0.55;
+      if (crouch) {
+        // Kneeling: the legs folded back from a low hip, shuffling when moving.
+        const shuffle = Math.sin(walk) * 0.25 * move;
+        compose(m, x, z + CROUCH_HIP, y, ry, 0, -1.15 + shuffle);
+        r.draw(legL, m, color, alpha);
+        compose(m, x, z + CROUCH_HIP, y, ry, 0, -1.3 - shuffle);
+        r.draw(legR, m, color, alpha);
+        return;
+      }
+      const swing = air ? 0.5 : move * Math.sin(walk) * 0.55;
       compose(m, x, z + HIP, y, ry, 0, swing);
       r.draw(legL, m, color, alpha);
       compose(m, x, z + HIP, y, ry, 0, air ? swing * 0.3 : -swing);
@@ -304,6 +328,33 @@ function buildBody() {
   b.color('#3a3d45').box(5.4, 12.2, 1.2, 5.2, 1.3, 1.1);
   b.color('#3a3d45').box(8.8, 12.5, 1.2, 3.2, 0.6, 0.6);
   b.color('#ffffff', { tint: 1 }).sphere(4.6, 14.2, 1.2, 1.3, 6, 4);
+  return b.build();
+}
+
+// Lying on the belly, facing +x: legs behind, the marker out in front.
+function buildProne() {
+  const b = new MeshBuilder();
+  for (const z of [-1.3, 1.3]) {
+    b.color('#2d3038').box(-10, 0, z, 10, 1.8, 1.9);
+    b.color('#1b1c20').box(-15.6, 0, z, 1.4, 2.6, 2);
+  }
+  b.color('#2d3038').box(-3.5, 0, 0, 3, 2.4, 5.2);
+  b.color('#ffffff', { tint: 1 }).box(1, 0, 0, 6, 3, 5.6, { top: '#ffffff' });
+  b.color('#23252b').box(1.3, 0, 0, 1.2, 3.15, 5.9); // harness strap
+  b.color('#ffffff', { tint: 1 }).box(3.8, 1.6, -3, 1.6, 1.4, 1.6).box(3.8, 1.6, 3, 1.6, 1.4, 1.6); // shoulders
+  // Arms on the elbows, forward to the marker.
+  b.color('#ffffff', { tint: 0.85 }).box(6.2, 0.3, -2.6, 4.4, 1.3, 1.3).box(6.4, 0.3, 2.3, 4.8, 1.3, 1.3);
+  b.color('#e8b894').box(8.6, 0.6, 1.6, 1.2, 1.3, 1.3);
+  // Head up, mask with goggles, cap.
+  b.color('#e8b894').sphere(5.6, 3.4, 0, 1.9, 7, 5);
+  b.color('#2a2c33').box(6.9, 2.1, 0, 1.4, 2.6, 3.2);
+  b.color('#8fd3ff', { emissive: 0.25 }).box(7.6, 3.2, 0, 0.3, 1.1, 3);
+  b.color('#ffffff', { tint: 1 }).cylinder(5.6, 4.3, 0, 2.05, 1.1, 8);
+  b.color('#ffffff', { tint: 0.7 }).box(7.4, 4.4, 0, 1.6, 0.3, 3); // cap brim
+  // The marker resting on the ground, with its hopper.
+  b.color('#3a3d45').box(10.6, 1.1, 1.2, 5.2, 1.3, 1.1);
+  b.color('#3a3d45').box(14, 1.4, 1.2, 3.2, 0.6, 0.6);
+  b.color('#ffffff', { tint: 1 }).sphere(9.8, 3.1, 1.2, 1.3, 6, 4);
   return b.build();
 }
 

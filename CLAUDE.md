@@ -126,7 +126,9 @@ Timon's Arcade: multiplayer browsergames (2–6 spelers) met kamercodes. Eén No
 - **Spetterveld** (`paintball`): first person in 3D. Een veld is een level `{ width, height, spawns, pads, solids }`
   met blokken/cilinders `{ z0, z1 }` (`shared/maps/paintball-arenas.js` klassiek, `paintball-levels.js` groot, bouwstenen
   in `paintball-build.js`: `stairs`, `building` met deuren/ramen/verdiepingen/trapgat, `merlons`, `mirrorPoint`).
-  Beweging gedeeld (`shared/physics/paintball.js`): zwaartekracht, springen (BTN.X), traptreden tot `STEP`, plafonds;
+  Beweging gedeeld (`shared/physics/paintball.js`): zwaartekracht, springen (BTN.X), traptreden tot `STEP`, plafonds,
+  houding `stance` (staan/bukken/liggen: lager, trager; BTN.Y = Shift wisselt rond, BTN.R = C bukken, BTN.L = Z liggen;
+  opstaan alleen met ruimte boven je; `s.prev` voor de toggles, alles in één u8 `body` in de snapshot);
   3D-stralen (`raycast`, `rayPlayer`, `lineOfSight`). Camera = `r.camera()` op ooghoogte met pitch; de eigen marker
   wordt na `r.clearDepth()` getekend. Schoten als JSON-actie `{ a, p, t, x, y, z }` met lag compensation in 3D (`LagHistory`
   heeft z); de server vertrouwt het meegestuurde oog tot `MAX_SHOT_OFFSET` en nooit door een muur heen. `{ p }` = kijkhoek

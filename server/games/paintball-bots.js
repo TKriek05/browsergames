@@ -4,13 +4,14 @@
 // target is close to the crosshair. Easy bots aim sloppily and react slowly;
 // hard bots are quick and precise. Without a target in sight they fetch a
 // power-up from a pad nearby, and a camouflaged player is only noticed up close.
-import { PB_PHYS, lineOfSight } from '../../shared/physics/paintball.js';
+import { PB_PHYS, PB_STANCE, lineOfSight, eyeHeight, bodyHeight } from '../../shared/physics/paintball.js';
+import { BTN } from '../../shared/messages.js';
 import { PB_RULES as R, PB_POWER_RULES as PR, wrapAngle } from '../../shared/games/paintball.js';
 import { PAD_EMPTY } from './paintball-powers.js';
 import { navFor, nodeAt, nodeX, nodeY, distancesTo, nextNode } from './paintball-nav.js';
 
 const PAD_REACH = 170; // bots walk this far for a power-up
-const CHEST = 10; // bots aim this high above the feet
+const CHEST = 0.6; // bots aim at this part of a body's height (the chest)
 const FIELD_CACHE = 48; // distance fields kept per level (the level never changes, so they stay valid)
 const STUCK_S = 1.2;
 
@@ -43,14 +44,15 @@ export function createPaintBot() {
     think: 0, target: null, visible: false, seen: 0, jitter: 0, pause: 0,
     strafe: 1, strafeT: 0, goal: -1, goalX: 0, goalY: 0, dist: null,
     lastX: 0, lastY: 0, lastZ: 0, still: 0, unstick: 0,
-    out: { ax: 0, ay: 0, jump: false, yaw: 0, pitch: 0, fire: false, reload: false },
+    out: { ax: 0, ay: 0, jump: false, buttons: 0, yaw: 0, pitch: 0, fire: false, reload: false },
   };
 }
 
-const eye = (e) => e.s.z + PB_PHYS.EYE;
+const eye = (e) => e.s.z + eyeHeight(e.s.stance);
+const chest = (o) => o.s.z + bodyHeight(o.s.stance) * CHEST;
 
 function sees(game, e, o) {
-  return lineOfSight(game.level, e.s.x, e.s.y, eye(e), o.s.x, o.s.y, o.s.z + CHEST);
+  return lineOfSight(game.level, e.s.x, e.s.y, eye(e), o.s.x, o.s.y, chest(o));
 }
 
 function pickTarget(e, game) {
@@ -214,7 +216,7 @@ export function stepPaintBot(e, game, dt, rng) {
   if (t && b.visible) {
     const p = game.history.positionAt(t.player.slot, game.room.now() - cfg.lagMs, seen) ? seen : t.s;
     want = Math.atan2(p.y - s.y, p.x - s.x) + b.jitter;
-    wantPitch = Math.atan2(p.z + CHEST - eye(e), Math.hypot(p.x - s.x, p.y - s.y)) + b.jitter * 0.5;
+    wantPitch = Math.atan2(p.z + bodyHeight(t.s.stance) * CHEST - eye(e), Math.hypot(p.x - s.x, p.y - s.y)) + b.jitter * 0.5;
   }
   const maxTurn = cfg.turn * dt;
   const diff = wrapAngle(want - e.yaw);
@@ -228,6 +230,12 @@ export function stepPaintBot(e, game, dt, rng) {
     b.jitter = Math.max(-cfg.jitter, Math.min(cfg.jitter, b.jitter + (rng() - 0.5) * cfg.jitter));
   }
   if (!b.visible && e.reload <= 0 && e.ammo < R.HOPPER / 2) out.reload = true;
+  // Duck while reloading (stand up to jump); a toggle button is pressed only
+  // while the stance is not yet the one we want.
+  const stance = e.reload > 0 && !out.jump ? PB_STANCE.CROUCH : PB_STANCE.STAND;
+  out.buttons = out.jump ? BTN.X : 0;
+  const toggle = s.stance === PB_STANCE.PRONE ? BTN.L : BTN.R; // the direct crouch / lie toggles
+  if (s.stance !== stance && s.ground && !(s.prev & toggle)) out.buttons |= toggle; // press, release, press …
   return out;
 }
 

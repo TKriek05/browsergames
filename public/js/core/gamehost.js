@@ -100,6 +100,12 @@ export class GameHost {
       this.stage.append(h('div', { class: 'board-layout' }, canvasArea, side));
     }
     this.view = createGameCanvas(canvasArea, meta);
+    // Clicking the field takes the focus off a HUD button (🔊, ⛶ …): otherwise
+    // Space would press that button again instead of reaching the game.
+    canvasArea.addEventListener('pointerdown', () => {
+      const el = document.activeElement;
+      if (el && el !== document.body && this.root.contains(el) && el.closest('button, a')) el.blur();
+    });
     if (meta.input !== false) this.input = new Input(meta.keys); // meta.keys: game-specific key map (optional)
     if (this.input && meta.touchControls !== false && isTouchDevice()) {
       this.touch = createTouchControls(this.root, this.input, { buttons: meta.touchButtons ?? [] });
